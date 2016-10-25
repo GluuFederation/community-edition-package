@@ -65,8 +65,6 @@ apply_update1() {
 # END: Update for gluuStatus meta-data
 
 # START: Update for oxAuth configuration
-
-
 add_json_configuration_option() {
     FILE_NAME=$1
     CONFIGURATION_KEY=$2
