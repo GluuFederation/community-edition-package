@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 
 BACKUP_TIME=`date +%Y-%m-%d.%H:%M:%S`
 BACKUP_FOLDER="/opt/upd/2.4.4.sp2/backup_ldap_$BACKUP_TIME"
@@ -65,6 +65,8 @@ apply_update1() {
 # END: Update for gluuStatus meta-data
 
 # START: Update for oxAuth configuration
+
+
 add_json_configuration_option() {
     FILE_NAME=$1
     CONFIGURATION_KEY=$2
@@ -105,7 +107,14 @@ apply_update2() {
     fi
 
     OXAUTH_DYNAMIC_CONFIG_FILE=$BACKUP_FOLDER/oxauth_dynamic.json
-    cat $BACKUP_FILE | grep "^oxAuthConfDynamic:: " | awk -F":: " '{print $2}' | base64 --decode > $OXAUTH_DYNAMIC_CONFIG_FILE
+    BASE_64_ENCODED=`cat $BACKUP_FILE | grep "^oxAuthConfDynamic:: " | wc -l`
+    if [[ $BASE_64_ENCODED == 0 ]]; then
+        # Value is not base64 encoded
+        cat $BACKUP_FILE | grep "^oxAuthConfDynamic: " | awk -F": " '{print $2}' | python -m json.tool > $OXAUTH_DYNAMIC_CONFIG_FILE
+    else
+        # Value is base64 encoded
+        cat $BACKUP_FILE | grep "^oxAuthConfDynamic:: " | awk -F":: " '{print $2}' | base64 --decode | python -m json.tool > $OXAUTH_DYNAMIC_CONFIG_FILE
+    fi
 
     COUNT_CHANGES=0
     add_json_configuration_option $OXAUTH_DYNAMIC_CONFIG_FILE '"endSessionWithAccessToken"' ',"endSessionWithAccessToken": false\n}'
