@@ -65,7 +65,7 @@ start() {
 		
 		RESOLV_CONF="/run/resolvconf/resolv.conf"
 		if [ -f $RESOLV_CONF ]; then
-			cp --parents -f $RESOLV_CONF /opt/gluu-server-$GLUU_VERSION/
+			cp -f $RESOLV_CONF /opt/gluu-server-$GLUU_VERSION/run/resolvconf/
 		fi
 	
 		/bin/mount /dev                    /opt/gluu-server-$GLUU_VERSION/dev -o bind \
