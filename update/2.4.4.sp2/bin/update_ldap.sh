@@ -1,7 +1,8 @@
 #!/bin/bash
 
+UPDATE_VERSION="2.4.4.sp2"
 BACKUP_TIME=`date +%Y-%m-%d.%H:%M:%S`
-BACKUP_FOLDER="/opt/upd/2.4.4.sp2/backup_ldap_$BACKUP_TIME"
+BACKUP_FOLDER="/opt/upd/$UPDATE_VERSION/backup_ldap_$BACKUP_TIME"
 
 init () {
     # Prapre required data

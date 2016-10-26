@@ -1,11 +1,12 @@
 #!/bin/sh
 
-UPD_DIR="/opt/upd/2.4.4.sp2/war/"
+UPDATE_VERSION="2.4.4.sp2"
+UPD_DIR="/opt/upd/$UPDATE_VERSION/war/"
 OXIDP="/opt/idp/war/"
 OXCAS="/opt/dist/"
 TOMCAT_DIR="/opt/tomcat/webapps/"
 BACKUP_TIME=`date +%Y-%m-%d.%H:%M:%S`
-BACKUP_FOLDER="/opt/upd/2.4.4.sp2/backup_$BACKUP_TIME"
+BACKUP_FOLDER="/opt/upd/$UPDATE_VERSION/backup_$BACKUP_TIME"
 
 apply_update () {
     APP_NAME=$1
