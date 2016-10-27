@@ -41,7 +41,7 @@ PATH=/sbin:/usr/sbin:/bin:/usr/bin
 . /lib/init/vars.sh
 . /lib/lsb/init-functions
 
-GLUU_VERSION=2.4.4
+GLUU_VERSION=3.0.0
 CHROOT_DIR=/opt/gluu-server-$GLUU_VERSION
 PIDFILE=$CHROOT_DIR/var/run/gluu-server-$GLUU_VERSION.pid
 
