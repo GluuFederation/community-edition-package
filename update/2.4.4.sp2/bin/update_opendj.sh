@@ -1,9 +1,10 @@
 #!/bin/sh
 
-UPD_DIR="/opt/upd/2.4.4.sp1/opendj/"
+UPDATE_VERSION="2.4.4.sp2"
+UPD_DIR="/opt/upd/$UPDATE_VERSION/opendj/"
 OPENDJ_SCHEMA_DIR="/opt/opendj/config/schema"
 BACKUP_TIME=`date +%Y-%m-%d.%H:%M:%S`
-BACKUP_FOLDER="/opt/upd/2.4.4.sp1/backup_opendj_$BACKUP_TIME"
+BACKUP_FOLDER="/opt/upd/$UPDATE_VERSION/backup_opendj_$BACKUP_TIME"
 
 echo "Starting the update process..."
 service opendj stop
