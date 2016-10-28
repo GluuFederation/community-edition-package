@@ -33,7 +33,7 @@
 # Source function library.
 . /etc/init.d/functions
 
-GLUU_VERSION=2.4.4
+GLUU_VERSION=3.0.0
 CHROOT_DIR=/opt/gluu-server-$GLUU_VERSION
 PIDFILE=/var/run/gluu-server-$GLUU_VERSION.pid
 
