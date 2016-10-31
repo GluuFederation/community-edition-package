@@ -77,7 +77,26 @@ STAT=(`df -aP |grep \/opt\/gluu-server-$GLUU_VERSION\/ | awk '{ print $6 }' | gr
         
          
 }
-        
+
+stopJettyService() {
+    serviceName=$1
+    serviceDescription=$2
+
+    serviceFile="/opt/gluu-server-$GLUU_VERSION/etc/init.d/$serviceName"
+    serviceStatusCheck=$(echo "ps aux | grep $serviceName | grep -v grep")
+    serviceStopCommand=$(echo "service $serviceName stop")
+
+	if [[ -L $serviceFile || -x $serviceFile ]] && [ "`ps aux | grep $serviceName | grep -v grep`"  != "" ]; then
+             echo "Stopping $serviceDescription..."
+	    /usr/sbin/chroot /opt/gluu-server-$GLUU_VERSION su - root -c 'service $0 stop' -- $serviceName > /dev/null 2>&1
+		if [ "`ps aux | grep $serviceName | grep -v grep`"  != "" ]; then
+                   echo "Failed"
+                else
+                   echo "OK"
+                fi
+	fi
+}
+
 stop() {
 STAT=(`df -aP |grep \/opt\/gluu-server-$GLUU_VERSION\/ | awk '{ print $6 }' | grep -Eohw 'proc|lo|pts|modules|dev'`)
 
@@ -119,6 +138,13 @@ STAT=(`df -aP |grep \/opt\/gluu-server-$GLUU_VERSION\/ | awk '{ print $6 }' | gr
                 fi
 
 	fi
+
+        stopJettyService oxauth-rp "oxAuth RP"
+        stopJettyService asimba "Asimba"
+        stopJettyService cas "CAS"
+#        stopJettyService saml "SAML"
+        stopJettyService identity "oxTrust"
+        stopJettyService oxauth "oxAuth"
 
 	 if [ -x /opt/gluu-server-$GLUU_VERSION/etc/init.d/opendj ] && [ "`ps aux | grep opendj | grep -v grep`"  != "" ]; then
              echo "Stopping OpenDJ..."
@@ -182,8 +208,6 @@ if [ -f $PIDFILE ] && [ ${#STAT[@]} = "6" ];then
        fi
 
 }
-
-
 
 
 case "$1" in
