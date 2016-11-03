@@ -60,7 +60,7 @@ if [ "$DETECTED_OS" = "Ubuntu 14.04" ]; then
 	. /lib/init/vars.sh
 	. /lib/lsb/init-functions
 	APACHE="apache2"
-	RESOLV_CONF="/etc/resolv.conf"
+	RESOLV_CONF="/run/resolvconf/resolv.conf"
 	LOCK_PATH="/var/lock"
 elif [ "$DETECTED_OS" = "CentOS 6" ]; then
 
@@ -76,7 +76,7 @@ elif [ "$DETECTED_OS" = "CentOS 6" ]; then
 
 	. /etc/init.d/functions
 	APACHE="httpd"
-	RESOLV_CONF="/run/resolvconf/resolv.conf"
+	RESOLV_CONF="/etc/resolv.conf"
 	LOCK_PATH="/var/lock/subsys"
 fi
 
