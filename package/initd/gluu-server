@@ -191,7 +191,7 @@ stop() {
         stopJettyService oxauth-rp "oxAuth RP"
         stopJettyService asimba "Asimba"
         stopJettyService cas "CAS"
-	#stopJettyService saml "SAML"
+	stopJettyService idp "IDP"
         stopJettyService identity "oxTrust"
 	stopJettyService oxauth "oxAuth"
 
