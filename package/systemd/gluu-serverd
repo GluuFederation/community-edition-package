@@ -1,6 +1,6 @@
 #!/bin/bash
 
-GLUU_VERSION=2.4.4
+GLUU_VERSION=3.0.0
 
 ready() {
 	PORTS=`netstat -tunpl | awk '{ print $4 }' |grep -Eohw '80|443|8080|8009|8005|1389|1689|4444'`
