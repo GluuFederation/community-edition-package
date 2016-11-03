@@ -21,6 +21,8 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
+GLUU_VERSION=3.0.0
+
 
 detect_os() {
         if [ -f /etc/redhat-release ]; then
@@ -80,15 +82,12 @@ elif [ "$DETECTED_OS" = "CentOS 6" ]; then
 	LOCK_PATH="/var/lock/subsys"
 fi
 
-GLUU_VERSION=3.0.0
 CHROOT_DIR=/opt/gluu-server-$GLUU_VERSION
 PIDFILE=/var/run/gluu-server-$GLUU_VERSION.pid
 
-PORTS=`netstat -tunpl | awk '{ print $4 }' |grep -Eohw '80|443|8080|8009|8005|1389|1689|4444'`
-
-
 start() {
 	STAT=(`df -aP |grep \/opt\/gluu-server-$GLUU_VERSION\/ | awk '{ print $6 }' | grep -Eohw 'proc|lo|pts|modules|dev'`)
+	PORTS=`netstat -tunpl | awk '{ print $4 }' |grep -Eohw '80|443|8080|8009|8005|1389|1689|4444'`
 
 	if [ -f $PIDFILE ] && [ ${#STAT[@]} = "6" ]; then
 		PID=`cat $PIDFILE`
@@ -161,8 +160,8 @@ stop() {
 
         if [ ! -f $PIDFILE ] && [ "$STAT" = "" ]; then
                 echo "gluu-server-$GLUU_VERSION is not running"
-                exit 2;
-        elif [ -f $PIDFILE ] && [ ${#STAT[*]} = 6 ]; then
+                exit 2
+        elif [ -f $PIDFILE ] && [ ${#STAT[@]} = "6" ]; then
         	echo "Shutting down Gluu Server..."
         else
         	echo -e "ERROR: Can't stop gluu server.\nHINT: Please manually remove $PIDFILE and unmount chroot container by running\nrm -f $PIDFILE\ndf -aP | grep gluu-server-$GLUU_VERSION | awk '{print \$6}' | xargs -I {} umount -l {}" 
@@ -249,14 +248,14 @@ stop() {
 
 
 status() {
-
-STAT=(`df -aP |grep \/opt\/gluu-server-$GLUU_VERSION\/ | awk '{ print $6 }' | grep -Eohw 'proc|lo|pts|modules|dev'`)
+	STAT=(`df -aP |grep \/opt\/gluu-server-$GLUU_VERSION\/ | awk '{ print $6 }' | grep -Eohw 'proc|lo|pts|modules|dev'`)
         if [ -f $PIDFILE ] && [ ${#STAT[@]} = "6" ];then
                 PID=`cat $PIDFILE`
                 echo gluu-server-$GLUU_VERSION is running: $PID
                 exit 0
         elif [ ! -f $PIDFILE ] && [ ${#STAT[@]} = "0" ];then
                 echo "gluu-server-$GLUU_VERSION is not running"
+                exit 1
         else
 		echo -e "ERROR: gluu server was not run properly.\nHINT: Please manually remove $PIDFILE and unmount chroot container by running\nrm -f $PIDFILE\ndf -aP | grep gluu-server-$GLUU_VERSION | awk '{print \$6}' | xargs -I {} umount -l {}"
                 exit 2
@@ -283,13 +282,13 @@ ready() {
    
         if [ -f $PIDFILE ] && [ ${#STAT[@]} = "6" ]; then
         	PID=`cat $PIDFILE`
-                return 1;
+                return 1
         elif [ -f $PIDFILE ] || [ "$STAT" != "" ]; then
-            	return 1;
+            	return 1
         elif [ "$PORTS" != "" ]; then
-            	return 1;
+            	return 1
 	fi 
-        return 0;
+        return 0
 }
  
 wait_stop() {
@@ -299,7 +298,7 @@ wait_stop() {
         	ready
         	STAT=$?
         	if [ $STAT = 0 ]; then
-            		return 0;
+            		return 0
         	fi
         	sleep 5
     	done
