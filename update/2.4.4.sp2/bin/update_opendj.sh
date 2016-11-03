@@ -15,6 +15,7 @@ if [ -f $OPENDJ_SCHEMA_DIR/101-ox.ldif ]; then
     echo "Updating 101-ox.ldif...."
     mv $OPENDJ_SCHEMA_DIR/101-ox.ldif $BACKUP_FOLDER
     cp $UPD_DIR/101-ox.ldif $OPENDJ_SCHEMA_DIR
+    chown ldap:ldap $OPENDJ_SCHEMA_DIR/101-ox.ldif
 fi
 
 service opendj start

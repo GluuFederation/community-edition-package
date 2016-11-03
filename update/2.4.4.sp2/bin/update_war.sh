@@ -34,7 +34,7 @@ mkdir -p $BACKUP_FOLDER
 
 apply_update oxauth
 apply_update identity
-apply_update cas
+#apply_update cas
 apply_idp_update
 
 
