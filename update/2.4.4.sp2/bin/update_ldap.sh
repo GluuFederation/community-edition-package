@@ -118,6 +118,8 @@ apply_update2() {
     fi
 
     COUNT_CHANGES=0
+    add_json_configuration_option $OXAUTH_DYNAMIC_CONFIG_FILE '"defaultSubjectType"' ',"defaultSubjectType": "pairwise"\n}'
+    ((COUNT_CHANGES+=$?))
     add_json_configuration_option $OXAUTH_DYNAMIC_CONFIG_FILE '"endSessionWithAccessToken"' ',"endSessionWithAccessToken": false\n}'
     ((COUNT_CHANGES+=$?))
     add_json_configuration_option $OXAUTH_DYNAMIC_CONFIG_FILE '"clientWhiteList"' ',"clientWhiteList": ["*"]\n}'
