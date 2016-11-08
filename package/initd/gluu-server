@@ -178,16 +178,6 @@ stop() {
                 fi
         fi
 
-        if [ -x /opt/gluu-server-$GLUU_VERSION/etc/init.d/tomcat ] && [ "`ps aux | grep tomcat | grep -v grep`"  != "" ]; then
-             	echo "Stopping Tomcat..."
-            	/usr/sbin/chroot /opt/gluu-server-$GLUU_VERSION su - root -c 'service tomcat stop' > /dev/null 2>&1
-                if [ "`ps aux | grep tomcat | grep -v grep`"  != "" ]; then
-                   echo "Failed"
-                else
-                   echo "OK"    
-                fi
-        fi
-
         stopJettyService oxauth-rp "oxAuth RP"
         stopJettyService asimba "Asimba"
         stopJettyService cas "CAS"
