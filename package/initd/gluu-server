@@ -27,21 +27,17 @@ GLUU_VERSION=3.0.0
 detect_os() {
         if [ -f /etc/redhat-release ]; then
                 MAJOR_VERSION="`awk '{print $3}' /etc/redhat-release |cut -d '.' -f1`"
-                if [ $MAJOR_VERSION = 6 ]; then
-                        GLUU_OS="`awk '{print $1}' /etc/redhat-release`"
-                fi
+                GLUU_OS="`awk '{print $1}' /etc/redhat-release`"
         elif [ -f /etc/os-release ]; then
                 MAJOR_VERSION="`grep VERSION_ID /etc/os-release |cut -d '=' -f2|tr -d '"'`"
-                if [ $MAJOR_VERSION = "14.04" ]; then
-                        GLUU_OS="`grep "^NAME" /etc/os-release |cut -d '=' -f2|tr -d '"'`"
-                fi
+                GLUU_OS="`grep "^NAME" /etc/os-release |cut -d '=' -f2|tr -d '"'`"
         fi
         echo "$GLUU_OS $MAJOR_VERSION"
 }
 
 DETECTED_OS=`detect_os`
 
-if [ "$DETECTED_OS" = "Ubuntu 14.04" ]; then
+if [ "$DETECTED_OS = 'Ubuntu 14.04'" -o "$DETECTED_OS = 'Ubuntu 16.04'" -o "$DETECTED_OS = 'Debian GNU/Linux 8'" ]; then
 
 	### BEGIN INIT INFO
 	# Provides:          gluu-server
@@ -61,8 +57,15 @@ if [ "$DETECTED_OS" = "Ubuntu 14.04" ]; then
 
 	. /lib/init/vars.sh
 	. /lib/lsb/init-functions
+
 	APACHE="apache2"
-	RESOLV_CONF="/run/resolvconf/resolv.conf"
+
+        if [ "$DETECTED_OS = 'Debian GNU/Linux 8'" ]; then
+                RESOLV_CONF="/etc/resolv.conf"
+        else
+                RESOLV_CONF="/run/resolvconf/resolv.conf"
+        fi
+
 	LOCK_PATH="/var/lock"
 elif [ "$DETECTED_OS" = "CentOS 6" ]; then
 
@@ -85,9 +88,10 @@ fi
 CHROOT_DIR=/opt/gluu-server-$GLUU_VERSION
 PIDFILE=/var/run/gluu-server-$GLUU_VERSION.pid
 
+PORTS=`netstat -tunpl | awk '{ print $4 }' |grep -Eohw '80|443|8080|8081|8082|8083|8084|8085|8086|1389|1689|11211'`
+
 start() {
 	STAT=(`df -aP |grep \/opt\/gluu-server-$GLUU_VERSION\/ | awk '{ print $6 }' | grep -Eohw 'proc|lo|pts|modules|dev'`)
-	PORTS=`netstat -tunpl | awk '{ print $4 }' |grep -Eohw '80|443|8080|8081|8082|8083|8084|8085|8086|1389|1689|11211'`
 
 	if [ -f $PIDFILE ] && [ ${#STAT[@]} = "6" ]; then
 		PID=`cat $PIDFILE`
@@ -111,7 +115,7 @@ start() {
 		/bin/mount /proc                   /opt/gluu-server-$GLUU_VERSION/proc -t proc -o defaults,noatime;
 		/bin/mount /sys/class/net/lo       /opt/gluu-server-$GLUU_VERSION/sys/class/net/lo -t sysfs -o defaults;
 		/bin/mount /lib/modules            /opt/gluu-server-$GLUU_VERSION/lib/modules -o bind;
-		if [ "$DETECTED_OS" = "Ubuntu 14.04" ]; then
+                if [ "$DETECTED_OS = 'Ubuntu 14.04'" -o "$DETECTED_OS = 'Ubuntu 16.04'" -o "$DETECTED_OS = 'Debian GNU/Linux 8'" ]; then
 			/bin/mount /dev/pts                /opt/gluu-server-$GLUU_VERSION/dev/pts -t devpts -o gid=5,mode=620;
                 	/usr/sbin/chroot /opt/gluu-server-$GLUU_VERSION su - root -c '/bin/hostname -b -F /etc/hostname' > /dev/null 2>&1
         		sleep 2
