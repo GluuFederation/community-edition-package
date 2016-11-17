@@ -67,8 +67,7 @@ if [ "$DETECTED_OS = 'Ubuntu 14.04'" -o "$DETECTED_OS = 'Ubuntu 16.04'" -o "$DET
         fi
 
 	LOCK_PATH="/var/lock"
-elif [ "$DETECTED_OS" = "CentOS 6" ]; then
-
+else
 	#
 	#       /etc/rc.d/init.d/gluu-server
 	# gluu-server  This shell script takes care of starting and stopping
@@ -88,11 +87,10 @@ fi
 CHROOT_DIR=/opt/gluu-server-$GLUU_VERSION
 PIDFILE=/var/run/gluu-server-$GLUU_VERSION.pid
 
-PORTS=`netstat -tunpl | awk '{ print $4 }' |grep -Eohw '80|443|8080|8081|8082|8083|8084|8085|8086|1389|1689|11211'`
+STAT=(`df -aP |grep \/opt\/gluu-server-$GLUU_VERSION\/ | awk '{ print $6 }' | grep -Eohw 'proc|lo|pts|modules|dev'`)
 
 start() {
-	STAT=(`df -aP |grep \/opt\/gluu-server-$GLUU_VERSION\/ | awk '{ print $6 }' | grep -Eohw 'proc|lo|pts|modules|dev'`)
-
+	PORTS=`netstat -tunpl | awk '{ print $4 }' |grep -Eohw '80|443|8080|8081|8082|8083|8084|8085|8086|1389|1689|11211'`
 	if [ -f $PIDFILE ] && [ ${#STAT[@]} = "6" ]; then
 		PID=`cat $PIDFILE`
                 echo "gluu-server-$GLUU_VERSION is already running"
@@ -115,6 +113,7 @@ start() {
 		/bin/mount /proc                   /opt/gluu-server-$GLUU_VERSION/proc -t proc -o defaults,noatime;
 		/bin/mount /sys/class/net/lo       /opt/gluu-server-$GLUU_VERSION/sys/class/net/lo -t sysfs -o defaults;
 		/bin/mount /lib/modules            /opt/gluu-server-$GLUU_VERSION/lib/modules -o bind;
+
                 if [ "$DETECTED_OS = 'Ubuntu 14.04'" -o "$DETECTED_OS = 'Ubuntu 16.04'" -o "$DETECTED_OS = 'Debian GNU/Linux 8'" ]; then
 			/bin/mount /dev/pts                /opt/gluu-server-$GLUU_VERSION/dev/pts -t devpts -o gid=5,mode=620;
                 	/usr/sbin/chroot /opt/gluu-server-$GLUU_VERSION su - root -c '/bin/hostname -b -F /etc/hostname' > /dev/null 2>&1
@@ -125,7 +124,7 @@ start() {
                 	echo
                 	[ $RETVAL -eq 0 ] && touch $LOCK_PATH/gluu-server-$GLUU_VERSION
                 	return $RETVAL
-		elif [ "$DETECTED_OS" = "CentOS 6" ]; then
+		else
 			/bin/mount /dev/pts                /opt/gluu-server-$GLUU_VERSION/dev/pts -t devpts -o gid=5,mode=62;
 			/usr/sbin/chroot /opt/gluu-server-$GLUU_VERSION su - root -c '/etc/rc.d/rc.sysinit' > /dev/null 2>&1
                 	sleep 2 
@@ -137,7 +136,6 @@ start() {
 			return $RETVAL
 		fi
         fi
-
 }
 
 stopJettyService() {
@@ -160,8 +158,6 @@ stopJettyService() {
 }
 
 stop() {
-	STAT=(`df -aP |grep \/opt\/gluu-server-$GLUU_VERSION\/ | awk '{ print $6 }' | grep -Eohw 'proc|lo|pts|modules|dev'`)
-
         if [ ! -f $PIDFILE ] && [ "$STAT" = "" ]; then
                 echo "gluu-server-$GLUU_VERSION is not running"
                 exit 2
@@ -231,7 +227,7 @@ stop() {
                 fi
         fi
 
-	if [ "$DETECTED_OS" = "CentOS 6" ]; then
+        if [ "$DETECTED_OS != 'Ubuntu 14.04'" -a "$DETECTED_OS != 'Ubuntu 16.04'" -a "$DETECTED_OS != 'Debian GNU/Linux 8'" ]; then
 		/usr/sbin/chroot /opt/gluu-server-$GLUU_VERSION su - root -c '/etc/rc.d/rc 7' > /dev/null 2>&1
         	sleep 5
         	/usr/sbin/chroot /opt/gluu-server-$GLUU_VERSION su - root -c '/etc/init.d/denyhosts stop' &> /dev/null
@@ -253,7 +249,6 @@ stop() {
 
 
 status() {
-	STAT=(`df -aP |grep \/opt\/gluu-server-$GLUU_VERSION\/ | awk '{ print $6 }' | grep -Eohw 'proc|lo|pts|modules|dev'`)
         if [ -f $PIDFILE ] && [ ${#STAT[@]} = "6" ];then
                 PID=`cat $PIDFILE`
                 echo gluu-server-$GLUU_VERSION is running: $PID
@@ -269,8 +264,6 @@ status() {
 }
 
 login() {
-	STAT=(`df -aP |grep \/opt\/gluu-server-$GLUU_VERSION\/ | awk '{ print $6 }' | grep -Eohw 'proc|lo|pts|modules|dev'`)
-
 	if [ -f $PIDFILE ] && [ ${#STAT[@]} = "6" ];then
                 echo gluu-server-$GLUU_VERSION is running...
                 echo logging in...
@@ -283,8 +276,6 @@ login() {
 }
 
 ready() {
-	STAT=(`df -aP |grep \/opt\/gluu-server-$GLUU_VERSION\/ | awk '{ print $6 }' | grep -Eohw 'proc|lo|pts|modules|dev'`)
-   
         if [ -f $PIDFILE ] && [ ${#STAT[@]} = "6" ]; then
         	PID=`cat $PIDFILE`
                 return 1
