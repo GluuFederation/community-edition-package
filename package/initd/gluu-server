@@ -37,7 +37,7 @@ detect_os() {
 
 DETECTED_OS=`detect_os`
 
-if [ "$DETECTED_OS = 'Ubuntu 14.04'" -o "$DETECTED_OS = 'Ubuntu 16.04'" -o "$DETECTED_OS = 'Debian GNU/Linux 8'" ]; then
+if [[ $DETECTED_OS == "Ubuntu 14.04" || $DETECTED_OS == "Ubuntu 16.04" || $DETECTED_OS == "Debian GNU/Linux 8" ]]; then
 
 	### BEGIN INIT INFO
 	# Provides:          gluu-server
@@ -60,7 +60,7 @@ if [ "$DETECTED_OS = 'Ubuntu 14.04'" -o "$DETECTED_OS = 'Ubuntu 16.04'" -o "$DET
 
 	APACHE="apache2"
 
-        if [ "$DETECTED_OS = 'Debian GNU/Linux 8'" ]; then
+        if [[ $DETECTED_OS == "Debian GNU/Linux 8" ]]; then
                 RESOLV_CONF="/etc/resolv.conf"
         else
                 RESOLV_CONF="/run/resolvconf/resolv.conf"
@@ -114,7 +114,7 @@ start() {
 		/bin/mount /sys/class/net/lo       /opt/gluu-server-$GLUU_VERSION/sys/class/net/lo -t sysfs -o defaults;
 		/bin/mount /lib/modules            /opt/gluu-server-$GLUU_VERSION/lib/modules -o bind;
 
-                if [ "$DETECTED_OS = 'Ubuntu 14.04'" -o "$DETECTED_OS = 'Ubuntu 16.04'" -o "$DETECTED_OS = 'Debian GNU/Linux 8'" ]; then
+                if [[ $DETECTED_OS == "Ubuntu 14.04" || $DETECTED_OS == "Ubuntu 16.04" || $DETECTED_OS == "Debian GNU/Linux 8" ]]; then
 			/bin/mount /dev/pts                /opt/gluu-server-$GLUU_VERSION/dev/pts -t devpts -o gid=5,mode=620;
                 	/usr/sbin/chroot /opt/gluu-server-$GLUU_VERSION su - root -c '/bin/hostname -b -F /etc/hostname' > /dev/null 2>&1
         		sleep 2
@@ -227,7 +227,7 @@ stop() {
                 fi
         fi
 
-        if [ "$DETECTED_OS != 'Ubuntu 14.04'" -a "$DETECTED_OS != 'Ubuntu 16.04'" -a "$DETECTED_OS != 'Debian GNU/Linux 8'" ]; then
+        if ! [[ $DETECTED_OS == "Ubuntu 14.04" || $DETECTED_OS == "Ubuntu 16.04" || $DETECTED_OS == "Debian GNU/Linux 8" ]]; then
 		/usr/sbin/chroot /opt/gluu-server-$GLUU_VERSION su - root -c '/etc/rc.d/rc 7' > /dev/null 2>&1
         	sleep 5
         	/usr/sbin/chroot /opt/gluu-server-$GLUU_VERSION su - root -c '/etc/init.d/denyhosts stop' &> /dev/null
