@@ -1,0 +1,6 @@
+# Eclipse project files
+.project
+.pydevproject
+
+# IntelliJ IDEA project files
+.idea
