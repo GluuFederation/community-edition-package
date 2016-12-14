@@ -180,13 +180,6 @@ stop() {
                 fi
         fi
 
-        stopJettyService oxauth-rp "oxAuth RP"
-        stopJettyService asimba "Asimba"
-        stopJettyService cas "CAS"
-	stopJettyService idp "IDP"
-        stopJettyService identity "oxTrust"
-	stopJettyService oxauth "oxAuth"
-
         if [ -x /opt/gluu-server-$GLUU_VERSION/etc/init.d/pm2-init.sh ] && [ "`ps aux | grep pm2 | grep -v grep`"  != "" ]; then
              	echo "Stopping Node server..."
             	/usr/sbin/chroot /opt/gluu-server-$GLUU_VERSION su - root -c 'service pm2-init.sh stop' > /dev/null 2>&1
@@ -196,6 +189,13 @@ stop() {
                    echo "OK"    
                 fi
         fi
+
+        stopJettyService oxauth-rp "oxAuth RP"
+        stopJettyService asimba "Asimba"
+        stopJettyService cas "CAS"
+	stopJettyService idp "IDP"
+        stopJettyService identity "oxTrust"
+	stopJettyService oxauth "oxAuth"
 
         if [ -x /opt/gluu-server-$GLUU_VERSION/etc/init.d/oxd ] && [ "`ps aux | grep oxd-server | grep -v grep`"  != "" ]; then
              	echo "Stopping oxd-server..."
