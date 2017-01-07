@@ -187,6 +187,7 @@ stop() {
 	stopGenericService idp "IDP"
         stopGenericService identity "oxTrust"
 	stopGenericService oxauth "oxAuth"
+	stopGenericService rsyslog "RSyslog"
 
         if [ -x /opt/gluu-server-$GLUU_VERSION/etc/init.d/oxd ] && [ "`ps aux | grep oxd-server | grep -v grep`"  != "" ]; then
              	echo "Stopping oxd-server..."
