@@ -162,7 +162,7 @@ stopGenericService() {
 stop() {
         if [ ! -f $PIDFILE ] && [ "$STAT" = "" ]; then
                 echo "gluu-server-$GLUU_VERSION is not running"
-                exit 2
+                exit 0
         elif [ -f $PIDFILE ] && [ ${#STAT[@]} = "6" ]; then
         	echo "Shutting down Gluu Server..."
         else
