@@ -151,7 +151,9 @@ stopGenericService() {
 	if [[ -L $serviceFile || -x $serviceFile ]] && [ "`ps aux | grep $serviceName | grep -v grep`"  != "" ]; then
              	echo "Stopping $serviceDescription..."
 	    	/usr/sbin/chroot /opt/gluu-server-$GLUU_VERSION su - root -c 'service $0 stop' -- $serviceName > /dev/null 2>&1
-		if [ "`ps aux | grep $serviceName | grep -v grep`"  != "" ]; then
+
+		### This extra grep is to test gluu-server's version of rsyslog
+		if [ "`ps aux | grep $serviceName | grep -v grep | grep -i gluu`"  != "" ]; then
                    	echo "Failed"
                 else
                    	echo "OK"
