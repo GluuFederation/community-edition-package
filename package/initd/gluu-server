@@ -149,7 +149,7 @@ stopGenericService() {
     	serviceStatusCheck=$(echo "ps aux | grep $serviceName | grep -v grep")
     	serviceStopCommand=$(echo "service $serviceName stop")
 	
-	if [[ -L $serviceFile || -x $serviceFile ]] && [ "`ps aux | grep $serviceName | grep -v grep`"  != "" ]; then
+	if [[ -L $serviceFile || -x $serviceFile ]] && [ "`ps aux | grep $serviceName | grep -v grep | grep -i gluu`"  != "" ]; then
              	echo "Stopping $serviceDescription..."
 	    	/usr/sbin/chroot /opt/gluu-server-$GLUU_VERSION su - root -c 'service $0 stop' -- $serviceName > /dev/null 2>&1
 
@@ -182,34 +182,16 @@ stop() {
                 fi
         fi
 
-	stopGenericService passport "Passport"
+        stopGenericService passport "Passport"
         stopGenericService oxauth-rp "oxAuth RP"
         stopGenericService asimba "Asimba"
         stopGenericService cas "CAS"
-	stopGenericService idp "IDP"
+        stopGenericService idp "IDP"
         stopGenericService identity "oxTrust"
-	stopGenericService oxauth "oxAuth"
-	stopGenericService rsyslog "RSyslog"
-
-        if [ -x /opt/gluu-server-$GLUU_VERSION/etc/init.d/oxd ] && [ "`ps aux | grep oxd-server | grep -v grep`"  != "" ]; then
-             	echo "Stopping oxd-server..."
-            	/usr/sbin/chroot /opt/gluu-server-$GLUU_VERSION su - root -c 'service oxd stop' > /dev/null 2>&1
-                if [ "`ps aux | grep oxd-server | grep -v grep`"  != "" ]; then
-                   echo "Failed"
-                else
-                   echo "OK"    
-                fi
-        fi
-
-        if [ -x /opt/gluu-server-$GLUU_VERSION/etc/init.d/memcached ] && [ "`ps aux | grep memcached | grep -v grep`"  != "" ]; then
-             	echo "Stopping Memcached..."
-            	/usr/sbin/chroot /opt/gluu-server-$GLUU_VERSION su - root -c 'service memcached stop' > /dev/null 2>&1
-                if [ "`ps aux | grep memcached | grep -v grep`"  != "" ]; then
-                   echo "Failed"
-                else
-                   echo "OK"    
-                fi
-        fi
+        stopGenericService oxauth "oxAuth"
+        stopGenericService oxd "oxd-server"
+        stopGenericService rsyslog "RSyslog"
+        stopGenericService memcached "Memcached"
 
         if [ -x /opt/gluu-server-$GLUU_VERSION/etc/init.d/opendj ] && [ "`ps aux | grep opendj | grep -v grep`"  != "" ]; then
              	echo "Stopping OpendDJ..."
