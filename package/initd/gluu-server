@@ -41,18 +41,18 @@ DETECTED_OS=`detect_os`
 
 if [[ $DETECTED_OS == "Ubuntu 14.04" || $DETECTED_OS == "Ubuntu 16.04" || $DETECTED_OS == "Debian GNU/Linux 8" ]]; then
 
-	### BEGIN INIT INFO
-	# Provides:          gluu-server
-	# Required-Start:       $all
-	# Required-Stop:        $remote_fs $syslog
-	# Default-Start:     2 3 4 5
-	# Default-Stop:      0 1 6
-	# Short-Description: This shell script takes care of starting and stopping 
-	#		     gluu-server (the Gluu Chroot Server)
-	# Description:       Gluu server chroot environment.
-	#                    
-	#                   
-	### END INIT INFO
+### BEGIN INIT INFO
+# Provides:          gluu-server
+# Required-Start:       $all
+# Required-Stop:        $remote_fs $syslog
+# Default-Start:     2 3 4 5
+# Default-Stop:      0 1 6
+# Short-Description: This shell script takes care of starting and stopping 
+#		     gluu-server (the Gluu Chroot Server)
+# Description:       Gluu server chroot environment.
+#                    
+#                   
+### END INIT INFO
 
 
 	PATH=/sbin:/usr/sbin:/bin:/usr/bin
@@ -70,15 +70,15 @@ if [[ $DETECTED_OS == "Ubuntu 14.04" || $DETECTED_OS == "Ubuntu 16.04" || $DETEC
 
 	LOCK_PATH="/var/lock"
 else
-	#
-	#       /etc/rc.d/init.d/gluu-server
-	# gluu-server  This shell script takes care of starting and stopping
-	#               gluu-server (the Gluu Chroot Server)
-	#
-	# chkconfig: 2345 99 02
-	# description: Gluu server chroot environment.
-	
-	# Source function library.
+#
+#       /etc/rc.d/init.d/gluu-server
+# gluu-server  This shell script takes care of starting and stopping
+#               gluu-server (the Gluu Chroot Server)
+#
+# chkconfig: 2345 99 02
+# description: Gluu server chroot environment.
+
+# Source function library.
 
 	. /etc/init.d/functions
 	APACHE="httpd"
