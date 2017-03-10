@@ -1,0 +1,8 @@
+#!/bin/sh
+
+UPDATE_VERSION="2.4.4.sp3"
+
+# Fix Asimba JKS permissions
+/bin/chmod u+w /etc/certs/asimbaIDP.jks
+
+echo "Successfully updated"
