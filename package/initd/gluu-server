@@ -205,7 +205,7 @@ stop() {
         fi
 
         if [ -x /opt/gluu-server-$GLUU_VERSION/etc/init.d/solserver ] && [ "`ps aux | grep slapd | grep -v grep`"  != "" ]; then
-             	echo "Stopping OpendLDAP..."
+             	echo "Stopping OpenLDAP..."
             	/usr/sbin/chroot /opt/gluu-server-$GLUU_VERSION su - root -c 'service solserver stop' > /dev/null 2>&1
                 sleep 5
                 if [ "`ps aux | grep slapd | grep -v grep`"  != "" ]; then
