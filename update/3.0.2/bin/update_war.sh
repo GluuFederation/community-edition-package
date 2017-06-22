@@ -32,6 +32,6 @@ mkdir -p $BACKUP_FOLDER
 apply_app_update oxauth
 apply_app_update identity
 apply_app_update idp
-apply_app_update asimba
+#apply_app_update asimba
 
 echo "Successfully updated"
