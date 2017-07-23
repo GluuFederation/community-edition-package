@@ -164,7 +164,7 @@ stop() {
         if [ ! -f $PIDFILE ] && [ "$STAT" = "" ]; then
                 echo "gluu-server-$GLUU_VERSION is not running"
                 exit 0
-        elif [ -f $PIDFILE ] && [ ${#STAT[@]} = "6" ]; then
+        elif [ -f $PIDFILE ] && [ ${#STAT[@]} = "5" ]; then
         	echo "Shutting down Gluu Server..."
         else
         	echo -e "ERROR: Can't stop gluu server.\nHINT: Please manually remove $PIDFILE and unmount chroot container by running\nrm -f $PIDFILE\ndf -aP | grep gluu-server-$GLUU_VERSION | awk '{print \$6}' | xargs -I {} umount -l {}" 
@@ -236,7 +236,7 @@ stop() {
 
 
 status() {
-        if [ -f $PIDFILE ] && [ ${#STAT[@]} = "6" ]; then
+        if [ -f $PIDFILE ] && [ ${#STAT[@]} = "5" ]; then
                 PID=`cat $PIDFILE`
                 echo gluu-server-$GLUU_VERSION is running: $PID
                 exit 0
@@ -251,7 +251,7 @@ status() {
 }
 
 login() {
-	if [ -f $PIDFILE ] && [ ${#STAT[@]} = "6" ]; then
+	if [ -f $PIDFILE ] && [ ${#STAT[@]} = "5" ]; then
                 echo gluu-server-$GLUU_VERSION is running...
                 echo logging in...
                 /usr/sbin/chroot /opt/gluu-server-$GLUU_VERSION/ su -
@@ -263,7 +263,7 @@ login() {
 }
 
 ready() {
-        if [ -f $PIDFILE ] && [ ${#STAT[@]} = "6" ]; then
+        if [ -f $PIDFILE ] && [ ${#STAT[@]} = "5" ]; then
         	PID=`cat $PIDFILE`
                 return 1
         elif [ -f $PIDFILE ] || [ "$STAT" != "" ]; then
