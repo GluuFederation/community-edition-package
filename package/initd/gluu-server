@@ -108,7 +108,11 @@ start() {
  		echo "Starting Gluu server, please wait..."    	
 
                 if [ -f $RESOLV_CONF ]; then
-                        cp --parents -f $RESOLV_CONF /opt/gluu-server-$GLUU_VERSION/
+                        local target_resolv_conf=/opt/gluu-server-${GLUU_VERSION}/${RESOLV_CONF}
+                        if [ -h "${target_resolv_conf}" ]; then
+                                rm "${target_resolv_conf}"
+                        fi
+                        cp --parents -f $RESOLV_CONF -H /opt/gluu-server-$GLUU_VERSION/
                 fi
 	
 		/bin/mount /dev                    /opt/gluu-server-$GLUU_VERSION/dev -o bind
