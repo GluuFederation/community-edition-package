@@ -163,7 +163,6 @@ stopGenericService() {
 stop() {
         if [ ! -f $PIDFILE ] && [ "$STAT" = "" ]; then
                 echo "gluu-server-$GLUU_VERSION is not running"
-                exit 0
         elif [ -f $PIDFILE ] && [ ${#STAT[@]} = "5" ]; then
         	echo "Shutting down Gluu Server..."
         else
@@ -221,11 +220,14 @@ stop() {
 		sleep 5
 	fi
 
-	/bin/umount -l /opt/gluu-server-$GLUU_VERSION/proc
-	/bin/umount -l /opt/gluu-server-$GLUU_VERSION/sys/class/net/lo
-	/bin/umount -l /opt/gluu-server-$GLUU_VERSION/lib/modules
-	/bin/umount -l /opt/gluu-server-$GLUU_VERSION/dev/pts
-	/bin/umount -l /opt/gluu-server-$GLUU_VERSION/dev
+        ### If the special filesystems are not mounted, don't try to unmount        
+	if [ "x`ls -A  /opt/gluu-server-$GLUU_VERSION/proc`" != "x" ]; then
+	        /bin/umount -l /opt/gluu-server-$GLUU_VERSION/proc
+	        /bin/umount -l /opt/gluu-server-$GLUU_VERSION/sys/class/net/lo
+	        /bin/umount -l /opt/gluu-server-$GLUU_VERSION/lib/modules
+	        /bin/umount -l /opt/gluu-server-$GLUU_VERSION/dev/pts
+	        /bin/umount -l /opt/gluu-server-$GLUU_VERSION/dev
+	fi
 
 	rm -f $LOCK_PATH/gluu-server-$GLUU_VERSION $PIDFILE
 	RETVAL=$?
