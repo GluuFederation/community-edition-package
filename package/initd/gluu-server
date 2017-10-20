@@ -21,7 +21,7 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-GLUU_VERSION=3.1.0
+GLUU_VERSION=3.1.1
 
 
 detect_os() {
@@ -265,6 +265,11 @@ login() {
 }
 
 ready() {
+        ### We should check STAT with every call to this function. So that we get fresh status till we're done stop.
+        STAT=(`df -aP |grep \/opt\/gluu-server-$GLUU_VERSION\/ | awk '{ print $6 }' | grep -Eohw 'proc|lo|pts|modules|dev'|sort|uniq`)
+        ### Since, PORTS is also in use for checking the status, So we should check PORTS as well with every call to this function.
+        PORTS=`netstat -tunpl | awk '{ print $4 }' |grep -Eohw ':(80|443|8080|8081|8082|8083|8084|8085|8086|8090|1389|1689|11211)'`
+
         if [ -f $PIDFILE ] && [ ${#STAT[@]} = "5" ]; then
         	PID=`cat $PIDFILE`
                 return 1
@@ -277,12 +282,14 @@ ready() {
 }
  
 wait_stop() {
+	### Here we should check STATUS(just our local variable for the scope within the function).
+	STATUS=""
     	end=$((SECONDS+30))
  
     	while [ $SECONDS -lt $end ]; do
         	ready
-        	STAT=$?
-        	if [ $STAT = 0 ]; then
+        	STATUS=$?
+        	if [ $STATUS = 0 ]; then
             		return 0
         	fi
         	sleep 5
