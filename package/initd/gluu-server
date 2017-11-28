@@ -228,7 +228,8 @@ stop() {
 	        /bin/umount -l /opt/gluu-server-$GLUU_VERSION/dev/pts
 	        /bin/umount -l /opt/gluu-server-$GLUU_VERSION/dev
 	fi
-
+        /etc/init.d/memcached stop;
+	systemctl stop memcached;
 	rm -f $LOCK_PATH/gluu-server-$GLUU_VERSION $PIDFILE
 	RETVAL=$?
 	[ $RETVAL -eq 0 ] && rm -f $LOCK_PATH/gluu-server-$GLUU_VERSION
