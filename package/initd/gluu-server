@@ -21,7 +21,7 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-GLUU_VERSION=3.1.0
+GLUU_VERSION=3.1.2
 
 
 detect_os() {
@@ -92,7 +92,7 @@ PIDFILE=/var/run/gluu-server-$GLUU_VERSION.pid
 STAT=(`df -aP |grep \/opt\/gluu-server-$GLUU_VERSION\/ | awk '{ print $6 }' | grep -Eohw 'proc|lo|pts|modules|dev'|sort|uniq`)
 
 start() {
-	PORTS=`netstat -tunpl | awk '{ print $4 }' |grep -Eohw ':(80|443|8080|8081|8082|8083|8084|8085|8086|8090|1389|1689|11211)'`
+	PORTS=`netstat -tunpl | awk '{ print $4 }' |grep -Eoh ':(80|443|8080|8081|8082|8083|8084|8085|8086|8090|1389|1689|11211)'`
 	if [ -f $PIDFILE ] && [ ${#STAT[@]} = "5" ]; then
 		PID=`cat $PIDFILE`
                 echo "gluu-server-$GLUU_VERSION is already running"
@@ -141,28 +141,46 @@ start() {
 }
 
 stopGenericService() {
-    	serviceName=$1
-    	serviceDescription=$2
-	
-    	serviceFile="/opt/gluu-server-$GLUU_VERSION/etc/init.d/$serviceName"
-    	serviceStatusCheck=$(echo "ps aux | grep $serviceName | grep -v grep")
-    	serviceStopCommand=$(echo "service $serviceName stop")
-	
-	if [[ -L $serviceFile || -x $serviceFile ]] && [ "`ps aux | grep $serviceName | grep -v grep | grep -i gluu`"  != "" ]; then
-             	echo "Stopping $serviceDescription..."
-	    	/usr/sbin/chroot /opt/gluu-server-$GLUU_VERSION su - root -c 'service $0 stop' -- $serviceName > /dev/null 2>&1
+    serviceName=$1
+    serviceDescription=$2
 
-		if [ "`ps aux | grep $serviceName | grep -v grep | grep -i gluu`"  != "" ]; then
-                   	echo "Failed"
-                else
-                   	echo "OK"
+    serviceFile="/opt/gluu-server-$GLUU_VERSION/etc/init.d/$serviceName"
+    serviceStatusCheck=$(echo "ps aux | grep $serviceName | grep -v grep")
+    serviceStopCommand=$(echo "service $serviceName stop")
+
+    found_service=false
+    if [[ -L $serviceFile || -x $serviceFile ]]; then
+        if [ "`ps aux | grep $serviceName | grep -v grep | grep -i gluu`"  != "" ]; then
+            # Gluu services
+            found_service=true
+        else
+            # System services
+            pids=`pidof $serviceName`
+            for pid in $pids; do
+                pid_root=`ls -ld /proc/$pid/root`
+                if [ "`echo $pid_root | grep -v grep | grep -i gluu`"  != "" ]; then
+                    found_service=true
                 fi
-	fi
+            done
+        fi
+    fi
+
+    if $found_service; then
+        echo "Stopping $serviceDescription..."
+        /usr/sbin/chroot /opt/gluu-server-$GLUU_VERSION su - root -c 'service $0 stop' -- $serviceName > /dev/null 2>&1
+
+        if [ "`ps aux | grep $serviceName | grep -v grep | grep -i gluu`"  != "" ]; then
+            echo "Failed"
+        else
+            echo "OK"
+        fi
+    fi
 }
 
 stop() {
         if [ ! -f $PIDFILE ] && [ "$STAT" = "" ]; then
                 echo "gluu-server-$GLUU_VERSION is not running"
+                exit 0
         elif [ -f $PIDFILE ] && [ ${#STAT[@]} = "5" ]; then
         	echo "Shutting down Gluu Server..."
         else
@@ -220,14 +238,11 @@ stop() {
 		sleep 5
 	fi
 
-        ### If the special filesystems are not mounted, don't try to unmount        
-	if [ "x`ls -A  /opt/gluu-server-$GLUU_VERSION/proc`" != "x" ]; then
-	        /bin/umount -l /opt/gluu-server-$GLUU_VERSION/proc
-	        /bin/umount -l /opt/gluu-server-$GLUU_VERSION/sys/class/net/lo
-	        /bin/umount -l /opt/gluu-server-$GLUU_VERSION/lib/modules
-	        /bin/umount -l /opt/gluu-server-$GLUU_VERSION/dev/pts
-	        /bin/umount -l /opt/gluu-server-$GLUU_VERSION/dev
-	fi
+	/bin/umount -l /opt/gluu-server-$GLUU_VERSION/proc
+	/bin/umount -l /opt/gluu-server-$GLUU_VERSION/sys/class/net/lo
+	/bin/umount -l /opt/gluu-server-$GLUU_VERSION/lib/modules
+	/bin/umount -l /opt/gluu-server-$GLUU_VERSION/dev/pts
+	/bin/umount -l /opt/gluu-server-$GLUU_VERSION/dev
 
 	rm -f $LOCK_PATH/gluu-server-$GLUU_VERSION $PIDFILE
 	RETVAL=$?
@@ -265,6 +280,11 @@ login() {
 }
 
 ready() {
+        ### We should check STAT with every call to this function. So that we get fresh status till we're done stop.
+        STAT=(`df -aP |grep \/opt\/gluu-server-$GLUU_VERSION\/ | awk '{ print $6 }' | grep -Eohw 'proc|lo|pts|modules|dev'|sort|uniq`)
+        ### Since, PORTS is also in use for checking the status, So we should check PORTS as well with every call to this function.
+        PORTS=`netstat -tunpl | awk '{ print $4 }' |grep -Eoh ':(80|443|8080|8081|8082|8083|8084|8085|8086|8090|1389|1689|11211)'`
+
         if [ -f $PIDFILE ] && [ ${#STAT[@]} = "5" ]; then
         	PID=`cat $PIDFILE`
                 return 1
@@ -277,12 +297,14 @@ ready() {
 }
  
 wait_stop() {
+	### Here we should check STATUS(just our local variable for the scope within the function).
+	STATUS=""
     	end=$((SECONDS+30))
  
     	while [ $SECONDS -lt $end ]; do
         	ready
-        	STAT=$?
-        	if [ $STAT = 0 ]; then
+        	STATUS=$?
+        	if [ $STATUS = 0 ]; then
             		return 0
         	fi
         	sleep 5
