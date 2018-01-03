@@ -318,6 +318,19 @@ wait_stop() {
     return 1
 }
 
+clear_logs() {
+	echo "Clearing logs..."
+	GLUU_LOG_FILES=`find ${CHROOT_DIR}/opt/ -type f |grep "\.log$"`
+	for file in `echo $GLUU_LOG_FILES`; do
+		echo "Clearing $file"
+		cat /dev/null > $file
+	done
+	GLUU_LOG_FILES=`find ${CHROOT_DIR}/var/log/ -type f |grep "\.log$"`
+	for file in `echo $GLUU_LOG_FILES`; do
+		echo "Clearing $file"
+		cat /dev/null > $file
+	done
+}
 
 case "$1" in
     	start)
@@ -337,12 +350,16 @@ case "$1" in
     login)
 		login
 	;;
+    clear-logs)
+		clear_logs
+	;;
     ready)
 	;;
     *)
 
-        echo "Usage:  {start|stop|status|restart|login|ready}"
+        echo "Usage:  {start|stop|status|restart|login|ready|clear-logs}"
         exit 1
         ;;
 esac
 exit $?
+
