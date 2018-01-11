@@ -322,13 +322,13 @@ clear_logs() {
 	echo "Clearing logs..."
 	GLUU_LOG_FILES=`find ${CHROOT_DIR}/opt/ -type f |grep "\.log$"`
 	for file in `echo $GLUU_LOG_FILES`; do
-		echo "Clearing $file"
-		cat /dev/null > $file
+		echo "Removing $file"
+		'rm' -f $file
 	done
 	GLUU_LOG_FILES=`find ${CHROOT_DIR}/var/log/ -type f |grep "\.log$"`
 	for file in `echo $GLUU_LOG_FILES`; do
-		echo "Clearing $file"
-		cat /dev/null > $file
+		echo "Removing $file"
+		'rm' -f > $file
 	done
 }
 
