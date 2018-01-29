@@ -154,7 +154,7 @@ stopGenericService() {
 
     found_service=false
     if [[ -L $serviceFile || -x $serviceFile ]]; then
-        if [ "`ps aux | grep $serviceName | grep -v grep | grep -i gluu`"  != "" ]; then
+        if [ "`ps aux | grep $serviceName | grep -v grep | grep -i -E (gluu|oxd)`"  != "" ]; then
             # Gluu services
             found_service=true
         else
@@ -210,7 +210,7 @@ stop() {
         stopGenericService idp "IDP"
         stopGenericService identity "oxTrust"
         stopGenericService oxauth "oxAuth"
-        stopGenericService oxd "oxd-server"
+        stopGenericService oxd-server "oxd-server"
         stopGenericService rsyslog "RSyslog"
         stopGenericService memcached "Memcached"
 
