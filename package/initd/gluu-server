@@ -210,7 +210,7 @@ stop() {
         stopGenericService idp "IDP"
         stopGenericService identity "oxTrust"
         stopGenericService oxauth "oxAuth"
-        stopGenericService oxd "oxd-server"
+        stopGenericService oxd-server "oxd-server"
         stopGenericService rsyslog "RSyslog"
         stopGenericService memcached "Memcached"
 
