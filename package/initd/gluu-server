@@ -154,7 +154,7 @@ stopGenericService() {
 
     found_service=false
     if [[ -L $serviceFile || -x $serviceFile ]]; then
-        if [ "`ps aux | grep $serviceName | grep -v grep | grep -i -E (gluu|oxd)`"  != "" ]; then
+        if [ "`ps aux | grep $serviceName | grep -v grep | grep -i -E '(gluu|oxd)'`"  != "" ]; then
             # Gluu services
             found_service=true
         else
@@ -162,7 +162,7 @@ stopGenericService() {
             pids=`pidof $serviceName`
             for pid in $pids; do
                 pid_root=`ls -ld /proc/$pid/root`
-                if [ "`echo $pid_root | grep -v grep | grep -i gluu`"  != "" ]; then
+                if [ "`echo $pid_root | grep -v grep | grep -i -E '(gluu|oxd)'`"  != "" ]; then
                     found_service=true
                 fi
             done
