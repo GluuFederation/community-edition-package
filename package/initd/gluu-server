@@ -290,7 +290,6 @@ ready() {
         STAT=(`df -aP |grep \/opt\/gluu-server-$GLUU_VERSION\/ | awk '{ print $6 }' | grep -Eohw 'proc|lo|pts|modules|dev'|sort|uniq`)
         ### Since, PORTS is also in use for checking the status, So we should check PORTS as well with every call to this function.
         PORTS=`netstat -tunpl | awk '{ print $4 }' |grep -Eoh ':(80|443|8080|8081|8082|8083|8084|8085|8086|8090|8091|1389|1689|11211)$'`
-
         if [ -f $PIDFILE ] && [ ${#STAT[@]} = "5" ]; then
         	PID=`cat $PIDFILE`
                 return 1
