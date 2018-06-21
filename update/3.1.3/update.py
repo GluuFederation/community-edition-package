@@ -1,6 +1,8 @@
 import os
+import time
 import glob
 import re
+import shutil
 import json
 import base64
 from pyDes import *
@@ -46,17 +48,25 @@ def get_ldap_admin_password():
 
 class GluuUpdater:
     def __init__(self):
+        self.update_version = '3.1.3.sp1'
+        self.update_dir = '/opt/upd/' + self.update_version
         self.setup_properties = parse_setup_properties()
+        self.ldap_type = self.setup_properties['ldap_type']
         self.ldap_host = self.setup_properties['hostname'] 
-        if self.setup_properties['ldap_type'] == 'opendj':
+        
+        if self.ldap_type == 'opendj':
             self.ldap_bind_dn = self.setup_properties['opendj_ldap_binddn']
-        elif self.setup_properties['ldap_type'] == 'openldap':
+        elif self.ldap_type == 'openldap':
             self.ldap_bind_dn = self.setup_properties['ldap_binddn']
             
         self.ldap_bind_pw = get_ldap_admin_password()
         self.inumOrg = self.setup_properties['inumOrg']
         self.hostname = self.setup_properties['hostname'] 
-
+        self.backup_time = time.strftime('%Y-%m-%d.%H:%M:%S')
+        self.backup_folder = '/opt/upd/{0}/backup_openldap_{1}'.format(self.update_version, self.backup_time)
+        
+        if not os.path.exists(self.backup_folder):
+            os.mkdir(self.backup_folder)
 
     def ldappConn(self):
         self.conn = ldap.initialize('ldaps://{0}:1636'.format(self.ldap_host))
@@ -195,7 +205,7 @@ class GluuUpdater:
         rss = jetty_re.search(os.path.basename(cur_ver)).groups()
         cur_folder = '/opt/jetty-{0}.{1}'.format(rss[0], rss[1])
 
-        new_ver = max(glob.glob('/opt/upd/*.sp1/app/jetty-distribution*'))
+        new_ver = max(glob.glob(os.path.join(self.update_dir, 'app/jetty-distribution*')))
 
         rss = jetty_re.search(os.path.basename(new_ver)).groups()
         new_folder = '/opt/jetty-{0}.{1}'.format(rss[0], rss[1])
@@ -212,6 +222,7 @@ class GluuUpdater:
 
         cur_temp_s = 'TMPDIR={0}/temp'.format(cur_folder)
         new_temp_s = 'TMPDIR={0}/temp'.format(new_folder)
+        
         for fn in glob.glob('/etc/default/*'):
             f = open(fn).read()
             if cur_temp_s in f:
@@ -230,6 +241,25 @@ class GluuUpdater:
                 with open(fn,'w') as w:
                     w.write(''.join(f))
 
+    def updateLdapSchema(self):
+        print "Updating ldap schema"
+        
+        if self.ldap_type == 'openldap':
+            ldap_schema_dir = '/opt/gluu/schema/openldap'
+            new_schema=os.path.join(self.update_dir, 'ldap/openldap/gluu.schema')
+            cur_schema = os.path.join(ldap_schema_dir, 'gluu.schema')
+            
+        elif self.ldap_type == 'opendj':
+            ldap_schema_dir = '/opt/opendj/config/schema'
+            new_schema = os.path.join(self.update_dir, 'ldap/opendj/101-ox.ldif')
+            cur_schema = os.path.join(ldap_schema_dir, '101-ox.ldif')        
+        
+        if os.path.exists(cur_schema):
+            shutil.move(cur_schema, self.backup_folder)
+        
+        shutil.copy(new_schema, ldap_schema_dir)
+        os.system('chown ldap:ldap {0}'.format(cur_schema))
+
 updaterObj = GluuUpdater()
 updaterObj.ldappConn()
 updaterObj.updateOxAuthConf()
@@ -239,3 +269,4 @@ updaterObj.addOxAuthClaimName()
 updaterObj.modifySectorIdentifiers()
 updaterObj.checkIdpMetadata()
 updaterObj.upgradeJetty()
+updaterObj.updateLdapSchema()
