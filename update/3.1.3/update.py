@@ -51,8 +51,13 @@ class GluuUpdater:
         self.update_version = '3.1.3.sp1'
         self.update_dir = '/opt/upd/' + self.update_version
         self.setup_properties = parse_setup_properties()
-        self.ldap_type = self.setup_properties['ldap_type']
-        self.ldap_host = self.setup_properties['hostname'] 
+
+        if self.setup_properties.get('ldap_type'):
+            self.ldap_type = self.setup_properties['ldap_type']
+        else:
+            self.ldap_type = 'openldap'
+    
+        self.ldap_host = 'localhost'
         
         if self.ldap_type == 'opendj':
             self.ldap_bind_dn = self.setup_properties['opendj_ldap_binddn']
