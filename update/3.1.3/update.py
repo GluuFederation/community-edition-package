@@ -1,3 +1,5 @@
+#!/usr/bin/python
+
 import os
 import time
 import glob
@@ -51,6 +53,7 @@ class GluuUpdater:
         self.update_version = '3.1.3.sp1'
         self.update_dir = '/opt/upd/' + self.update_version
         self.setup_properties = parse_setup_properties()
+        self.gluu_app_dir = '/opt/gluu/jetty'
 
         if self.setup_properties.get('ldap_type'):
             self.ldap_type = self.setup_properties['ldap_type']
@@ -77,6 +80,20 @@ class GluuUpdater:
         self.conn = ldap.initialize('ldaps://{0}:1636'.format(self.ldap_host))
         self.conn.simple_bind_s(self.ldap_bind_dn, self.ldap_bind_pw)
         
+
+    def updateWar(self):
+        new_war_dir = os.path.join(self.update_dir, 'war')
+        for app in os.listdir(self.gluu_app_dir):
+            war_app = app+'.war'
+            new_war_app_file = os.path.join(new_war_dir, war_app)
+            if os.path.exists(new_war_app_file):
+                app_dir = os.path.join(self.gluu_app_dir, app, 'webapps')
+                cur_war = os.path.join(app_dir, war_app)
+                if os.path.exists(cur_war):
+                    print "Backing up", war_app, "to", self.backup_folder
+                    shutil.copy(cur_war, self.backup_folder)
+                print "Updating", war_app
+                shutil.copy(new_war_app_file, app_dir)
 
 
     def updateOxAuthConf(self):
@@ -203,6 +220,9 @@ class GluuUpdater:
     
             
     def upgradeJetty(self):
+        
+        print "Updating jetty"
+        
         jetty_re = re.compile('jetty-distribution-(\d+).(\d+).(\d+).(.+)')
 
         cur_ver = glob.glob("/opt/jetty-9.*/jetty-distribution*")[0]
@@ -218,7 +238,7 @@ class GluuUpdater:
         if not os.path.exists(new_folder):
             os.mkdir(new_folder)
 
-        os.system('tar -xvf {0} -C {1}'.format(new_ver, new_folder))
+        os.system('tar -xf {0} -C {1}'.format(new_ver, new_folder))
 
         os.system('unlink /opt/jetty')
         jetty_base_name = os.path.basename(new_ver)
@@ -266,6 +286,7 @@ class GluuUpdater:
         os.system('chown ldap:ldap {0}'.format(cur_schema))
 
 updaterObj = GluuUpdater()
+updaterObj.updateWar()
 updaterObj.ldappConn()
 updaterObj.updateOxAuthConf()
 updaterObj.addUserCertificateMetadata()
@@ -275,3 +296,5 @@ updaterObj.modifySectorIdentifiers()
 updaterObj.checkIdpMetadata()
 updaterObj.upgradeJetty()
 updaterObj.updateLdapSchema()
+
+print "Update is complete, please exit from container and restart gluu server"
