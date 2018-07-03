@@ -237,6 +237,17 @@ stop() {
                 fi
         fi
 
+        if [ -x /opt/gluu-server-$GLUU_VERSION/etc/init.d/couchbase-server ] && [ "`ps aux | grep beam.smp | grep -v grep`"  != "" ]; then
+             	echo "Stopping Couchbase Server..."
+            	/usr/sbin/chroot /opt/gluu-server-$GLUU_VERSION su - root -c 'service couchbase-server stop' > /dev/null 2>&1
+                sleep 5
+                if [ "`ps aux | grep slapd | grep -v grep`"  != "" ]; then
+                   echo "Failed"
+                else
+                   echo "OK"    
+                fi
+        fi
+
         if ! [[ $DETECTED_OS == "Ubuntu 14.04" || $DETECTED_OS == "Ubuntu 16.04" || $DETECTED_OS == "Debian GNU/Linux 8" ]]; then
 		/usr/sbin/chroot /opt/gluu-server-$GLUU_VERSION su - root -c '/etc/rc.d/rc 7' > /dev/null 2>&1
         	sleep 5
