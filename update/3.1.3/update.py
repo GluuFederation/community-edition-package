@@ -285,6 +285,64 @@ class GluuUpdater:
         shutil.copy(new_schema, ldap_schema_dir)
         os.system('chown ldap:ldap {0}'.format(cur_schema))
 
+
+    def updatePassport(self):
+        if not os.path.exists('/opt/gluu/node/passport'):
+            return
+            
+        print "Updating Passport"
+        os.system('service passport stop')
+        new_ver = glob.glob(self.update_dir+'/app/passport-*')[0]
+                
+        backup_folder = '/opt/upd/{0}/backup_passport_{1}'.format(self.update_version,self.backup_time)
+        
+        if not os.path.exists(backup_folder):
+            os.mkdir(backup_folder)
+        backup_file = os.path.join(backup_folder, 'passport-package-v312-backup.tar.gz')
+        os.system('tar -cvpzf {0} --one-file-system /opt/gluu/node/passport/'.format(backup_file))
+        os.system('rm -r -f /opt/gluu/node/passport')
+        if not os.path.exists('/opt/gluu/node/passport'):
+            os.mkdir('/opt/gluu/node/passport')
+        if not os.path.exists('/tmp/passport_tmp'):
+            os.mkdir('/tmp/passport_tmp')
+        
+        os.system('tar -zxf {0} --directory /tmp/passport_tmp'.format(new_ver))
+        os.system('cp -r /tmp/passport_tmp/package/* /opt/gluu/node/passport')
+        index_js = os.path.join(self.update_dir, 'app', 'index.js')
+        os.system('cp {0} /opt/gluu/node/passport/server/routes/'.format(index_js))
+        os.mkdir('/opt/gluu/node/passport/logs')
+        os.system('chown -R node:node /opt/gluu/node/passport')
+        
+        result = self.conn.search_s('o=gluu',ldap.SCOPE_SUBTREE,'(displayName=passport)')
+
+        dn=result[0][0]
+
+        oxConfigurationProperty_list = [ 
+                            {"value1":"key_store_file","value2":"/etc/certs/passport-rp.jks","hide":False,"description":""},
+                            {"value1":"key_store_password","value2":"secret","hide":False,"description":""}
+                        ]
+
+
+        for oxc in result[0][1]['oxConfigurationProperty']:
+            oxcjs = json.loads(oxc)
+            if oxcjs['value1'] == oxConfigurationProperty_list[0]['value1']:
+                oxConfigurationProperty_list.remove(oxConfigurationProperty_list[0])
+            elif oxcjs['value1'] == oxConfigurationProperty_list[1]['value1']:
+                oxConfigurationProperty_list.remove(oxConfigurationProperty_list[1])
+
+        if oxConfigurationProperty_list:
+            oxConfigurationProperty=result[0][1]['oxConfigurationProperty'][:]
+
+            for oxc in oxConfigurationProperty_list:
+                oxConfigurationProperty.append(json.dumps(oxc))
+
+            self.conn.modify_s(dn, [( ldap.MOD_REPLACE, 'oxConfigurationProperty',  oxConfigurationProperty)])
+
+        oxScript = open(os.path.join(self.update_dir, 'app', 'PassportExternalAuthenticator.py')).read()
+        self.conn.modify_s(dn, [( ldap.MOD_REPLACE, 'oxScript',  oxScript)])
+
+
+        
 updaterObj = GluuUpdater()
 updaterObj.updateWar()
 updaterObj.ldappConn()
@@ -296,5 +354,6 @@ updaterObj.modifySectorIdentifiers()
 updaterObj.checkIdpMetadata()
 updaterObj.upgradeJetty()
 updaterObj.updateLdapSchema()
+updaterObj.updatePassport()
 
 print "Update is complete, please exit from container and restart gluu server"
