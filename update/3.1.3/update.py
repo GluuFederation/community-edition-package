@@ -298,20 +298,32 @@ class GluuUpdater:
         
         if not os.path.exists(backup_folder):
             os.mkdir(backup_folder)
+
         backup_file = os.path.join(backup_folder, 'passport-package-v312-backup.tar.gz')
         os.system('tar -cvpzf {0} --one-file-system /opt/gluu/node/passport/'.format(backup_file))
-        os.system('rm -r -f /opt/gluu/node/passport')
+        os.system('rm -r -f /opt/gluu/node/passport/')
+
         if not os.path.exists('/opt/gluu/node/passport'):
             os.mkdir('/opt/gluu/node/passport')
-        if not os.path.exists('/tmp/passport_tmp'):
-            os.mkdir('/tmp/passport_tmp')
+
+        os.system('rm -r -f /tmp/passport_tmp_313')
+        os.mkdir('/tmp/passport_tmp_313')
         
-        os.system('tar -zxf {0} --directory /tmp/passport_tmp'.format(new_ver))
+        os.system('tar -zxf {0} --directory /tmp/passport_tmp_313'.format(new_ver))
         os.system('cp -r /tmp/passport_tmp/package/* /opt/gluu/node/passport')
         index_js = os.path.join(self.update_dir, 'app', 'index.js')
         os.system('cp {0} /opt/gluu/node/passport/server/routes/'.format(index_js))
-        os.mkdir('/opt/gluu/node/passport/logs')
+        
+        saml_config = os.path.join(self.update_dir, 'app', 'passport-saml-config.json')
+        os.system('cp {0} etc/gluu/conf'.format(saml_config))
+        
+        log_dir = '/opt/gluu/node/passport/server/logs'
+
+        if not os.path.exists(log_dir): 
+            os.mkdir(log_dir)
+
         os.system('chown -R node:node /opt/gluu/node/passport')
+        os.system('runuser -l node -c "cd /opt/gluu/node/passport/&&PATH=$PATH:/opt/node/bin npm install -P"')
         
         result = self.conn.search_s('o=gluu',ldap.SCOPE_SUBTREE,'(displayName=passport)')
 
@@ -341,6 +353,38 @@ class GluuUpdater:
         oxScript = open(os.path.join(self.update_dir, 'app', 'PassportExternalAuthenticator.py')).read()
         self.conn.modify_s(dn, [( ldap.MOD_REPLACE, 'oxScript',  oxScript)])
 
+
+        #convert passport strategies to new style
+        result = self.conn.search_s('o=gluu',ldap.SCOPE_SUBTREE,'(objectClass=oxPassportConfiguration)')
+        dn = result[0][0]
+        new_strategies = {}
+
+        for pp_conf in result[0][1]['gluuPassportConfiguration']:
+            pp_conf_js = json.loads(pp_conf)
+
+            if not pp_conf_js['strategy'] in new_strategies:
+                if pp_conf_js['fieldset'][0].has_key('value'):
+                    strategy={'strategy':pp_conf_js['strategy'], 'fieldset':[]}
+                
+                    for st_comp in pp_conf_js['fieldset']:
+                        strategy['fieldset'].append({'value1':st_comp['key'], 'value2':st_comp['value'], "hide":False,"description":""})        
+                    new_strategies[pp_conf_js['strategy'] ] = json.dumps(strategy)
+
+                else:
+                    new_strategies[pp_conf_js['strategy'] ] = pp_conf
+
+
+        new_strategies_list = new_strategies.values()
+        self.conn.modify_s(dn, [( ldap.MOD_REPLACE, 'gluuPassportConfiguration',  new_strategies_list)])
+
+        
+        pp_conf = json.load(open('/etc/gluu/conf/passport-config.json'))
+        pp_conf['applicationEndpoint'] = 'https://{0}/oxauth/postlogin'.format(self.setup_properties['hostname'])
+        w = open('/etc/gluu/conf/passport-config.json','w')
+        json.dump(pp_conf, w)
+        w.close()
+        
+        os.system('rm -r -f /tmp/passport_tmp_313')
 
         
 updaterObj = GluuUpdater()
