@@ -382,7 +382,7 @@ class GluuUpdater:
 
         
         pp_conf = json.load(open('/etc/gluu/conf/passport-config.json'))
-        pp_conf['applicationEndpoint'] = 'https://{0}/oxauth/postlogin'.format(self.setup_properties['hostname'])
+        pp_conf['applicationEndpoint'] = 'https://{0}/oxauth/auth/passport/passportpostlogin.htm'.format(self.setup_properties['hostname'])
         w = open('/etc/gluu/conf/passport-config.json','w')
         json.dump(pp_conf, w)
         w.close()
