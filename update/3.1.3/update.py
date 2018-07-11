@@ -310,18 +310,20 @@ class GluuUpdater:
         os.mkdir('/tmp/passport_tmp_313')
         
         os.system('tar -zxf {0} --directory /tmp/passport_tmp_313'.format(new_ver))
-        os.system('cp -r /tmp/passport_tmp/package/* /opt/gluu/node/passport')
+        os.system('cp -r /tmp/passport_tmp_313/package/* /opt/gluu/node/passport')
         index_js = os.path.join(self.update_dir, 'app', 'index.js')
         os.system('cp {0} /opt/gluu/node/passport/server/routes/'.format(index_js))
         
         saml_config = os.path.join(self.update_dir, 'app', 'passport-saml-config.json')
-        os.system('cp {0} etc/gluu/conf'.format(saml_config))
+        os.system('cp {0} /etc/gluu/conf'.format(saml_config))
         
         log_dir = '/opt/gluu/node/passport/server/logs'
 
         if not os.path.exists(log_dir): 
             os.mkdir(log_dir)
 
+        if not os.path.exists('/opt/gluu/node/passport/server/utils/misc.js'):
+            open('/opt/gluu/node/passport/server/utils/misc.js','w')
         os.system('chown -R node:node /opt/gluu/node/passport')
         os.system('runuser -l node -c "cd /opt/gluu/node/passport/&&PATH=$PATH:/opt/node/bin npm install -P"')
         
@@ -364,11 +366,12 @@ class GluuUpdater:
 
             if not pp_conf_js['strategy'] in new_strategies:
                 if pp_conf_js['fieldset'][0].has_key('value'):
-                    strategy={'strategy':pp_conf_js['strategy'], 'fieldset':[]}
-                
-                    for st_comp in pp_conf_js['fieldset']:
-                        strategy['fieldset'].append({'value1':st_comp['key'], 'value2':st_comp['value'], "hide":False,"description":""})        
-                    new_strategies[pp_conf_js['strategy'] ] = json.dumps(strategy)
+                    
+                    if not '_client_' in pp_conf_js['fieldset'][0]['value']:
+                        strategy={'strategy':pp_conf_js['strategy'], 'fieldset':[]}
+                        for st_comp in pp_conf_js['fieldset']:
+                            strategy['fieldset'].append({'value1':st_comp['key'], 'value2':st_comp['value'], "hide":False,"description":""})        
+                        new_strategies[pp_conf_js['strategy'] ] = json.dumps(strategy)
 
                 else:
                     new_strategies[pp_conf_js['strategy'] ] = pp_conf
@@ -383,7 +386,24 @@ class GluuUpdater:
         w = open('/etc/gluu/conf/passport-config.json','w')
         json.dump(pp_conf, w)
         w.close()
-        
+
+        if not os.path.exists('/etc/certs/passport-sp.key'):
+            os.system('/usr/bin/openssl genrsa -des3 -out /etc/certs/passport-sp.key.orig -passout pass:secret 2048')
+            os.system('/usr/bin/openssl rsa -in /etc/certs/passport-sp.key.orig -passin pass:secret -out /etc/certs/passport-sp.key')
+            os.system('/usr/bin/openssl req -new -key /etc/certs/passport-sp.key -out /etc/certs/passport-sp.csr -subj /C={0}/ST={1}/L={2}/O={3}/CN={4}/emailAddress={5}'.format(
+                            self.setup_properties['countryCode'],
+                            self.setup_properties['state'],
+                            self.setup_properties['city'],
+                            self.setup_properties['orgName'],
+                            self.setup_properties['orgName'],
+                            self.setup_properties['admin_email']
+                        ))
+            os.system('/usr/bin/openssl x509 -req -days 365 -in /etc/certs/passport-sp.csr -signkey /etc/certs/passport-sp.key -out /etc/certs/passport-sp.crt')
+            os.system('chown root:gluu /etc/certs/passport-sp.key.orig')
+            os.system('chmod 440 /etc/certs/passport-sp.key.orig')
+            os.system('chown root:gluu /etc/certs/passport-sp.key')
+            os.system('chmod 440 /etc/certs/passport-sp.key')
+
         os.system('rm -r -f /tmp/passport_tmp_313')
 
         
