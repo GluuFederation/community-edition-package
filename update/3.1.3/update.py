@@ -277,7 +277,7 @@ class GluuUpdater:
         elif self.ldap_type == 'opendj':
             ldap_schema_dir = '/opt/opendj/config/schema'
             new_schema = os.path.join(self.update_dir, 'ldap/opendj/101-ox.ldif')
-            cur_schema = os.path.join(ldap_schema_dir, '101-ox.ldif')        
+            cur_schema = os.path.join(ldap_schema_dir, '101-ox.ldif')
         
         if os.path.exists(cur_schema):
             shutil.move(cur_schema, self.backup_folder)
@@ -352,18 +352,25 @@ class GluuUpdater:
 
             self.conn.modify_s(dn, [( ldap.MOD_REPLACE, 'oxConfigurationProperty',  oxConfigurationProperty)])
 
+
+
         oxScript = open(os.path.join(self.update_dir, 'app', 'PassportExternalAuthenticator.py')).read()
         self.conn.modify_s(dn, [( ldap.MOD_REPLACE, 'oxScript',  oxScript)])
 
+
+        result = self.conn.search_s('o=gluu',ldap.SCOPE_SUBTREE,'(displayName=uma_client_authz_rpt_policy)')
+        dn=result[0][0]
+        oxScript = open(os.path.join(self.update_dir, 'app', 'UmaClientAuthzRptPolicy.py')).read()
+        self.conn.modify_s(dn, [( ldap.MOD_REPLACE, 'oxScript',  oxScript)])
 
         #convert passport strategies to new style
         result = self.conn.search_s('o=gluu',ldap.SCOPE_SUBTREE,'(objectClass=oxPassportConfiguration)')
         dn = result[0][0]
         new_strategies = {}
-
+        strategies = []
         for pp_conf in result[0][1]['gluuPassportConfiguration']:
             pp_conf_js = json.loads(pp_conf)
-
+            strategies.append(pp_conf_js['strategy'])
             if not pp_conf_js['strategy'] in new_strategies:
                 if pp_conf_js['fieldset'][0].has_key('value'):
                     
@@ -381,8 +388,35 @@ class GluuUpdater:
         self.conn.modify_s(dn, [( ldap.MOD_REPLACE, 'gluuPassportConfiguration',  new_strategies_list)])
 
         
+        result = self.conn.search_s('o=gluu',ldap.SCOPE_SUBTREE,'(&(objectClass=gluuPerson)(oxExternalUid=*))')
+
+        for people in result:
+            dn = people[0]
+            for oxExternalUid in people[1]['oxExternalUid']:
+                strategy_p = oxExternalUid.split(':')
+                new_oxExternalUid = []
+                change = False
+                if strategy_p[0] in strategies:
+                    change = True
+                    str_text = 'passport-{0}:{1}'.format(strategy_p[0],strategy_p[1]) 
+                    new_oxExternalUid.append(str_text)
+                else:
+                    new_oxExternalUid.append(oxExternalUid)
+
+                if change:                
+                    self.conn.modify_s(dn, [(ldap.MOD_REPLACE, 'oxExternalUid',  new_oxExternalUid)])
+        
+        passport_default_fn = '/etc/default/passport'
+        passport_default_content = open(passport_default_fn).read()
+
+        if not 'NODE_LOGS' in passport_default_content:
+            passport_default_content += '\nNODE_LOGS=$NODE_BASE/logs\n'
+            print passport_default_content
+            with open(passport_default_fn,'w') as w:
+                w.write(passport_default_content)
+
         pp_conf = json.load(open('/etc/gluu/conf/passport-config.json'))
-        pp_conf['applicationEndpoint'] = 'https://{0}/oxauth/auth/passport/passportpostlogin.htm'.format(self.setup_properties['hostname'])
+        pp_conf['applicationEndpoint'] = 'https://{0}/oxauth/postlogin'.format(self.setup_properties['hostname'])
         w = open('/etc/gluu/conf/passport-config.json','w')
         json.dump(pp_conf, w)
         w.close()
