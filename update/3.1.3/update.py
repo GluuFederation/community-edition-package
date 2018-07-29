@@ -368,6 +368,7 @@ class GluuUpdater:
         dn = result[0][0]
         new_strategies = {}
         strategies = []
+        change = False
         for pp_conf in result[0][1]['gluuPassportConfiguration']:
             pp_conf_js = json.loads(pp_conf)
             strategies.append(pp_conf_js['strategy'])
@@ -379,15 +380,14 @@ class GluuUpdater:
                         for st_comp in pp_conf_js['fieldset']:
                             strategy['fieldset'].append({'value1':st_comp['key'], 'value2':st_comp['value'], "hide":False,"description":""})        
                         new_strategies[pp_conf_js['strategy'] ] = json.dumps(strategy)
-
+                        change = True
                 else:
                     new_strategies[pp_conf_js['strategy'] ] = pp_conf
 
+        if change:
+            new_strategies_list = new_strategies.values()
+            self.conn.modify_s(dn, [( ldap.MOD_REPLACE, 'gluuPassportConfiguration',  new_strategies_list)])
 
-        new_strategies_list = new_strategies.values()
-        self.conn.modify_s(dn, [( ldap.MOD_REPLACE, 'gluuPassportConfiguration',  new_strategies_list)])
-
-        
         result = self.conn.search_s('o=gluu',ldap.SCOPE_SUBTREE,'(&(objectClass=gluuPerson)(oxExternalUid=*))')
 
         for people in result:
