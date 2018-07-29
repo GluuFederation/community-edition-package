@@ -327,7 +327,8 @@ class GluuUpdater:
         os.system('chown -R node:node /opt/gluu/node/passport')
         os.system('runuser -l node -c "cd /opt/gluu/node/passport/&&PATH=$PATH:/opt/node/bin npm install -P"')
         
-        result = self.conn.search_s('o=gluu',ldap.SCOPE_SUBTREE,'(displayName=passport)')
+        result = self.conn.search_s('o=gluu',ldap.SCOPE_SUBTREE,'(description=Passport authentication module)')
+
 
         dn=result[0][0]
 
