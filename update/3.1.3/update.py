@@ -7,11 +7,45 @@ import re
 import shutil
 import json
 import base64
+import sys
+
 from pyDes import *
+
+package_type = None
+
+if os.path.exists('/etc/yum.repos.d/'):
+    package_type = 'rpm'
+elif os.path.exists('/etc/apt/sources.list'):
+    package_type = 'deb'
+
+try:
+    import ldap
+except:
+    result = raw_input("python-ldap package is missing. Install now? (Y|n): ")
+    if result.strip() and result.strip().lower()[0] == 'n':
+        sys.exit("Can't continue without python-ldap. Exiting ...")
+    
+     
+    if package_type == 'rpm':
+        cmd = "yum install -y python-ldap"
+    else:
+        cmd = "apt-get install -y python-ldap"
+
+    print "Installing python-ldap with command: "+ cmd
+    os.system(cmd)
 
 import ldap
 import ldap.modlist as modlist
 ldap.set_option(ldap.OPT_X_TLS_REQUIRE_CERT, ldap.OPT_X_TLS_ALLOW)
+
+
+result = raw_input("Starting upgrade. CONTINUE? (y|N): ")
+if not result.strip() or (result.strip() and result.strip().lower()[0] != 'y'):
+    print "You can re-run this script to upgrade. Bye now ..."
+    sys.exit()
+
+
+print "Starting Upgrade."
 
 def parse_setup_properties(prop_file='/install/community-edition-setup/setup.properties.last'):
     setup_prop = dict()
@@ -123,6 +157,10 @@ class GluuUpdater:
 
         if not 'umaGrantAccessIfNoPolicies' in oxAuthConfDynamic: 
             oxAuthConfDynamic['umaGrantAccessIfNoPolicies'] = True
+            json_update = True
+
+        if not 'corsConfigurationFilters' in oxAuthConfDynamic:
+            oxAuthConfDynamic['corsConfigurationFilters'] = [{"filterName": "CorsFilter", "corsAllowedOrigins": "*", "corsAllowedMethods": "GET,POST,HEAD,OPTIONS", "corsAllowedHeaders": "Origin,Authorization,Accept,X-Requested-With,Content-Type,Access-Control-Request-Method,Access-Control-Request-Headers", "corsExposedHeaders": "", "corsSupportCredentials": True, "corsLoggingEnabled": False, "corsPreflightMaxAge": 1800, "corsRequestDecorate": True}]
             json_update = True
 
         if json_update:
@@ -316,6 +354,7 @@ class GluuUpdater:
         
         saml_config = os.path.join(self.update_dir, 'app', 'passport-saml-config.json')
         os.system('cp {0} /etc/gluu/conf'.format(saml_config))
+        os.system('chown node:node /etc/gluu/conf/passport-saml-config.json')
         
         log_dir = '/opt/gluu/node/passport/server/logs'
 
@@ -354,41 +393,43 @@ class GluuUpdater:
             self.conn.modify_s(dn, [( ldap.MOD_REPLACE, 'oxConfigurationProperty',  oxConfigurationProperty)])
 
 
-
         oxScript = open(os.path.join(self.update_dir, 'app', 'PassportExternalAuthenticator.py')).read()
         self.conn.modify_s(dn, [( ldap.MOD_REPLACE, 'oxScript',  oxScript)])
 
 
         result = self.conn.search_s('o=gluu',ldap.SCOPE_SUBTREE,'(displayName=uma_client_authz_rpt_policy)')
-        dn=result[0][0]
-        oxScript = open(os.path.join(self.update_dir, 'app', 'UmaClientAuthzRptPolicy.py')).read()
-        self.conn.modify_s(dn, [( ldap.MOD_REPLACE, 'oxScript',  oxScript)])
+        if result:
+            dn=result[0][0]
+            oxScript = open(os.path.join(self.update_dir, 'app', 'UmaClientAuthzRptPolicy.py')).read()
+            self.conn.modify_s(dn, [( ldap.MOD_REPLACE, 'oxScript',  oxScript)])
 
         #convert passport strategies to new style
         result = self.conn.search_s('o=gluu',ldap.SCOPE_SUBTREE,'(objectClass=oxPassportConfiguration)')
-        dn = result[0][0]
-        new_strategies = {}
-        strategies = []
-        change = False
-        for pp_conf in result[0][1]['gluuPassportConfiguration']:
-            pp_conf_js = json.loads(pp_conf)
-            strategies.append(pp_conf_js['strategy'])
-            if not pp_conf_js['strategy'] in new_strategies:
-                if pp_conf_js['fieldset'][0].has_key('value'):
-                    
-                    if not '_client_' in pp_conf_js['fieldset'][0]['value']:
-                        strategy={'strategy':pp_conf_js['strategy'], 'fieldset':[]}
-                        for st_comp in pp_conf_js['fieldset']:
-                            strategy['fieldset'].append({'value1':st_comp['key'], 'value2':st_comp['value'], "hide":False,"description":""})        
-                        new_strategies[pp_conf_js['strategy'] ] = json.dumps(strategy)
-                        change = True
-                else:
-                    new_strategies[pp_conf_js['strategy'] ] = pp_conf
+        if result:
+            dn = result[0][0]
+            new_strategies = {}
+            strategies = []
+            change = False
+            for pp_conf in result[0][1]['gluuPassportConfiguration']:
+                pp_conf_js = json.loads(pp_conf)
+                strategies.append(pp_conf_js['strategy'])
+                if not pp_conf_js['strategy'] in new_strategies:
+                    if pp_conf_js['fieldset'][0].has_key('value'):
+                        
+                        if not '_client_' in pp_conf_js['fieldset'][0]['value']:
+                            strategy={'strategy':pp_conf_js['strategy'], 'fieldset':[]}
+                            for st_comp in pp_conf_js['fieldset']:
+                                strategy['fieldset'].append({'value1':st_comp['key'], 'value2':st_comp['value'], "hide":False,"description":""})        
+                            new_strategies[pp_conf_js['strategy'] ] = json.dumps(strategy)
+                            change = True
+                    else:
+                        new_strategies[pp_conf_js['strategy'] ] = pp_conf
 
-        if change:
-            new_strategies_list = new_strategies.values()
-            self.conn.modify_s(dn, [( ldap.MOD_REPLACE, 'gluuPassportConfiguration',  new_strategies_list)])
+            if change:
+                new_strategies_list = new_strategies.values()
+                self.conn.modify_s(dn, [( ldap.MOD_REPLACE, 'gluuPassportConfiguration',  new_strategies_list)])
 
+        print "Modifying User's oxExternalUid entries ..."
         result = self.conn.search_s('o=gluu',ldap.SCOPE_SUBTREE,'(&(objectClass=gluuPerson)(oxExternalUid=*))')
 
         for people in result:
@@ -435,16 +476,54 @@ class GluuUpdater:
                         ))
             os.system('/usr/bin/openssl x509 -req -days 365 -in /etc/certs/passport-sp.csr -signkey /etc/certs/passport-sp.key -out /etc/certs/passport-sp.crt')
             os.system('chown root:gluu /etc/certs/passport-sp.key.orig')
+            os.system('chown root:gluu /etc/certs/passport-sp.key.orig')
             os.system('chmod 440 /etc/certs/passport-sp.key.orig')
             os.system('chown root:gluu /etc/certs/passport-sp.key')
-            os.system('chmod 440 /etc/certs/passport-sp.key')
+            os.system('chown node:node /etc/certs/passport-sp.key')
+            
 
         os.system('rm -r -f /tmp/passport_tmp_313')
 
+    def updateOtherLDAPEntries(self):
+        
+        result = self.conn.search_s('o=gluu',ldap.SCOPE_SUBTREE,'(|(objectClass=oxAuthUmaResourceSet)(structuralObjectClass=oxAuthUmaResourceSet))')
+        
+        for entry in result:
+            dn = entry[0]            
+            for e in entry[1]:
+                if 'oxAuthUmaResourceSet' in entry[1][e]:
+                    entry[1][e].remove('oxAuthUmaResourceSet')
+                    entry[1][e].append('oxUmaResource')
+                
+            self.conn.delete_s(dn)
+            self.conn.add_s(dn, modlist.addModlist(entry[1]))
+
+        result = self.conn.search_s('o=gluu',ldap.SCOPE_SUBTREE,'(|(objectClass=oxAuthUmaResourceSetPermission)(structuralObjectClass=oxAuthUmaResourceSetPermission))')
+        
+        for entry in result:
+            dn = entry[0]            
+            for e in entry[1]:
+                if 'oxAuthUmaResourceSet' in entry[1][e]:
+                    entry[1][e].remove('oxAuthUmaResourceSetPermission')
+                    entry[1][e].append('oxUmaResourcePermission')
+                
+            self.conn.delete_s(dn)
+            self.conn.add_s(dn, modlist.addModlist(entry[1]))
+
+        result = self.conn.search_s('o=gluu',ldap.SCOPE_SUBTREE,'(|(oxMemcachedConfiguration=*)(oxCacheConfiguration=*))', ['oxMemcachedConfiguration','oxCacheConfiguration'])
+
+        for entry in result:
+            dn = entry[0]
+            for e in entry[1]:
+                entry[1][e] = 'oxCacheConfiguration: {"cacheProviderType":"IN_MEMORY","memcachedConfiguration":{"servers":"localhost:11211","maxOperationQueueLength":100000,"bufferSize":32768,"defaultPutExpiration":60,"connectionFactoryType":"DEFAULT"},"inMemoryConfiguration":{"defaultPutExpiration":60},"redisConfiguration":{"redisProviderType":"STANDALONE","servers":"localhost:6379","defaultPutExpiration":60}}'
+
+            self.conn.modify_s(dn, [( ldap.MOD_REPLACE, e,  entry[1][e])])
+
+
         
 updaterObj = GluuUpdater()
-updaterObj.updateWar()
 updaterObj.ldappConn()
+updaterObj.updateWar()
 updaterObj.updateOxAuthConf()
 updaterObj.addUserCertificateMetadata()
 updaterObj.fixAttributeTypes()
@@ -454,5 +533,7 @@ updaterObj.checkIdpMetadata()
 updaterObj.upgradeJetty()
 updaterObj.updateLdapSchema()
 updaterObj.updatePassport()
+#updaterObj.updateOtherLDAPEntries()
+
 
 print "Update is complete, please exit from container and restart gluu server"
