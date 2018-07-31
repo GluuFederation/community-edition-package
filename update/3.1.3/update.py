@@ -113,55 +113,54 @@ class GluuUpdater:
     def ldappConn(self):
         self.conn = ldap.initialize('ldaps://{0}:1636'.format(self.ldap_host))
         self.conn.simple_bind_s(self.ldap_bind_dn, self.ldap_bind_pw)
-        
 
 
     def fix_war_richfaces(self):
-    
         cur_wd = os.getcwd()
-
-        richface_libs = {
-            'identity': [
-                        'richfaces',
-                        'richfaces-core',
-                        'richfaces-a4j',
-                        ]
-
-            }
 
         richfaces_repo = os.path.join(self.update_dir, 'app/richfaces')
 
-        cur_maven_version = '4.5.17-gluu.Final'
-
         copy_path = os.path.join(self.update_dir,'war', 'WEB-INF/lib/')
         
-        for warf in richface_libs:
+        war_dir = os.path.join(self.update_dir,'war')
+        
+        os.chdir(war_dir)
+        
+        #Iterate over war files
+        for war_file in os.listdir(war_dir):
+            if not war_file.endswith('.war'):
+                continue
 
             if os.path.exists(copy_path):
                 os.system('rm -r -f ' + copy_path)
 
             os.system('mkdir -p ' + copy_path)
-
-            for war in richface_libs:
-                for rfl in richface_libs[war]:
-                    copy_file = os.path.join(richfaces_repo, rfl+'-'+cur_maven_version+'.jar')
-                    os.system('cp {0} {1}'.format(copy_file, copy_path))
-
-            os.chdir(os.path.join(self.update_dir,'war'))
-
-            war_file = warf+'.war'
-
+            
+            #Get a list of files inside war file
             zip_info = os.popen('unzip -qql {0}'.format(war_file)).readlines()
-
+            add_lib = False
             for f_info in zip_info:
                 f_size, f_date, f_time, f_name = f_info.split()
-                #Delete existing richface lib from war file
+                
+                #Check if file is richfaces lib
                 if 'richfaces' in f_name and f_name.endswith('.jar'):
-                    os.system('zip -d {0} {1}'.format(war_file, f_name))
-
-            #Add latest richface libs to war file
-            os.system('zip -g {} WEB-INF/lib/*'.format(war_file))
-            os.system('rm -r -f ' + copy_path)
+                    f_base_name = os.path.basename(f_name)
+                    
+                    #Find richfaces lib name from filename
+                    res = re.search('(.*)-[\d]\.', f_base_name)
+                    if res:
+                        richface_lib =  res.groups()[0]
+                        #Check if latest version exists in local repo
+                        check_lib = glob.glob(os.path.join(richfaces_repo,richface_lib)+'-[0-9]*.jar')
+                        if check_lib:
+                            os.system('cp {0} {1}'.format(max(check_lib), copy_path))
+                            #Delete existing richface lib from war file
+                            os.system('zip -d {0} {1}'.format(war_file, f_name))
+                            add_lib = True
+            if add_lib:
+                #Add latest richface libs to war file
+                os.system('zip -g {} WEB-INF/lib/*'.format(war_file))
+                os.system('rm -r -f ' + copy_path)
         
         os.chdir(cur_wd)
 
@@ -574,17 +573,18 @@ class GluuUpdater:
 updaterObj = GluuUpdater()
 updaterObj.ldappConn()
 updaterObj.fix_war_richfaces()
-#updaterObj.updateWar()
-#updaterObj.updateOxAuthConf()
-#updaterObj.addUserCertificateMetadata()
-#updaterObj.fixAttributeTypes()
-#updaterObj.addOxAuthClaimName()
-#updaterObj.modifySectorIdentifiers()
-#updaterObj.checkIdpMetadata()
-#updaterObj.upgradeJetty()
-#updaterObj.updateLdapSchema()
-#updaterObj.updatePassport()
+updaterObj.updateWar()
+updaterObj.updateOxAuthConf()
+updaterObj.addUserCertificateMetadata()
+updaterObj.fixAttributeTypes()
+updaterObj.addOxAuthClaimName()
+updaterObj.modifySectorIdentifiers()
+updaterObj.checkIdpMetadata()
+updaterObj.upgradeJetty()
+updaterObj.updateLdapSchema()
+updaterObj.updatePassport()
 #updaterObj.updateOtherLDAPEntries()
 
+#./makeself.sh --target /opt/upd/3.1.3.sp1/  /opt/upd/3.1.3.sp1/ 3-1-3-sp1.sh  "Gluu Updater Package 3.1.3.sp1" /opt/upd/3.1.3.sp1/bin/update.py
 
 print "Update is complete, please exit from container and restart gluu server"
