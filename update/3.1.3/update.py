@@ -129,23 +129,23 @@ class GluuUpdater:
 
             }
 
-        maven_url = 'http://ox.gluu.org/maven/org/richfaces/'
+        richfaces_repo = os.path.join(self.update_dir, 'app/richfaces')
+
         cur_maven_version = '4.5.17-gluu.Final'
 
-
+        copy_path = os.path.join(self.update_dir,'war', 'WEB-INF/lib/')
+        
         for warf in richface_libs:
 
-            download_path = os.path.join(self.update_dir,'war', 'WEB-INF/lib/')
+            if os.path.exists(copy_path):
+                os.system('rm -r -f ' + copy_path)
 
-            if os.path.exists(download_path):
-                os.system('rm -r -f ' + download_path)
-
-            os.system('mkdir -p ' + download_path)
+            os.system('mkdir -p ' + copy_path)
 
             for war in richface_libs:
                 for rfl in richface_libs[war]:
-                    download_url = maven_url+rfl+'/'+cur_maven_version+'/'+rfl+'-'+cur_maven_version+'.jar'
-                    os.system('wget {0} -P {1}'.format(download_url, download_path))
+                    copy_file = os.path.join(richfaces_repo, rfl+'-'+cur_maven_version+'.jar')
+                    os.system('cp {0} {1}'.format(copy_file, copy_path))
 
             os.chdir(os.path.join(self.update_dir,'war'))
 
@@ -155,11 +155,13 @@ class GluuUpdater:
 
             for f_info in zip_info:
                 f_size, f_date, f_time, f_name = f_info.split()
+                #Delete existing richface lib from war file
                 if 'richfaces' in f_name and f_name.endswith('.jar'):
                     os.system('zip -d {0} {1}'.format(war_file, f_name))
 
+            #Add latest richface libs to war file
             os.system('zip -g {} WEB-INF/lib/*'.format(war_file))
-            os.system('rm -r -f ' + download_path)
+            os.system('rm -r -f ' + copy_path)
         
         os.chdir(cur_wd)
 
@@ -569,7 +571,6 @@ class GluuUpdater:
             self.conn.modify_s(dn, [( ldap.MOD_REPLACE, e,  entry[1][e])])
 
 
-        
 updaterObj = GluuUpdater()
 updaterObj.ldappConn()
 updaterObj.fix_war_richfaces()
