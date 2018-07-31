@@ -115,7 +115,57 @@ class GluuUpdater:
         self.conn.simple_bind_s(self.ldap_bind_dn, self.ldap_bind_pw)
         
 
+
+    def fix_war_richfaces(self):
+    
+        cur_wd = os.getcwd()
+
+        richface_libs = {
+            'identity': [
+                        'richfaces',
+                        'richfaces-core',
+                        'richfaces-a4j',
+                        ]
+
+            }
+
+        maven_url = 'http://ox.gluu.org/maven/org/richfaces/'
+        cur_maven_version = '4.5.17-gluu.Final'
+
+
+        for warf in richface_libs:
+
+            download_path = os.path.join(self.update_dir,'war', 'WEB-INF/lib/')
+
+            if os.path.exists(download_path):
+                os.system('rm -r -f ' + download_path)
+
+            os.system('mkdir -p ' + download_path)
+
+            for war in richface_libs:
+                for rfl in richface_libs[war]:
+                    download_url = maven_url+rfl+'/'+cur_maven_version+'/'+rfl+'-'+cur_maven_version+'.jar'
+                    os.system('wget {0} -P {1}'.format(download_url, download_path))
+
+            os.chdir(os.path.join(self.update_dir,'war'))
+
+            war_file = warf+'.war'
+
+            zip_info = os.popen('unzip -qql {0}'.format(war_file)).readlines()
+
+            for f_info in zip_info:
+                f_size, f_date, f_time, f_name = f_info.split()
+                if 'richfaces' in f_name and f_name.endswith('.jar'):
+                    os.system('zip -d {0} {1}'.format(war_file, f_name))
+
+            os.system('zip -g {} WEB-INF/lib/*'.format(war_file))
+            os.system('rm -r -f ' + download_path)
+        
+        os.chdir(cur_wd)
+
+
     def updateWar(self):
+
         new_war_dir = os.path.join(self.update_dir, 'war')
         for app in os.listdir(self.gluu_app_dir):
             war_app = app+'.war'
@@ -476,7 +526,6 @@ class GluuUpdater:
                         ))
             os.system('/usr/bin/openssl x509 -req -days 365 -in /etc/certs/passport-sp.csr -signkey /etc/certs/passport-sp.key -out /etc/certs/passport-sp.crt')
             os.system('chown root:gluu /etc/certs/passport-sp.key.orig')
-            os.system('chown root:gluu /etc/certs/passport-sp.key.orig')
             os.system('chmod 440 /etc/certs/passport-sp.key.orig')
             os.system('chown root:gluu /etc/certs/passport-sp.key')
             os.system('chown node:node /etc/certs/passport-sp.key')
@@ -523,16 +572,17 @@ class GluuUpdater:
         
 updaterObj = GluuUpdater()
 updaterObj.ldappConn()
-updaterObj.updateWar()
-updaterObj.updateOxAuthConf()
-updaterObj.addUserCertificateMetadata()
-updaterObj.fixAttributeTypes()
-updaterObj.addOxAuthClaimName()
-updaterObj.modifySectorIdentifiers()
-updaterObj.checkIdpMetadata()
-updaterObj.upgradeJetty()
-updaterObj.updateLdapSchema()
-updaterObj.updatePassport()
+updaterObj.fix_war_richfaces()
+#updaterObj.updateWar()
+#updaterObj.updateOxAuthConf()
+#updaterObj.addUserCertificateMetadata()
+#updaterObj.fixAttributeTypes()
+#updaterObj.addOxAuthClaimName()
+#updaterObj.modifySectorIdentifiers()
+#updaterObj.checkIdpMetadata()
+#updaterObj.upgradeJetty()
+#updaterObj.updateLdapSchema()
+#updaterObj.updatePassport()
 #updaterObj.updateOtherLDAPEntries()
 
 
