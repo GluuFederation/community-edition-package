@@ -18,20 +18,30 @@ if os.path.exists('/etc/yum.repos.d/'):
 elif os.path.exists('/etc/apt/sources.list'):
     package_type = 'deb'
 
+missing_packages = []
+
+if not os.path.exists('/usr/bin/zip'):
+    missing_packages.append('zip')
+
 try:
     import ldap
 except:
-    result = raw_input("python-ldap package is missing. Install now? (Y|n): ")
-    if result.strip() and result.strip().lower()[0] == 'n':
-        sys.exit("Can't continue without python-ldap. Exiting ...")
+    missing_packages.append('python-ldap')
     
-     
-    if package_type == 'rpm':
-        cmd = "yum install -y python-ldap"
-    else:
-        cmd = "apt-get install -y python-ldap"
 
-    print "Installing python-ldap with command: "+ cmd
+if missing_packages:
+    
+    packages_str = ' '.join(missing_packages)
+    result = raw_input("Missing package(s): {0}. Install now? (Y|n): ".format(packages_str))
+    if result.strip() and result.strip().lower()[0] == 'n':
+        sys.exit("Can't continue without installing these packages. Exiting ...")
+
+    if package_type == 'rpm':
+        cmd = "yum install -y {0}".format(packages_str)
+    else:
+        cmd = "apt-get install -y {1}".format(packages_str)
+
+    print "Installing package(s) with command: "+ cmd
     os.system(cmd)
 
 import ldap
