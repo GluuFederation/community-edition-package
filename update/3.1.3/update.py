@@ -85,9 +85,12 @@ def get_ldap_admin_password():
 class GluuUpdater:
     def __init__(self):
         self.update_version = '3.1.3.sp1'
-        self.update_dir = '/opt/upd/' + self.update_version
+        self.update_dir = os.path.join('/opt/upd/', self.update_version)
+        self.app_dir = os.path.join(self.update_dir,'app')
         self.setup_properties = parse_setup_properties()
         self.gluu_app_dir = '/opt/gluu/jetty'
+
+        self.passport_mdules_archive = os.path.join(self.app_dir, 'passport-node_modules.tgz')
 
         if self.setup_properties.get('ldap_type'):
             self.ldap_type = self.setup_properties['ldap_type']
@@ -414,11 +417,14 @@ class GluuUpdater:
 
         if not os.path.exists('/opt/gluu/node/passport/server/utils/misc.js'):
             open('/opt/gluu/node/passport/server/utils/misc.js','w')
-        os.system('chown -R node:node /opt/gluu/node/passport')
-        os.system('runuser -l node -c "cd /opt/gluu/node/passport/&&PATH=$PATH:/opt/node/bin npm install -P"')
-        
-        result = self.conn.search_s('o=gluu',ldap.SCOPE_SUBTREE,'(description=Passport authentication module)')
 
+        print "Extracting passport node modules"
+    
+        os.system('tar -zxf {0} -C /'.format(self.passport_mdules_archive))
+
+        os.system('chown -R node:node /opt/gluu/node/passport')
+
+        result = self.conn.search_s('o=gluu',ldap.SCOPE_SUBTREE,'(description=Passport authentication module)')
 
         dn=result[0][0]
 
@@ -528,9 +534,8 @@ class GluuUpdater:
             os.system('/usr/bin/openssl x509 -req -days 365 -in /etc/certs/passport-sp.csr -signkey /etc/certs/passport-sp.key -out /etc/certs/passport-sp.crt')
             os.system('chown root:gluu /etc/certs/passport-sp.key.orig')
             os.system('chmod 440 /etc/certs/passport-sp.key.orig')
-            os.system('chown root:gluu /etc/certs/passport-sp.key')
             os.system('chown node:node /etc/certs/passport-sp.key')
-            
+            os.system('chown node:node /etc/certs/passport-sp.crt')
 
         os.system('rm -r -f /tmp/passport_tmp_313')
 
