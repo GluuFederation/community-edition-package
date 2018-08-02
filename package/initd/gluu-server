@@ -202,7 +202,7 @@ stop() {
                 fi
         fi
 
-        stopGenericService cred-manager "Credentials Manager"
+        stopGenericService casa "Gluu Casa"
         stopGenericService passport "Passport"
         stopGenericService oxauth-rp "oxAuth RP"
         stopGenericService asimba "Asimba"
