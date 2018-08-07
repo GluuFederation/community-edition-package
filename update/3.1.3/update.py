@@ -8,6 +8,7 @@ import shutil
 import json
 import base64
 import sys
+import uuid
 
 from pyDes import *
 
@@ -23,6 +24,9 @@ missing_packages = []
 if not os.path.exists('/usr/bin/zip'):
     missing_packages.append('zip')
 
+if not os.path.exists('/usr/bin/unzip'):
+    missing_packages.append('unzip')
+    
 try:
     import ldap
 except:
@@ -54,8 +58,7 @@ if not result.strip() or (result.strip() and result.strip().lower()[0] != 'y'):
     print "You can re-run this script to upgrade. Bye now ..."
     sys.exit()
 
-
-print "Starting Upgrade."
+print "Starting Upgrade..."
 
 def parse_setup_properties(prop_file='/install/community-edition-setup/setup.properties.last'):
     setup_prop = dict()
@@ -99,8 +102,10 @@ class GluuUpdater:
         self.app_dir = os.path.join(self.update_dir,'app')
         self.setup_properties = parse_setup_properties()
         self.gluu_app_dir = '/opt/gluu/jetty'
-
+        self.update_temp_dir = os.path.join(self.app_dir,'temp')
         self.passport_mdules_archive = os.path.join(self.app_dir, 'passport-node_modules.tgz')
+
+        self.setup_properties['shibboleth_version'] = 'v3'
 
         if self.setup_properties.get('ldap_type'):
             self.ldap_type = self.setup_properties['ldap_type']
@@ -129,54 +134,49 @@ class GluuUpdater:
 
 
     def fix_war_richfaces(self):
-        cur_wd = os.getcwd()
-
-        richfaces_repo = os.path.join(self.update_dir, 'app/richfaces')
-
-        copy_path = os.path.join(self.update_dir,'war', 'WEB-INF/lib/')
         
-        war_dir = os.path.join(self.update_dir,'war')
-        
-        os.chdir(war_dir)
-        
-        #Iterate over war files
-        for war_file in os.listdir(war_dir):
-            if not war_file.endswith('.war'):
-                continue
+        check_list = [
+            '/opt/tomcat/webapps/identity.war',
+            '/opt/gluu/jetty/identity/webapps/identity.war',
+            '/opt/tomcat/webapps/oxauth-rp.war',
+            '/opt/gluu/jetty/oxauth-rp/webapps/oxauth-rp.war',
+            ]
 
-            if os.path.exists(copy_path):
-                os.system('rm -r -f ' + copy_path)
+        for war_file_path in check_list:
 
-            os.system('mkdir -p ' + copy_path)
-            
-            #Get a list of files inside war file
-            zip_info = os.popen('unzip -qql {0}'.format(war_file)).readlines()
-            add_lib = False
-            for f_info in zip_info:
-                f_size, f_date, f_time, f_name = f_info.split()
-                
-                #Check if file is richfaces lib
-                if 'richfaces' in f_name and f_name.endswith('.jar'):
-                    f_base_name = os.path.basename(f_name)
-                    
-                    #Find richfaces lib name from filename
-                    res = re.search('(.*)-[\d]\.', f_base_name)
-                    if res:
-                        richface_lib =  res.groups()[0]
-                        #Check if latest version exists in local repo
-                        check_lib = glob.glob(os.path.join(richfaces_repo,richface_lib)+'-[0-9]*.jar')
-                        if check_lib:
-                            os.system('cp {0} {1}'.format(max(check_lib), copy_path))
-                            #Delete existing richface lib from war file
-                            os.system('zip -d {0} {1}'.format(war_file, f_name))
-                            add_lib = True
-            if add_lib:
-                #Add latest richface libs to war file
-                os.system('zip -g {} WEB-INF/lib/*'.format(war_file))
-                os.system('rm -r -f ' + copy_path)
-        
-        os.chdir(cur_wd)
+            if os.path.exists(war_file_path):
+                war_file = os.path.basename(war_file_path)
+                war_path = os.path.dirname(war_file_path)
 
+                print "Updating", war_file_path
+
+                war_lib_dir = os.path.join(war_path, 'WEB-INF')
+
+                if os.path.exists(war_lib_dir):
+                     os.system('rm -r -f {0}'.format(war_lib_dir))
+
+
+                os.system('cp -r {0} {1}'.format(os.path.join(self.app_dir, 'WEB-INF'), war_path))
+
+                os.chdir(war_path)
+
+                print "Deleting old richfaces from {0}".format(war_file)
+
+                #Get a list of files inside war file
+                zip_info = os.popen('unzip -qql {0}'.format(war_file)).readlines()
+                for f_info in zip_info:
+                    f_size, f_date, f_time, f_name = f_info.split()
+
+                    #Check if file is richfaces lib
+                    if 'richfaces' in f_name and f_name.endswith('.jar'):
+                        rf = os.path.basename(f_name)
+                        os.system('zip -d {0} WEB-INF/lib/{1}'.format(war_file, rf))
+
+                print "Adding latest richfaces to {0}".format(war_file)
+
+                os.system('zip -g {0} WEB-INF/lib/*'.format(war_file))
+
+                os.system('rm -r -f {0}'.format(war_lib_dir))
 
     def updateWar(self):
 
@@ -286,7 +286,7 @@ class GluuUpdater:
             print dn, 'modified'
 
         print dn, "not modified"
-        
+
     def modifySectorIdentifiers(self):
         sector_identifiers = 'ou=sector_identifiers,o={0},o=gluu'.format(self.inumOrg)        
         result = self.conn.search_s(sector_identifiers, ldap.SCOPE_SUBTREE)
@@ -387,6 +387,13 @@ class GluuUpdater:
         shutil.copy(new_schema, ldap_schema_dir)
         os.system('chown ldap:ldap {0}'.format(cur_schema))
 
+        #After updateting schema we need to restart ldap server
+        if self.ldap_type == 'openldap':
+            os.system('/etc/init.d/solserver restart')
+        else:
+            os.system('/etc/init.d/opendj restart')
+        #wait 10 secs for ldap server to start
+        time.sleep(10)
 
     def updatePassport(self):
         if not os.path.exists('/opt/gluu/node/passport'):
@@ -584,20 +591,167 @@ class GluuUpdater:
 
             self.conn.modify_s(dn, [( ldap.MOD_REPLACE, e,  entry[1][e])])
 
+    def createOpenTrustStore(self):
+        if self.ldap_type == 'openldap':
+
+            if not os.path.exists('/etc/certs/openldap.pkcs12'):
+                print "Creating truststore for openldap certificate"
+                random_pw = str(uuid.uuid4()).split('-')[-1]
+                print "Password for trustore", random_pw
+                cmd_l = ['/usr/bin/openssl',
+                  'pkcs12',
+                  '-export',
+                  '-inkey',
+                  '/etc/certs/openldap.key',
+                  '-in',
+                  '/etc/certs/openldap.crt',
+                  '-out',
+                  '/etc/certs/openldap.pkcs12',
+                  '-name',
+                  self.setup_properties['hostname'],
+                  '-passout',
+                  'pass:'+random_pw
+                  ]
+
+                cmd = " ".join(cmd_l)
+                os.system(cmd)
+
+                cmd_l= ['/opt/jre/bin/keytool',
+                  '-importkeystore',
+                  '-srckeystore',
+                  '/etc/certs/openldap.pkcs12',
+                  '-srcstorepass',
+                  random_pw,
+                  '-srcstoretype',
+                  'PKCS12',
+                  '-destkeystore',
+                  '/etc/certs/openldap.jks',
+                  '-deststorepass',
+                  random_pw,
+                  '-deststoretype',
+                  'JKS',
+                  '-keyalg',
+                  'RSA',
+                  '-noprompt'
+                  ]
+
+                cmd = " ".join(cmd_l)
+                os.system(cmd)
+
+                encoded_pw = os.popen('/opt/gluu/bin/encode.py ' + random_pw).read().strip()
+               
+                ox_ldap_properties = (
+                    '\nssl.trustStoreFile: /etc/certs/openldap.pkcs12\n'
+                    'ssl.trustStorePin: {0}\n'
+                    'ssl.trustStoreFormat: pkcs12\n\n'
+                    'certificateAttributes=userCertificate\n').format(encoded_pw)
+
+                ox_ldap_properties_fn = '/etc/gluu/conf/ox-ldap.properties'
+                with open(ox_ldap_properties_fn,'a') as f:
+                    f.write(ox_ldap_properties)
+
+                os.system('chown root:gluu -R /etc/certs/openldap.jks')
+                os.system('chown root:gluu -R /etc/certs/openldap.pkcs12')
+                os.system('chmod  u=r,g=r,o=- /etc/certs/openldap.jks')
+                os.system('chmod  u=r,g=r,o=- /etc/certs/openldap.pkcs12')
+
+
+    def updateDefaultDettings(self):
+        change_default=(
+                ('/etc/default/oxauth', 'JAVA_OPTIONS', 'JAVA_OPTIONS="-server -Xms256m -Xmx920m -XX:MaxMetaspaceSize=395m -XX:+DisableExplicitGC -Dgluu.base=/etc/gluu -Dserver.base=/opt/gluu/jetty/oxauth -Dlog.base=/opt/gluu/jetty/oxauth -Dpython.home=/opt/jython"'),
+                ('/etc/default/identity', 'JAVA_OPTIONS', 'JAVA_OPTIONS="-server -Xms256m -Xmx613m -XX:MaxMetaspaceSize=263m -XX:+DisableExplicitGC -Dgluu.base=/etc/gluu -Dserver.base=/opt/gluu/jetty/identity -Dlog.base=/opt/gluu/jetty/identity -Dpython.home=/opt/jython -Dorg.eclipse.jetty.server.Request.maxFormContentSize=50000000"'),
+           )
+
+        for opt in change_default:
+            tmp = open(opt[0]).readlines()
+            for i in range(len(tmp)):
+                if tmp[i].startswith(opt[1]):
+                    tmp[i] = opt[2]+'\n'
+            with open(opt[0],'w') as f:
+                f.write(''.join(tmp))
+
+    def updateStartIni(self):
+        for service in ('oxauth', 'identity'):
+            os.system('cp {0} {1}'.format(
+                          os.path.join(self.update_temp_dir, service+'_start.ini'),
+                         os.path.join(self.gluu_app_dir, service, 'start.ini'),
+                         )
+                    )
+
+
+    def updateOtherLDAP(self):
+        
+        result = self.conn.search_s('ou=appliances,o=gluu',ldap.SCOPE_SUBTREE,'(oxCacheConfiguration=*)', ['oxCacheConfiguration','oxAuthenticationMode', 'oxTrustAuthenticationMode'])
+        dn = result[0][0]
+
+        if not 'oxAuthenticationMode' in result[0][1]:
+            self.conn.modify_s(dn, [( ldap.MOD_ADD, 'oxAuthenticationMode',  ['auth_ldap_server'])])
+            print 'oxAuthenticationMode added'
+
+        if not 'oxTrustAuthenticationMode' in result[0][1]:
+            self.conn.modify_s(dn, [( ldap.MOD_ADD, 'oxTrustAuthenticationMode',  ['auth_ldap_server'])])
+            print 'oxTrustAuthenticationMode added'
+        
+        oxCacheConfiguration = '{"cacheProviderType": "IN_MEMORY", "memcachedConfiguration": {"servers":"localhost:11211", "maxOperationQueueLength":100000, "bufferSize":32768, "defaultPutExpiration":60, "connectionFactoryType": "DEFAULT"}, "inMemoryConfiguration": {"defaultPutExpiration":60}, "redisConfiguration":{"servers":"localhost:6379", "defaultPutExpiration": 60}}'
+        self.conn.modify_s(dn, [( ldap.MOD_REPLACE, 'oxCacheConfiguration',  oxCacheConfiguration)])
+        
+        
+        for entry, json_tmp in (('oxTrustConfApplication', 'oxtrust-config.json'),
+                            ('oxTrustConfCacheRefresh', 'oxtrust-cache-refresh.json'),
+                            ('oxAuthConfDynamic', 'oxauth-config.json')):
+            
+            tmp_content = open(os.path.join(self.update_temp_dir, json_tmp)).read()
+            tmp_content = tmp_content % self.setup_properties
+            ldap_filter = '({0}=*)'.format(entry)
+            
+            result = self.conn.search_s('ou=appliances,o=gluu',ldap.SCOPE_SUBTREE, ldap_filter, [entry])
+            dn = result[0][0]
+
+            self.conn.modify_s(dn, [( ldap.MOD_REPLACE, entry,  tmp_content)])
+
+        
+        dn = 'inum=%(oxauth_client_id)s,ou=clients,o=%(inumOrg)s,o=gluu' % self.setup_properties
+
+
+        mod_dict = {'oxAuthGrantType': ['authorization_code', 'implicit', 'refresh_token'],
+                    'oxAuthRedirectURI': ['https://{0}/identity/authentication/getauthcode'.format(self.setup_properties['hostname']), 'https://{0}/oxauth/restv1/uma/gather_claims?authentication=true'.format(self.setup_properties['hostname'])],
+                    'oxClaimRedirectURI': ['https://{0}/oxauth/restv1/uma/gather_claims'.format(self.setup_properties['hostname'])],
+                    }
+
+
+        result = self.conn.search_s(dn, ldap.SCOPE_BASE,'(objectClass=*)', mod_dict.keys())
+
+        for entry in mod_dict:
+            add_list = []
+            if entry in result[0][1]:
+                for e in mod_dict[entry]:
+                    if not e in result[0][1][entry]:
+                        add_list.append(e)
+            else:
+                add_list = mod_dict[entry][:]
+
+            if add_list:
+                self.conn.modify_s(dn, [( ldap.MOD_ADD, entry,  add_list)])
+
 
 updaterObj = GluuUpdater()
+updaterObj.updateLdapSchema()
 updaterObj.ldappConn()
 updaterObj.fix_war_richfaces()
 updaterObj.updateWar()
-updaterObj.updateOxAuthConf()
+#updaterObj.updateOxAuthConf()
 updaterObj.addUserCertificateMetadata()
 updaterObj.fixAttributeTypes()
 updaterObj.addOxAuthClaimName()
 updaterObj.modifySectorIdentifiers()
 updaterObj.checkIdpMetadata()
 updaterObj.upgradeJetty()
-updaterObj.updateLdapSchema()
 updaterObj.updatePassport()
+updaterObj.createOpenTrustStore()
+updaterObj.updateDefaultDettings()
+updaterObj.updateStartIni()
+updaterObj.updateOtherLDAP()
+
 #updaterObj.updateOtherLDAPEntries()
 
 #./makeself.sh --target /opt/upd/3.1.3.sp1/  /opt/upd/3.1.3.sp1/ 3-1-3-sp1.sh  "Gluu Updater Package 3.1.3.sp1" /opt/upd/3.1.3.sp1/bin/update.py
