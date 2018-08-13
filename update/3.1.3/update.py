@@ -707,6 +707,10 @@ class GluuUpdater:
                          )
                     )
 
+        os.system('/opt/jre/bin/java -jar /opt/jetty/start.jar jetty.home=/opt/jetty jetty.base=/opt/gluu/jetty/oxauth --add-to-start=http-forwarded')
+        os.system('/opt/jre/bin/java -jar /opt/jetty/start.jar jetty.home=/opt/jetty jetty.base=/opt/gluu/jetty/identity --add-to-start=http-forwarded')
+
+
 
     def updateOtherLDAP(self):
         
