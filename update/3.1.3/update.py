@@ -9,6 +9,7 @@ import json
 import base64
 import sys
 import uuid
+import xml.etree.ElementTree as ET
 
 from pyDes import *
 
@@ -43,7 +44,7 @@ if missing_packages:
     if package_type == 'rpm':
         cmd = "yum install -y {0}".format(packages_str)
     else:
-        cmd = "apt-get install -y {1}".format(packages_str)
+        cmd = "apt-get install -y {0}".format(packages_str)
 
     print "Installing package(s) with command: "+ cmd
     os.system(cmd)
@@ -82,8 +83,8 @@ def parse_setup_properties(prop_file='/install/community-edition-setup/setup.pro
                     setup_prop[k] = v
 
     return setup_prop
-    
-def get_ldap_admin_password():    
+
+def get_ldap_admin_password():
     salt_file = open('/etc/gluu/conf/salt').read()
     salt = salt_file.split('=')[1].strip()
     ox_ldap_properties_file = '/etc/gluu/conf/ox-ldap.properties'
@@ -95,6 +96,31 @@ def get_ldap_admin_password():
             decrypted = cipher.decrypt(base64.b64decode(s), padmode=PAD_PKCS5)
             return decrypted
 
+def get_saml_certs(cfn):
+    tree = ET.parse(cfn)
+    root = tree.getroot()
+    cert_elems = []
+    for elem in root.iter():
+        if elem.tag.endswith('KeyDescriptor'):
+            cert_elems.append(elem)
+
+    certs = {}
+
+    for elem in cert_elems:
+        cert_use = elem.get('use')
+        for subelem in elem.iter():
+            if  subelem.tag.endswith('X509Certificate'):
+                certs[cert_use] = subelem.text.strip()
+
+    return certs
+
+def fomatWithDict(text, dictionary):
+    text = re.sub(r"%([^\(])", r"%%\1", text)
+    text = re.sub(r"%$", r"%%", text)  # There was a % at the end?
+
+    return text % dictionary
+
+
 class GluuUpdater:
     def __init__(self):
         self.update_version = '3.1.3.sp1'
@@ -104,6 +130,7 @@ class GluuUpdater:
         self.gluu_app_dir = '/opt/gluu/jetty'
         self.update_temp_dir = os.path.join(self.app_dir,'temp')
         self.passport_mdules_archive = os.path.join(self.app_dir, 'passport-node_modules.tgz')
+        self.saml_meta_data = '/opt/shibboleth-idp/metadata/idp-metadata.xml'
 
         self.setup_properties['shibboleth_version'] = 'v3'
 
@@ -194,6 +221,7 @@ class GluuUpdater:
                 shutil.copy(new_war_app_file, app_dir)
 
 
+    # TODO: Do we still need this?
     def updateOxAuthConf(self):
 
         result = self.conn.search_s('ou=appliances,o=gluu',ldap.SCOPE_SUBTREE,'(objectClass=oxAuthConfiguration)',['oxAuthConfDynamic'])
@@ -307,6 +335,7 @@ class GluuUpdater:
             os.system('cp /install/community-edition-setup/output/jetty/identity_web_resources.xml  /opt/gluu/jetty/identity/webapps')
         
 
+    # TODO: Do we still need this?
     def checkIdpMetadata(self):
         print "checking /opt/shibboleth-idp/metadata/idp-metadata.xml"
         idp_meatdata_file = '/opt/shibboleth-idp/metadata/idp-metadata.xml'
@@ -694,22 +723,146 @@ class GluuUpdater:
         
         oxCacheConfiguration = '{"cacheProviderType": "IN_MEMORY", "memcachedConfiguration": {"servers":"localhost:11211", "maxOperationQueueLength":100000, "bufferSize":32768, "defaultPutExpiration":60, "connectionFactoryType": "DEFAULT"}, "inMemoryConfiguration": {"defaultPutExpiration":60}, "redisConfiguration":{"servers":"localhost:6379", "defaultPutExpiration": 60}}'
         self.conn.modify_s(dn, [( ldap.MOD_REPLACE, 'oxCacheConfiguration',  oxCacheConfiguration)])
-        
-        
-        for entry, json_tmp in (('oxTrustConfApplication', 'oxtrust-config.json'),
-                            ('oxTrustConfCacheRefresh', 'oxtrust-cache-refresh.json'),
-                            ('oxAuthConfDynamic', 'oxauth-config.json')):
+
+
+        changes = { 'oxAuthConfDynamic': [
+
+                        ("baseEndpoint", 'change', 'entry', "https://{0}/oxauth/restv1".format(self.hostname)),
+                        ("authorizationEndpoint", 'change', 'entry', "https://{0}/oxauth/restv1/authorize".format(self.hostname)),
+                        ("tokenEndpoint", 'change', 'entry', "https://{0}/oxauth/restv1/token".format(self.hostname)),
+                        ("userInfoEndpoint", 'change', 'entry', "https://{0}/oxauth/restv1/userinfo".format(self.hostname)),
+                        ("clientInfoEndpoint", 'change', 'entry', "https://{0}/oxauth/restv1/clientinfo".format(self.hostname)),
+                        ("checkSessionIFrame", 'change', 'entry', "https://{0}/oxauth/opiframe".format(self.hostname)),
+                        ("endSessionEndpoint", 'change', 'entry', "https://{0}/oxauth/restv1/end_session".format(self.hostname)),
+                        ("jwksUri", 'change', 'entry', "https://{0}/oxauth/restv1/jwks".format(self.hostname)),
+                        ("registrationEndpoint", 'change', 'entry', "https://{0}/oxauth/restv1/register".format(self.hostname)),
+                        ("openIdDiscoveryEndpoint", 'change', 'entry', "https://{0}/.well-known/webfinger".format(self.hostname)),
+                        ("openIdConfigurationEndpoint", 'change', 'entry', "https://{0}/.well-known/openid-configuration".format(self.hostname)),
+                        ("idGenerationEndpoint", 'change', 'entry', "https://{0}/oxauth/restv1/id".format(self.hostname)),
+                        ("introspectionEndpoint", 'change', 'entry', "https://{0}/oxauth/restv1/introspection".format(self.hostname)),
+                        ("umaConfigurationEndpoint", 'change', 'entry', "https://{0}/oxauth/restv1/uma2-configuration".format(self.hostname)),
+
+                        ('responseTypesSupported', 'change', 'entry',[
+                                    ["code"],
+                                    ["code", "id_token"],
+                                    ["token"],
+                                    ["token", "id_token"],
+                                    ["code", "token"],
+                                    ["code", "token", "id_token"],
+                                    ["id_token"]
+                                ]),
+                                
+
+                        ('grantTypesSupported', 'add', 'element', 'urn:ietf:params:oauth:grant-type:uma-ticket'),
+                        ('idTokenSigningAlgValuesSupported', 'add', 'element', "none"),
+                        ('idTokenTokenBindingCnfValuesSupported', 'add', 'entry', ["tbh"]),
+                        ('dynamicGrantTypeDefault', 'add', 'entry',[
+                                "authorization_code",
+                                "implicit",
+                                "client_credentials",
+                                "refresh_token",
+                                "urn:ietf:params:oauth:grant-type:uma-ticket"
+                            ]),
+
+                        ('umaValidateClaimToken', 'add', 'entry', False),
+
+                        ('umaGrantAccessIfNoPolicies', 'add', 'entry', False),
+                        ('skipAuthorizationForOpenIdScopeAndPairwiseId', 'add', 'entry', False),
+                        ('personCustomObjectClassList', 'add', 'entry', ["gluuCustomPerson", "gluuPerson" ]),
+                                
+                        ('persistIdTokenInLdap', 'add', 'entry', False),
+                        ('persistRefreshTokenInLdap', 'add', 'entry', True),
+                        ('sessionIdLifetime', 'add', 'entry', 86400),
+                        ('enableClientGrantTypeUpdate', 'add', 'entry', True),
+                        ('corsConfigurationFilters', 'add', 'entry', [
+                                {
+                                    "filterName": "CorsFilter",
+                                    "corsAllowedOrigins": "*",
+                                    "corsAllowedMethods": "GET,POST,HEAD,OPTIONS",
+                                    "corsAllowedHeaders": "Origin,Authorization,Accept,X-Requested-With,Content-Type,Access-Control-Request-Method,Access-Control-Request-Headers",
+                                    "corsExposedHeaders": "",
+                                    "corsSupportCredentials": True,
+                                    "corsLoggingEnabled": False,
+                                    "corsPreflightMaxAge": 1800,
+                                    "corsRequestDecorate": True
+                                }
+                            ]),
+
+                        ('logClientIdOnClientAuthentication', 'add', 'entry', True),
+                        ('logClientNameOnClientAuthentication', 'add', 'entry', False),
+                        ('httpLoggingEnabled', 'add', 'entry', False),
+                        ('httpLoggingExludePaths', 'add', 'entry',[]),
+                        ('externalLoggerConfiguration', 'add', 'entry',''),
+                        ('authorizationRequestCustomAllowedParameters', 'add', 'entry',["customParam1","customParam2","customParam3"]),
+                            
+                        ('legacyDynamicRegistrationScopeParam', 'add', 'entry', False),
+                        ('useCacheForAllImplicitFlowObjects', 'add', 'entry', False),
+                        ('disableU2fEndpoint', 'add', 'entry', False),
+
+
+                        ('grantTypesSupported','remove', 'element', 'urn:ietf:params:oauth:grant-type:jwt-bearer'),
+                        ('grantTypesSupported','add', 'element', 'password'),
+                        ('grantTypesSupported','add', 'element', 'client_credentials'),
+                        ('grantTypesSupported','add', 'element', 'refresh_token'),
+
+                        ('umaRptLifetime', 'add', 'entry',  3600),
+                        ('accessTokenLifetime', 'add', 'entry', 300), 
+                        
+                        ('dynamicRegistrationCustomAttributes', 'remove', 'entry', ["myCustomAttr1", "myCustomAttr2"]),
+                        ('sessionStateHttpOnly', 'remove', 'entry', False),
+                        ('shortLivedAccessTokenLifetime','remove', 'entry', 300),
+                        
+
+                    ],
+    
+            'oxTrustConfApplication' : [
+
+                    ("baseEndpoint", 'change', 'entry', "https://{0}/identity/restv1".format(self.hostname)),
+                    ("loginRedirectUrl", 'change', 'entry', "https://{0}/identity/authentication/getauthcode".format(self.hostname)),
+                    ("scimUmaResourceId", 'change', 'entry', "0f13ae5a-135e-4b01-a290-7bbe62e7d40f"),
+                    ("scimUmaScope", 'change', 'entry', "https://{0}/oxauth/restv1/uma/scopes/scim_access".format(self.hostname)),
+                    ("passportUmaResourceId", 'change', 'entry', "0f963ecc-93f0-49c1-beae-ad2006abbb99"),
+                    ("passportUmaScope", 'change', 'entry', "https://{0}/oxauth/restv1/uma/scopes/passport_access".format(self.hostname)),
+                    ('scimTestModeAccessToken','remove', 'entry', None),
+                    ('ScimProperties','add', 'entry', {'maxCount': 200})
+
+                ],
+                   
+        }
+
+
+        for config_element in changes:
+            print "Updating", config_element
+            ldap_filter = '({0}=*)'.format(config_element)
+            result = self.conn.search_s('ou=appliances,o=gluu',ldap.SCOPE_SUBTREE, ldap_filter, [config_element])
             
-            tmp_content = open(os.path.join(self.update_temp_dir, json_tmp)).read()
-            tmp_content = tmp_content % self.setup_properties
-            ldap_filter = '({0}=*)'.format(entry)
-            
-            result = self.conn.search_s('ou=appliances,o=gluu',ldap.SCOPE_SUBTREE, ldap_filter, [entry])
             dn = result[0][0]
+            
+            js_conf = json.loads(result[0][1][config_element][0])
 
-            self.conn.modify_s(dn, [( ldap.MOD_REPLACE, entry,  tmp_content)])
+            for key, change_type, how_change, value in changes[config_element]:
 
-        
+                if change_type == 'add':
+                    if how_change == 'entry':
+                        js_conf[key] = value
+                    elif how_change == 'element':
+                        if not value in js_conf[key]:
+                            js_conf[key].append(value)
+                elif change_type == 'change':
+                    if how_change == 'entry':
+                        js_conf[key] = value
+                elif change_type == 'remove':
+                    if how_change == 'entry':
+                        if key in js_conf:
+                            del js_conf[key]
+                    elif how_change == 'element':
+                        if value in js_conf[key]:
+                            js_conf[key].remove(value)
+
+            new_conf = json.dumps(js_conf,indent=4)
+            self.conn.modify_s(dn, [( ldap.MOD_REPLACE, config_element,  new_conf)])
+
+
         dn = 'inum=%(oxauth_client_id)s,ou=clients,o=%(inumOrg)s,o=gluu' % self.setup_properties
 
 
@@ -734,12 +887,34 @@ class GluuUpdater:
                 self.conn.modify_s(dn, [( ldap.MOD_ADD, entry,  add_list)])
 
 
+    def update_shib_metadata(self):
+
+        if not os.path.exists(self.saml_meta_data):
+            return
+
+        print "Updating idp-metadata.xml"
+        smal_certs = get_saml_certs(self.saml_meta_data)
+        self.setup_properties['idp3SigningCertificateText'] = smal_certs['signing']
+        self.setup_properties['idp3EncryptionCertificateText'] = smal_certs['encryption']
+
+        shutil.copy(self.saml_meta_data, self.backup_folder)
+
+        temp_fn = os.path.join(self.update_temp_dir, 'idp-metadata.xml')
+
+        with open(temp_fn) as f:
+            temp = f.read()
+
+        new_saml_meta_data = fomatWithDict(temp, self.setup_properties)
+
+        with open(self.saml_meta_data,'w') as f:
+            f.write(new_saml_meta_data)
+
+
 updaterObj = GluuUpdater()
 updaterObj.updateLdapSchema()
 updaterObj.ldappConn()
 updaterObj.fix_war_richfaces()
 updaterObj.updateWar()
-#updaterObj.updateOxAuthConf()
 updaterObj.addUserCertificateMetadata()
 updaterObj.fixAttributeTypes()
 updaterObj.addOxAuthClaimName()
@@ -751,7 +926,9 @@ updaterObj.createOpenTrustStore()
 updaterObj.updateDefaultDettings()
 updaterObj.updateStartIni()
 updaterObj.updateOtherLDAP()
+updaterObj.update_shib_metadata()
 
+# TODO: is this necassary?
 #updaterObj.updateOtherLDAPEntries()
 
 #./makeself.sh --target /opt/upd/3.1.3.sp1/  /opt/upd/3.1.3.sp1/ 3-1-3-sp1.sh  "Gluu Updater Package 3.1.3.sp1" /opt/upd/3.1.3.sp1/bin/update.py
