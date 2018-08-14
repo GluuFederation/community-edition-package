@@ -217,6 +217,11 @@ class GluuUpdater:
                 if os.path.exists(cur_war):
                     print "Backing up", war_app, "to", self.backup_folder
                     shutil.copy(cur_war, self.backup_folder)
+                    
+                    resources_dir = os.path.join(self.gluu_app_dir, app, 'resources')
+                    os.mkdir(resources_dir)
+                    os.system('chown jetty:jetty ' + resources_dir)
+                    
                 print "Updating", war_app
                 shutil.copy(new_war_app_file, app_dir)
 
@@ -689,19 +694,23 @@ class GluuUpdater:
         change_default=(
                 ('/etc/default/oxauth', 'JAVA_OPTIONS', 'JAVA_OPTIONS="-server -Xms256m -Xmx920m -XX:MaxMetaspaceSize=395m -XX:+DisableExplicitGC -Dgluu.base=/etc/gluu -Dserver.base=/opt/gluu/jetty/oxauth -Dlog.base=/opt/gluu/jetty/oxauth -Dpython.home=/opt/jython"'),
                 ('/etc/default/identity', 'JAVA_OPTIONS', 'JAVA_OPTIONS="-server -Xms256m -Xmx613m -XX:MaxMetaspaceSize=263m -XX:+DisableExplicitGC -Dgluu.base=/etc/gluu -Dserver.base=/opt/gluu/jetty/identity -Dlog.base=/opt/gluu/jetty/identity -Dpython.home=/opt/jython -Dorg.eclipse.jetty.server.Request.maxFormContentSize=50000000"'),
+                ('/etc/default/idp', 'JAVA_OPTIONS', 'JAVA_OPTIONS="-server -Xms179m -Xmx179m -XX:MaxMetaspaceSize=77m -XX:+DisableExplicitGC -XX:+UseG1GC -Dgluu.base=/etc/gluu -Dserver.base=/opt/gluu/jetty/idp"'),
+           
            )
 
         for opt in change_default:
-            tmp = open(opt[0]).readlines()
-            for i in range(len(tmp)):
-                if tmp[i].startswith(opt[1]):
-                    tmp[i] = opt[2]+'\n'
-            with open(opt[0],'w') as f:
-                f.write(''.join(tmp))
+            if os.path.exists(opt[0]):
+                tmp = open(opt[0]).readlines()
+                for i in range(len(tmp)):
+                    if tmp[i].startswith(opt[1]):
+                        tmp[i] = opt[2]+'\n'
+                with open(opt[0],'w') as f:
+                    f.write(''.join(tmp))
 
     def updateStartIni(self):
-        for service in ('oxauth', 'identity'):
-            os.system('cp {0} {1}'.format(
+        for service in ('oxauth', 'identity','idp'):
+            if os.path.exists(os.path.join(self.gluu_app_dir, service, 'start.ini')):
+                os.system('cp {0} {1}'.format(
                           os.path.join(self.update_temp_dir, service+'_start.ini'),
                          os.path.join(self.gluu_app_dir, service, 'start.ini'),
                          )
@@ -891,19 +900,21 @@ class GluuUpdater:
                 self.conn.modify_s(dn, [( ldap.MOD_ADD, entry,  add_list)])
 
 
-    def update_shib_metadata(self):
+    def update_shib(self):
 
         if not os.path.exists(self.saml_meta_data):
             return
 
+
+        print "Backing up /opt/shibboleth-idp to", self.backup_folder
+        os.system('cp -r /opt/shibboleth-idp '+self.backup_folder)
         print "Updating idp-metadata.xml"
-        smal_certs = get_saml_certs(self.saml_meta_data)
-        self.setup_properties['idp3SigningCertificateText'] = smal_certs['signing']
-        self.setup_properties['idp3EncryptionCertificateText'] = smal_certs['encryption']
+        self.setup_properties['idp3SigningCertificateText'] = open('/etc/certs/idp-signing.crt').read().replace('-----BEGIN CERTIFICATE-----','').replace('-----END CERTIFICATE-----','')
+        self.setup_properties['idp3EncryptionCertificateText'] = open('/etc/certs/idp-encryption.crt').read().replace('-----BEGIN CERTIFICATE-----','').replace('-----END CERTIFICATE-----','')
 
         shutil.copy(self.saml_meta_data, self.backup_folder)
 
-        temp_fn = os.path.join(self.update_temp_dir, 'idp-metadata.xml')
+        temp_fn = os.path.join(self.update_temp_dir, 'idp3/metadata/idp-metadata.xml')
 
         with open(temp_fn) as f:
             temp = f.read()
@@ -913,6 +924,24 @@ class GluuUpdater:
         with open(self.saml_meta_data,'w') as f:
             f.write(new_saml_meta_data)
 
+
+        prop_file = '/opt/shibboleth-idp/conf/ldap.properties'
+        if os.path.exists(prop_file):
+            f=open(prop_file).readlines()
+            for i in range(len(f)):
+                l = f[i]
+                ls = l.split('=')
+                if ls and ls[0].strip() == 'idp.attribute.resolver.LDAP.searchFilter':
+                    f[i] = 'idp.attribute.resolver.LDAP.searchFilter        = (|(uid=$requestContext.principalName)(mail=$requestContext.principalName))\n'
+            with open(prop_file,'w') as w:
+                w.write(''.join(f))
+
+        print "Updadting shibboleth-idp"
+        os.chdir('/opt')
+        os.system('/opt/jre/bin/jar xf {0}'.format(os.path.join(self.app_dir,'shibboleth-idp.jar')))
+        os.system('rm -r /opt/META-INF')
+        os.system('chown -R jetty:jetty /opt/shibboleth-idp')
+        os.system('cp {} /opt/gluu/jetty/identity/conf/shibboleth3/idp'.format(os.path.join(self.app_dir,'temp/metadata-providers.xml.vm')))
 
 updaterObj = GluuUpdater()
 updaterObj.updateLdapSchema()
@@ -930,7 +959,7 @@ updaterObj.createOpenTrustStore()
 updaterObj.updateDefaultDettings()
 updaterObj.updateStartIni()
 updaterObj.updateOtherLDAP()
-updaterObj.update_shib_metadata()
+updaterObj.update_shib()
 
 # TODO: is this necassary?
 #updaterObj.updateOtherLDAPEntries()
