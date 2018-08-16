@@ -2,6 +2,7 @@
 
 import os
 import sys
+import time
 
 package_type = None
 
@@ -35,6 +36,10 @@ if missing_packages:
 
 up_dir = '/opt/upd'
 
+backup_dir = os.path.join(up_dir, time.ctime().replace(' ','_'))
+
+if not os.path.exists(backup_dir):
+    os.mkdir(backup_dir)
 
 check_list = [
 
@@ -46,16 +51,17 @@ check_list = [
 ]
 
 
-
-
-
 if not (os.path.exists(check_list[0]) or  os.path.exists(check_list[1])):
     sys.exit("Please be sure you are running this script inside container.")
-
 
 for war_file_path in check_list:
 
     if os.path.exists(war_file_path):
+
+        print "Backing up", war_file_path, "to", backup_dir
+
+        os.system('cp {0} {1}'.format(war_file_path, backup_dir))
+
         war_file = os.path.basename(war_file_path)
         war_path = os.path.dirname(war_file_path)
 
@@ -65,7 +71,6 @@ for war_file_path in check_list:
 
         if os.path.exists(war_lib_dir):
              os.system('rm -r -f {0}'.format(war_lib_dir))
-
 
         os.system('cp -r {0} {1}'.format(os.path.join(up_dir, 'WEB-INF'), war_path))
 
