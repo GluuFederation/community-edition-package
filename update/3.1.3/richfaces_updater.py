@@ -36,7 +36,7 @@ if missing_packages:
 
 up_dir = '/opt/upd'
 
-backup_dir = os.path.join(up_dir, time.ctime().replace(' ','_'))
+backup_dir = os.path.join(up_dir, 'backup_' + time.ctime().replace(' ','_').replace(':','-'))
 
 if not os.path.exists(backup_dir):
     os.mkdir(backup_dir)
@@ -53,6 +53,8 @@ check_list = [
 
 if not (os.path.exists(check_list[0]) or  os.path.exists(check_list[1])):
     sys.exit("Please be sure you are running this script inside container.")
+
+tomcat_stopped = False
 
 for war_file_path in check_list:
 
@@ -72,28 +74,58 @@ for war_file_path in check_list:
         if os.path.exists(war_lib_dir):
              os.system('rm -r -f {0}'.format(war_lib_dir))
 
-        os.system('cp -r {0} {1}'.format(os.path.join(up_dir, 'WEB-INF'), war_path))
 
-        os.chdir(war_path)
+        if war_file_path.startswith('/opt/tomcat/webapps'):
+            if not tomcat_stopped:
+                print "Shtting down tomcat"
+                os.system('/opt/tomcat/bin/shutdown.sh')
+                time.sleep(5)
+                tomcat_stopped = True
+                
+            exploded_war_dir = war_file_path[:-4]
+            war_file = os.path.basename(war_file_path)
+            if os.path.exists(exploded_war_dir):
+                os.system('cp -r {0} {1}'.format(exploded_war_dir, backup_dir))
+                
+                lib_dir = os.path.join(exploded_war_dir,'WEB-INF/lib')
+            
+                lib_list = os.listdir(lib_dir)
+            
+                for f_name in lib_list:
+                    if f_name.startswith('richfaces')  and f_name.endswith('.jar'):
+                        os.remove(os.path.join(lib_dir,f_name))
+            
+                os.system('cp -r {0} {1}'.format(os.path.join(up_dir, 'WEB-INF'), exploded_war_dir))
+                os.system('chown -R node:node ' + exploded_war_dir)
 
-        print "Deleting old richfaces from {0}".format(war_file)
+            os.system('rm -f ' + war_file_path)
+            os.chdir(exploded_war_dir)
+            os.system('/usr/bin/jar -cf ../{} *'.format(war_file))
+        else:
 
-        #Get a list of files inside war file
-        zip_info = os.popen('unzip -qql {0}'.format(war_file)).readlines()
-        for f_info in zip_info:
-            f_size, f_date, f_time, f_name = f_info.split()
+            os.system('cp -r {0} {1}'.format(os.path.join(up_dir, 'WEB-INF'), war_path))
 
-            #Check if file is richfaces lib
-            if 'richfaces' in f_name and f_name.endswith('.jar'):
-                rf = os.path.basename(f_name)
-                os.system('zip -d {0} WEB-INF/lib/{1}'.format(war_file, rf))
+            os.chdir(war_path)
 
-        print "Adding latest richfaces to {0}".format(war_file)
+            print "Deleting old richfaces from {0}".format(war_file)
 
-        os.system('zip -g {0} WEB-INF/lib/*'.format(war_file))
+            #Get a list of files inside war file
+            zip_info = os.popen('unzip -qql {0}'.format(war_file)).readlines()
+            for f_info in zip_info:
+                f_size, f_date, f_time, f_name = f_info.split()
 
-        os.system('rm -r -f {0}'.format(war_lib_dir))
+                #Check if file is richfaces lib
+                if 'richfaces' in f_name and f_name.endswith('.jar'):
+                    rf = os.path.basename(f_name)
+                    os.system('zip -d {0} WEB-INF/lib/{1}'.format(war_file, rf))
+
+            print "Adding latest richfaces to {0}".format(war_file)
+
+            os.system('zip -g {0} WEB-INF/lib/*'.format(war_file))
+
+            os.system('rm -r -f {0}'.format(war_lib_dir))
 
     print
 
+print "Please exit container and restart gluu server"
 #./makeself.sh --target /opt/upd  /opt/upd  richfaces_updater.sh  "Gluu Richfaces Updater" /opt/upd/richfaces_updater.py
