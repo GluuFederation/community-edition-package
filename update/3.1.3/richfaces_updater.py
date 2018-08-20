@@ -96,7 +96,7 @@ for war_file_path in check_list:
                         os.remove(os.path.join(lib_dir,f_name))
             
                 os.system('cp -r {0} {1}'.format(os.path.join(up_dir, 'WEB-INF'), exploded_war_dir))
-                os.system('chown -R node:node ' + exploded_war_dir)
+                os.system('chown -R tomcat:tomcat ' + exploded_war_dir)
 
             os.system('rm -f ' + war_file_path)
             os.chdir(exploded_war_dir)
