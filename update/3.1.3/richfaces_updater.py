@@ -19,6 +19,12 @@ if not os.path.exists('/usr/bin/zip'):
 if not os.path.exists('/usr/bin/unzip'):
     missing_packages.append('unzip')
 
+if os.path.exists('/usr/bin/jar'):
+    jar = '/usr/bin/jar'
+else:
+    jar = '/opt/jre/bin/jar'
+
+
 if missing_packages:
     
     packages_str = ' '.join(missing_packages)
@@ -100,7 +106,7 @@ for war_file_path in check_list:
 
             os.system('rm -f ' + war_file_path)
             os.chdir(exploded_war_dir)
-            os.system('/usr/bin/jar -cf ../{} *'.format(war_file))
+            os.system('{0} -cf ../{1} *'.format(jar, war_file))
         else:
 
             os.system('cp -r {0} {1}'.format(os.path.join(up_dir, 'WEB-INF'), war_path))
