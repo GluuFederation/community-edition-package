@@ -3,6 +3,7 @@
 import os
 import sys
 import time
+import subprocess
 
 package_type = None
 
@@ -60,7 +61,12 @@ check_list = [
 if not (os.path.exists(check_list[0]) or  os.path.exists(check_list[1])):
     sys.exit("Please be sure you are running this script inside container.")
 
-tomcat_stopped = False
+tomcat_stopped = True
+
+cmd = '/opt/tomcat/bin/tomcat status'
+p = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+
+
 
 for war_file_path in check_list:
 
@@ -82,6 +88,12 @@ for war_file_path in check_list:
 
 
         if war_file_path.startswith('/opt/tomcat/webapps'):
+            cmd = '/opt/tomcat/bin/tomcat status'
+            p = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            output, error = p.communicate()
+            if 'Tomcat Servlet Container is running' in output:
+                tomcat_stopped = False
+        
             if not tomcat_stopped:
                 print "Shtting down tomcat"
                 os.system('/opt/tomcat/bin/shutdown.sh')
