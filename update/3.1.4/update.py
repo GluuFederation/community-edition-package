@@ -526,10 +526,12 @@ class GluuUpdater:
 
         for oxc in result[0][1]['oxConfigurationProperty']:
             oxcjs = json.loads(oxc)
-            if oxcjs['value1'] == oxConfigurationProperty_list[0]['value1']:
-                oxConfigurationProperty_list.remove(oxConfigurationProperty_list[0])
-            elif oxcjs['value1'] == oxConfigurationProperty_list[1]['value1']:
-                oxConfigurationProperty_list.remove(oxConfigurationProperty_list[1])
+
+            for new_oxc in oxConfigurationProperty_list[:]:
+                if new_oxc['value1'] == oxcjs['value1']:
+                    oxConfigurationProperty_list.remove(new_oxc)
+                    break
+
 
         if oxConfigurationProperty_list:
             oxConfigurationProperty=result[0][1]['oxConfigurationProperty'][:]
@@ -560,11 +562,12 @@ class GluuUpdater:
 
             for oxc in result[0][1]['oxConfigurationProperty']:
                 oxcjs = json.loads(oxc)
-                if oxcjs['value1'] == oxConfigurationProperty_list[0]['value1']:
-                    oxConfigurationProperty_list.remove(oxConfigurationProperty_list[0])
-                elif oxcjs['value1'] == oxConfigurationProperty_list[1]['value1']:
-                    oxConfigurationProperty_list.remove(oxConfigurationProperty_list[1])
 
+                for new_oxc in oxConfigurationProperty_list[:]:
+                    if new_oxc['value1'] == oxcjs['value1']:
+                        oxConfigurationProperty_list.remove(new_oxc)
+                        break
+                    
             if oxConfigurationProperty_list:
                 oxConfigurationProperty=result[0][1]['oxConfigurationProperty'][:]
 
