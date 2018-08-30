@@ -551,20 +551,31 @@ class GluuUpdater:
             dn = result[0][0]
             entry = result[0][1]
 
-            val = '{"value1":"behaviour","value2":"saml","hide":false,"description":""}'
-
             self.conn.modify_s(dn, [( ldap.MOD_REPLACE, 'oxScript',  oxScript)])
+            
+            oxConfigurationProperty_list = [ {"value1":"behaviour","value2":"saml","hide":False,"description":""},
+                    {"value1":"key_store_file","value2":"/etc/certs/passport-rp.jks","hide":False,"description":""},
+                    {"value1":"key_store_password","value2":"secret","hide":False,"description":""}
+                    ]
 
-            if not val in entry['oxConfigurationProperty']:
-                entry['oxConfigurationProperty'].append(val)
-                self.conn.modify_s(dn, [( ldap.MOD_REPLACE, 'oxConfigurationProperty',  entry['oxConfigurationProperty'])])
+            for oxc in result[0][1]['oxConfigurationProperty']:
+                oxcjs = json.loads(oxc)
+                if oxcjs['value1'] == oxConfigurationProperty_list[0]['value1']:
+                    oxConfigurationProperty_list.remove(oxConfigurationProperty_list[0])
+                elif oxcjs['value1'] == oxConfigurationProperty_list[1]['value1']:
+                    oxConfigurationProperty_list.remove(oxConfigurationProperty_list[1])
 
+            if oxConfigurationProperty_list:
+                oxConfigurationProperty=result[0][1]['oxConfigurationProperty'][:]
+
+                for oxc in oxConfigurationProperty_list:
+                    oxConfigurationProperty.append(json.dumps(oxc))
+
+                self.conn.modify_s(dn, [( ldap.MOD_REPLACE, 'oxConfigurationProperty',  oxConfigurationProperty)])
 
         else:
 
-
             dn = 'inum=%(inumOrg)s!D40C.1CA4,ou=scripts,o=%(inumOrg)s,o=gluu' % self.setup_properties
-
             attrs = {
                     'objectClass': ['oxCustomScript', 'top'],
                     'description': 'Passport SAML authentication module',
@@ -574,6 +585,8 @@ class GluuUpdater:
                     'oxConfigurationProperty': ['{"value1":"generic_remote_attributes_list","value2":"username, email, name, name, givenName, familyName, provider","description":""}',
                                                 '{"value1":"generic_local_attributes_list","value2":"uid, mail, cn, displayName, givenName, sn, provider","description":""}',
                                                 '{"value1":"behaviour","value2":"saml","hide":false,"description":""}'
+                                                '{"value1":"key_store_file","value2":"/etc/certs/passport-rp.jks","hide":false,"description":""}',
+                                                '{"value1":"key_store_password","value2":"secret","hide":false,"description":""}',
                                                ],
                     'oxLevel': '50',
                     'oxModuleProperty': ['{"value1":"usage_type","value2":"interactive","description":""}',
