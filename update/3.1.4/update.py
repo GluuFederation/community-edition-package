@@ -9,6 +9,8 @@ import json
 import base64
 import sys
 import uuid
+import io
+
 import xml.etree.ElementTree as ET
 
 from pyDes import *
@@ -121,16 +123,43 @@ def fomatWithDict(text, dictionary):
     return text % dictionary
 
 
+from ldif import LDIFParser
+
+class MyLdif(LDIFParser):
+    def __init__(self, ldif):
+        LDIFParser.__init__(self, ldif)
+        self.entries = []
+
+    def handle(self, dn, entry):
+        entry_s = {}
+        for k in entry:
+            val_s = [ str(v) for v in entry[k] ]
+            entry_s[str(k)] = val_s
+
+        self.entries.append((dn, entry_s))
+
+    def getDn(self, dn):
+        for e in self.entries:
+            if e[0] == dn:
+                return e[1]
+
+
 class GluuUpdater:
     def __init__(self):
         self.update_version = '3.1.4sp1'
         self.update_dir = os.path.join('/opt/upd/', self.update_version)
         self.app_dir = os.path.join(self.update_dir,'app')
         self.setup_properties = parse_setup_properties()
+        self.inumOrg = self.setup_properties['inumOrg']
+
         self.gluu_app_dir = '/opt/gluu/jetty'
         self.update_temp_dir = os.path.join(self.app_dir,'temp')
         self.passport_mdules_archive = os.path.join(self.app_dir, 'passport_node_modules.tgz')
         self.saml_meta_data = '/opt/shibboleth-idp/metadata/idp-metadata.xml'
+        self.extensionFolder = os.path.join(self.app_dir, 'extension')
+        self.scripts_ldif = os.path.join(self.update_temp_dir, 'scripts.ldif')
+        self.passport_config = os.path.join(self.update_temp_dir, 'passport-config.json')
+
 
         if self.setup_properties.has_key('currentGluuVersion'):
             self.cur_version = self.setup_properties['currentGluuVersion']
@@ -465,12 +494,27 @@ class GluuUpdater:
         #wait 10 secs for ldap server to start
         time.sleep(10)
 
+
     def updatePassport(self):
         if not os.path.exists('/opt/gluu/node/passport'):
             return
             
         print "Updating Passport"
         os.system('service passport stop')
+
+        passport_config_fn = '/etc/gluu/conf/passport-config.json'
+
+        shutil.copy(passport_config_fn, self.backup_folder)
+        cur_config = json.loads(open(passport_config_fn).read())
+
+        self.setup_properties['passport_rp_client_cert_alias'] = cur_config['keyId']
+
+        tmp = open(self.passport_config).read()
+        conf = tmp % self.setup_properties
+
+        with open(passport_config_fn,'w') as w:
+            w.write(conf)
+
         new_ver = glob.glob(self.update_dir+'/app/passport-*.tgz')[0]
                 
         backup_folder = '/opt/upd/{0}/backup_passport_{1}'.format(self.update_version,self.backup_time)
@@ -711,7 +755,7 @@ class GluuUpdater:
         result = self.conn.search_s('o=gluu',ldap.SCOPE_SUBTREE,'(|(objectClass=oxAuthUmaResourceSetPermission)(structuralObjectClass=oxAuthUmaResourceSetPermission))')
         
         for entry in result:
-            dn = entry[0]            
+            dn = entry[0]
             for e in entry[1]:
                 if 'oxAuthUmaResourceSet' in entry[1][e]:
                     entry[1][e].remove('oxAuthUmaResourceSetPermission')
@@ -945,7 +989,7 @@ class GluuUpdater:
                         ('umaRestrictResourceToAssociatedClient', 'add', 'entry', False),
                         ('disableU2fEndpoint', 'add', 'entry', False),
                         ('authenticationProtectionConfiguration', 'add', 'entry', {"attemptExpiration": 15, "maximumAllowedAttempts": 10, "maximumAllowedAttemptsWithoutDelay": 4, "delayTime": 2, "bruteForceProtectionEnabled": False } ),
-
+                        ('openidScopeBackwardCompatibility', 'add',  'entry', True),
                     ],
     
             'oxTrustConfApplication' : [
@@ -1064,9 +1108,78 @@ class GluuUpdater:
         os.system('chown -R jetty:jetty /opt/shibboleth-idp')
         os.system('cp {} /opt/gluu/jetty/identity/conf/shibboleth3/idp'.format(os.path.join(self.app_dir,'temp/metadata-providers.xml.vm')))
 
+
+
+    def replace_scripts(self):
+
+        print "Backing up current scripts"
+        pw_file = '/tmp/.' + str(uuid.uuid4()).split('-')[-1]
+        with open(pw_file,'w') as w:
+            w.write(self.ldap_bind_pw)
+        cmd = "/opt/opendj/bin/ldapsearch -h localhost -p 1636 -Z -X -D '{0}' -j {3} -b 'ou=scripts,o={1},o=gluu' 'objectClass=oxCustomScript' > {2}".format(
+                          self.ldap_bind_dn, self.inumOrg, os.path.join(self.backup_folder, 'scripts.ldif'), pw_file)
+        os.system(cmd)
+        os.remove(pw_file)
+
+        if not os.path.exists(self.extensionFolder):
+            return None
+
+        for extensionType in os.listdir(self.extensionFolder):
+            extensionTypeFolder = os.path.join(self.extensionFolder, extensionType)
+            if not os.path.isdir(extensionTypeFolder):
+                continue
+
+            for scriptFile in os.listdir(extensionTypeFolder):
+                scriptFilePath = os.path.join(extensionTypeFolder, scriptFile)
+                base64ScriptFile = base64.b64encode(open(scriptFilePath).read()).strip()
+
+                # Prepare key for dictionary
+                extensionScriptName = '%s_%s' % (extensionType, os.path.splitext(scriptFile)[0])
+                extensionScriptName = extensionScriptName.decode('utf-8').lower()
+
+                self.setup_properties[extensionScriptName] = base64ScriptFile
+
+        scripts_ldif_temp = open(self.scripts_ldif).read()
+        scripts_ldif_temp = scripts_ldif_temp % self.setup_properties
+
+        ldif_io = io.StringIO(scripts_ldif_temp.decode('utf-8'))
+        ldif_io.seek(0)
+
+        ldif_parser = MyLdif(ldif_io)
+        ldif_parser.parse()
+
+        script_replacements = {
+                self.inumOrg + '!0011!2DAF.F995': self.inumOrg +'!0011!2DAF.F9A5'
+            }
+
+        search_dn = 'ou=scripts,o=%(inumOrg)s,o=gluu' % self.setup_properties
+
+        result = self.conn.search_s(search_dn, ldap.SCOPE_SUBTREE, '(objectClass=oxCustomScript)')
+
+        enabled_scripts = []
+        current_scripts = []
+        for e in result:
+            current_scripts.append(str(e[0]))
+            if 'true' in e[1]['gluuStatus']:
+                inum = e[1]['inum'][0]
+                enabled_scripts.append(script_replacements.get(inum, inum))
+
+        for e in ldif_parser.entries:
+            if e[1]['inum'][0] in enabled_scripts:
+                e[1]['gluuStatus'] = ['true']
+
+        for dn, entry in ldif_parser.entries:
+            ldif = modlist.addModlist(entry)
+            if dn in current_scripts:
+                print "Deleting current script", dn
+                self.conn.delete_s(dn)
+            print "Adding new script", dn
+            self.conn.add_s(dn, ldif)
+
 updaterObj = GluuUpdater()
 updaterObj.updateLdapSchema()
 updaterObj.ldappConn()
+updaterObj.replace_scripts()
 updaterObj.fix_war_richfaces()
 updaterObj.updateWar()
 updaterObj.addUserCertificateMetadata()
