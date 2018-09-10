@@ -146,7 +146,8 @@ class MyLdif(LDIFParser):
 
 class GluuUpdater:
     def __init__(self):
-        self.update_version = '3.1.4sp1'
+        self.gluu_version = '3.1.4'
+        self.update_version = self.gluu_version + 'sp1'
         self.update_dir = os.path.join('/opt/upd/', self.update_version)
         self.app_dir = os.path.join(self.update_dir,'app')
         self.setup_properties = parse_setup_properties()
@@ -154,7 +155,7 @@ class GluuUpdater:
 
         self.gluu_app_dir = '/opt/gluu/jetty'
         self.update_temp_dir = os.path.join(self.app_dir,'temp')
-        self.passport_mdules_archive = os.path.join(self.app_dir, 'passport_node_modules.tgz')
+        self.passport_mdules_archive = os.path.join(self.app_dir, 'passport-version_{0}-node_modules.tar.gz'.format(self.gluu_version))
         self.saml_meta_data = '/opt/shibboleth-idp/metadata/idp-metadata.xml'
         self.extensionFolder = os.path.join(self.app_dir, 'extension')
         self.scripts_ldif = os.path.join(self.update_temp_dir, 'scripts.ldif')
@@ -465,26 +466,31 @@ class GluuUpdater:
                     w.write(''.join(f))
 
     def updateLdapSchema(self):
-        if self.cur_version >= '3.1.3':
+        if self.cur_version >= '3.1.4':
             return
         
         print "Updating ldap schema"
         
         if self.ldap_type == 'openldap':
             ldap_schema_dir = '/opt/gluu/schema/openldap'
-            new_schema=os.path.join(self.update_dir, 'ldap/openldap/gluu.schema')
-            cur_schema = os.path.join(ldap_schema_dir, 'gluu.schema')
+            new_schema_list = [ os.path.join(self.update_dir, 'ldap/openldap/gluu.schema') ]
+            cur_schema_list = [os.path.join(ldap_schema_dir, 'gluu.schema')]
             
         elif self.ldap_type == 'opendj':
             ldap_schema_dir = '/opt/opendj/config/schema'
-            new_schema = os.path.join(self.update_dir, 'ldap/opendj/101-ox.ldif')
-            cur_schema = os.path.join(ldap_schema_dir, '101-ox.ldif')
+            new_schema_list = [os.path.join(self.update_dir, 'ldap/opendj/101-ox.ldif'), os.path.join(self.update_dir, 'ldap/opendj/96-eduperson.ldif')]
+            cur_schema_list = [os.path.join(ldap_schema_dir, '101-ox.ldif')]
+    
+        for cur_schema in cur_schema_list:
+            print cur_schema
+            if os.path.exists(cur_schema):
+                print "Backing up", cur_schema
+                shutil.move(cur_schema, self.backup_folder)
         
-        if os.path.exists(cur_schema):
-            shutil.move(cur_schema, self.backup_folder)
-        
-        shutil.copy(new_schema, ldap_schema_dir)
-        os.system('chown ldap:ldap {0}'.format(cur_schema))
+        for new_schema in new_schema_list:
+            print "Copying new_schema", new_schema
+            shutil.copy(new_schema, ldap_schema_dir)
+            os.system('chown ldap:ldap {0}'.format(cur_schema))
 
         #After updateting schema we need to restart ldap server
         if self.ldap_type == 'openldap':
@@ -515,26 +521,28 @@ class GluuUpdater:
         with open(passport_config_fn,'w') as w:
             w.write(conf)
 
-        new_ver = glob.glob(self.update_dir+'/app/passport-*.tgz')[0]
+        passportArchive = os.path.join(self.update_dir+'/app/passport.tgz')
                 
         backup_folder = '/opt/upd/{0}/backup_passport_{1}'.format(self.update_version,self.backup_time)
         
         if not os.path.exists(backup_folder):
             os.mkdir(backup_folder)
 
-        backup_file = os.path.join(backup_folder, 'passport-package-v312-backup.tar.gz')
+        backup_file = os.path.join(backup_folder, 'passport-package-v313-backup.tar.gz')
         os.system('tar -cpzf {0} --one-file-system /opt/gluu/node/passport/'.format(backup_file))
 
         if not os.path.exists('/opt/gluu/node/passport'):
             os.mkdir('/opt/gluu/node/passport')
 
-        os.system('rm -r -f /tmp/passport_tmp_313')
-        os.mkdir('/tmp/passport_tmp_313')
+        print "Extracting passport.tgz into /opt/gluu/node/passport"
+        os.system('tar --strip 1 -xzf {0} -C /opt/gluu/node/passport --no-xattrs --no-same-owner --no-same-permissions'.format(passportArchive))
 
-        print "Extracting new passport package"
-        os.system('tar -zxf {0} --directory /tmp/passport_tmp_313'.format(new_ver))
-        os.system('cp -r /tmp/passport_tmp_313/package/* /opt/gluu/node/passport')
-                
+        modules_target_dir = '/opt/gluu/node/passport/node_modules'
+ 
+        print "Extracting passport node modules"
+        
+        os.system('tar --strip 1 -xzf {0} -C /opt/gluu/node/passport/node_modules --no-xattrs --no-same-owner --no-same-permissions'.format(self.passport_mdules_archive))
+
         index_js = os.path.join(self.update_dir, 'app', 'index.js')
         os.system('cp {0} /opt/gluu/node/passport/server/routes/'.format(index_js))
         
@@ -550,9 +558,6 @@ class GluuUpdater:
         if not os.path.exists('/opt/gluu/node/passport/server/utils/misc.js'):
             open('/opt/gluu/node/passport/server/utils/misc.js','w')
 
-        print "Extracting passport node modules"
-    
-        os.system('tar -zxf {0} -C /'.format(self.passport_mdules_archive))
 
         os.system('chown -R node:node /opt/gluu/node/passport')
 
@@ -736,7 +741,6 @@ class GluuUpdater:
             os.system('chown node:node /etc/certs/passport-sp.key')
             os.system('chown node:node /etc/certs/passport-sp.crt')
 
-        os.system('rm -r -f /tmp/passport_tmp_313')
 
     def updateOtherLDAPEntries(self):
         
@@ -1178,6 +1182,7 @@ class GluuUpdater:
 
 updaterObj = GluuUpdater()
 updaterObj.updateLdapSchema()
+"""
 updaterObj.ldappConn()
 updaterObj.replace_scripts()
 updaterObj.fix_war_richfaces()
@@ -1194,6 +1199,7 @@ updaterObj.updateDefaultDettings()
 updaterObj.updateStartIni()
 updaterObj.updateOtherLDAP()
 updaterObj.update_shib()
+"""
 
 # TODO: is this necassary?
 #updaterObj.updateOtherLDAPEntries()
