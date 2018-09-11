@@ -202,52 +202,6 @@ class GluuUpdater:
         self.conn.simple_bind_s(self.ldap_bind_dn, self.ldap_bind_pw)
 
 
-    def fix_war_richfaces(self):
-        if self.cur_version >= '3.1.3':
-            return
-        check_list = [
-            '/opt/tomcat/webapps/identity.war',
-            '/opt/gluu/jetty/identity/webapps/identity.war',
-            '/opt/tomcat/webapps/oxauth-rp.war',
-            '/opt/gluu/jetty/oxauth-rp/webapps/oxauth-rp.war',
-            ]
-
-        for war_file_path in check_list:
-
-            if os.path.exists(war_file_path):
-                war_file = os.path.basename(war_file_path)
-                war_path = os.path.dirname(war_file_path)
-
-                print "Updating", war_file_path
-
-                war_lib_dir = os.path.join(war_path, 'WEB-INF')
-
-                if os.path.exists(war_lib_dir):
-                     os.system('rm -r -f {0}'.format(war_lib_dir))
-
-
-                os.system('cp -r {0} {1}'.format(os.path.join(self.app_dir, 'WEB-INF'), war_path))
-
-                os.chdir(war_path)
-
-                print "Deleting old richfaces from {0}".format(war_file)
-
-                #Get a list of files inside war file
-                zip_info = os.popen('unzip -qql {0}'.format(war_file)).readlines()
-                for f_info in zip_info:
-                    f_size, f_date, f_time, f_name = f_info.split()
-
-                    #Check if file is richfaces lib
-                    if 'richfaces' in f_name and f_name.endswith('.jar'):
-                        rf = os.path.basename(f_name)
-                        os.system('zip -d {0} WEB-INF/lib/{1}'.format(war_file, rf))
-
-                print "Adding latest richfaces to {0}".format(war_file)
-
-                os.system('zip -g {0} WEB-INF/lib/*'.format(war_file))
-
-                os.system('rm -r -f {0}'.format(war_lib_dir))
-
     def updateWar(self):
 
         new_war_dir = os.path.join(self.update_dir, 'war')
@@ -418,8 +372,7 @@ class GluuUpdater:
     
             
     def upgradeJetty(self):
-        if self.cur_version >= '3.1.3':
-            return
+
         print "Updating jetty"
         
         jetty_re = re.compile('jetty-distribution-(\d+).(\d+).(\d+).(.+)')
@@ -464,6 +417,12 @@ class GluuUpdater:
             if wf:
                 with open(fn,'w') as w:
                     w.write(''.join(f))
+
+        if not os.path.exists('/opt/jetty-9.4/temp'):
+            os.mkdir('/opt/jetty-9.4/temp')
+            
+        os.system('chown -R jetty:jetty /opt/jetty-9.4/')
+
 
     def updateLdapSchema(self):
         if self.cur_version >= '3.1.4':
@@ -1182,10 +1141,8 @@ class GluuUpdater:
 
 updaterObj = GluuUpdater()
 updaterObj.updateLdapSchema()
-"""
 updaterObj.ldappConn()
 updaterObj.replace_scripts()
-updaterObj.fix_war_richfaces()
 updaterObj.updateWar()
 updaterObj.addUserCertificateMetadata()
 updaterObj.fixAttributeTypes()
@@ -1199,7 +1156,7 @@ updaterObj.updateDefaultDettings()
 updaterObj.updateStartIni()
 updaterObj.updateOtherLDAP()
 updaterObj.update_shib()
-"""
+
 
 # TODO: is this necassary?
 #updaterObj.updateOtherLDAPEntries()
