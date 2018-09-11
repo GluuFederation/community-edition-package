@@ -10,6 +10,7 @@ import base64
 import sys
 import uuid
 import io
+import platform
 
 import xml.etree.ElementTree as ET
 
@@ -193,6 +194,12 @@ class GluuUpdater:
         self.hostname = self.setup_properties['hostname'] 
         self.backup_time = time.strftime('%Y-%m-%d.%H:%M:%S')
         self.backup_folder = '/opt/upd/{0}/backup_openldap_{1}'.format(self.update_version, self.backup_time)
+
+
+        p = platform.linux_distribution()
+        self.os_type = p[0].split()[0].lower()
+        self.os_version = p[1].split('.')[0]
+
         
         if not os.path.exists(self.backup_folder):
             os.mkdir(self.backup_folder)
@@ -1139,7 +1146,43 @@ class GluuUpdater:
             print "Adding new script", dn
             self.conn.add_s(dn, ldif)
 
+    def updateApacheConfig(self):
+        
+        apache2_conf_fn = os.path.join(self.update_temp_dir, 'httpd.conf')
+        apache2_ssl_conf_fn = os.path.join(self.update_temp_dir, 'https_gluu.conf')
+        apache2_24_conf_fn = os.path.join(self.update_temp_dir,'httpd_2.4.conf')
+        
+        apache2_conf = fomatWithDict(open(apache2_conf_fn).read(), self.setup_properties)
+        
+        apache2_ssl_conf = fomatWithDict(open(apache2_ssl_conf_fn).read(), self.setup_properties)
+        apache2_24_conf = fomatWithDict(open(apache2_24_conf_fn).read(), self.setup_properties)
+
+        if (self.os_type in ['centos', 'red'] and self.os_version >= '7') or self.os_type=='fedora':
+            shutil.copy('/etc/httpd/conf/httpd.conf', self.backup_folder)
+            with open('/etc/httpd/conf/httpd.conf','w') as w:
+                w.write(apache2_24_conf)
+            
+            shutil.copy('/etc/httpd/conf.d/https_gluu.conf', self.backup_folder)
+            with open('/etc/httpd/conf.d/https_gluu.conf','w') as w:
+                w.write(apache2_ssl_conf)
+        
+        if (self.os_type in ['centos', 'red'] and self.os_version < '7'):
+            shutil.copy('/etc/httpd/conf/httpd.conf', self.backup_folder)
+            with open('/etc/httpd/conf/httpd.conf','w') as w:
+                w.write(apache2_conf)
+
+            shutil.copy('/etc/httpd/conf.d/https_gluu.conf', self.backup_folder)
+            with open('/etc/httpd/conf.d/https_gluu.conf','w') as w:
+                w.write(apache2_ssl_conf)
+
+        if self.os_type in ['debian', 'ubuntu']:
+            shutil.copy('/etc/apache2/sites-available/https_gluu.conf', self.backup_folder)
+            with open('/etc/apache2/sites-available/https_gluu.conf','w') as w:
+                w.write(apache2_ssl_conf)
+
+
 updaterObj = GluuUpdater()
+updaterObj.updateApacheConfig()
 updaterObj.updateLdapSchema()
 updaterObj.ldappConn()
 updaterObj.replace_scripts()
