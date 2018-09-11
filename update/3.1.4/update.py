@@ -437,6 +437,15 @@ class GluuUpdater:
         
         print "Updating ldap schema"
         
+        print "Stopping LDAP Server"
+        if self.ldap_type == 'openldap':
+            os.system('/etc/init.d/solserver stop')
+        else:
+            os.system('/etc/init.d/opendj stop')
+        
+        #wait 5 secs for ldap server to stop
+        time.sleep(5)
+        
         if self.ldap_type == 'openldap':
             ldap_schema_dir = '/opt/gluu/schema/openldap'
             new_schema_list = [ os.path.join(self.update_dir, 'ldap/openldap/gluu.schema') ]
@@ -458,11 +467,12 @@ class GluuUpdater:
             shutil.copy(new_schema, ldap_schema_dir)
             os.system('chown ldap:ldap {0}'.format(cur_schema))
 
+        print "Starting LDAP Server"
         #After updateting schema we need to restart ldap server
         if self.ldap_type == 'openldap':
-            os.system('/etc/init.d/solserver restart')
+            os.system('/etc/init.d/solserver start')
         else:
-            os.system('/etc/init.d/opendj restart')
+            os.system('/etc/init.d/opendj start')
         #wait 10 secs for ldap server to start
         time.sleep(10)
 
