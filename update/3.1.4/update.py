@@ -857,6 +857,22 @@ class GluuUpdater:
 
     def updateOtherLDAP(self):
         
+        result = self.conn.search_s('ou=appliances,o=gluu',ldap.SCOPE_SUBTREE, '(oxTrustConfAttributeResolver=*)', ['oxTrustConfAttributeResolver'])
+        if result:
+            dn = result[0][0]
+            oldConfig = json.loads(result[0][1]['oxTrustConfAttributeResolver'][0])
+            newConfig = json.dumps(
+                        {'nameIdConfigs':[ {
+
+                                'name':oldConfig['attributeName'],
+                                'sourceAttribute': oldConfig['attributeBase'],
+                                'nameIdType': oldConfig['nameIdType'],
+                                'enabled': oldConfig['enabled'],
+                        }]})
+
+            self.conn.modify_s(dn, [( ldap.MOD_REPLACE, 'oxTrustConfAttributeResolver',  newConfig)])
+
+
         result = self.conn.search_s('ou=appliances,o=gluu',ldap.SCOPE_SUBTREE,'(oxCacheConfiguration=*)', ['oxCacheConfiguration','oxAuthenticationMode', 'oxTrustAuthenticationMode'])
         dn = result[0][0]
 
