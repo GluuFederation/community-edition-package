@@ -519,9 +519,6 @@ class GluuUpdater:
         
         os.system('tar --strip 1 -xzf {0} -C /opt/gluu/node/passport/node_modules --no-xattrs --no-same-owner --no-same-permissions'.format(self.passport_mdules_archive))
 
-        index_js = os.path.join(self.update_dir, 'app', 'index.js')
-        os.system('cp {0} /opt/gluu/node/passport/server/routes/'.format(index_js))
-        
         saml_config = os.path.join(self.update_dir, 'app', 'passport-saml-config.json')
         os.system('cp {0} /etc/gluu/conf'.format(saml_config))
         os.system('chown node:node /etc/gluu/conf/passport-saml-config.json')
@@ -567,19 +564,14 @@ class GluuUpdater:
             self.conn.modify_s(dn, [( ldap.MOD_REPLACE, 'oxConfigurationProperty',  oxConfigurationProperty)])
 
 
-        oxScript = open(os.path.join(self.update_dir, 'app', 'PassportExternalAuthenticator.py')).read()
-        self.conn.modify_s(dn, [( ldap.MOD_REPLACE, 'oxScript',  oxScript)])
-
         inum = '%(inumOrg)s!D40C.1CA4' % self.setup_properties
         result = self.conn.search_s('o=gluu',ldap.SCOPE_SUBTREE,'inum={0}'.format(inum))
-        oxScript = open(os.path.join(self.update_dir, 'app', 'SamlPassportAuthenticator.py')).read()
+        
         if result:
 
             dn = result[0][0]
             entry = result[0][1]
 
-            self.conn.modify_s(dn, [( ldap.MOD_REPLACE, 'oxScript',  oxScript)])
-            
             oxConfigurationProperty_list = [ {"value1":"behaviour","value2":"saml","hide":False,"description":""},
                     {"value1":"key_store_file","value2":"/etc/certs/passport-rp.jks","hide":False,"description":""},
                     {"value1":"key_store_password","value2":"secret","hide":False,"description":""}
@@ -635,8 +627,6 @@ class GluuUpdater:
 
         if result:
             dn=result[0][0]
-            oxScript = open(os.path.join(self.update_dir, 'app', 'UmaClientAuthzRptPolicy.py')).read()
-            self.conn.modify_s(dn, [( ldap.MOD_REPLACE, 'oxScript',  oxScript)])
             self.conn.modify_s(dn, [( ldap.MOD_REPLACE, 'displayName',  'scim_access_policy')])
     
         if self.cur_version < '3.1.3':
@@ -857,21 +847,24 @@ class GluuUpdater:
 
     def updateOtherLDAP(self):
         
-        result = self.conn.search_s('ou=appliances,o=gluu',ldap.SCOPE_SUBTREE, '(oxTrustConfAttributeResolver=*)', ['oxTrustConfAttributeResolver'])
-        if result:
-            dn = result[0][0]
-            oldConfig = json.loads(result[0][1]['oxTrustConfAttributeResolver'][0])
-            newConfig = json.dumps(
-                        {'nameIdConfigs':[ {
+        if self.cur_version < '3.1.3':
+            result = self.conn.search_s('ou=appliances,o=gluu',ldap.SCOPE_SUBTREE, '(oxTrustConfAttributeResolver=*)', ['oxTrustConfAttributeResolver'])
+            if result:
+                dn = result[0][0]
+                try:
+                    oldConfig = json.loads(result[0][1]['oxTrustConfAttributeResolver'][0])
+                    newConfig = json.dumps(
+                            {'nameIdConfigs':[ {
 
-                                'name':oldConfig['attributeName'],
-                                'sourceAttribute': oldConfig['attributeBase'],
-                                'nameIdType': oldConfig['nameIdType'],
-                                'enabled': oldConfig['enabled'],
-                        }]})
+                                    'name':oldConfig['attributeName'],
+                                    'sourceAttribute': oldConfig['attributeBase'],
+                                    'nameIdType': oldConfig['nameIdType'],
+                                    'enabled': oldConfig['enabled'],
+                            }]})
 
-            self.conn.modify_s(dn, [( ldap.MOD_REPLACE, 'oxTrustConfAttributeResolver',  newConfig)])
-
+                    self.conn.modify_s(dn, [( ldap.MOD_REPLACE, 'oxTrustConfAttributeResolver',  newConfig)])
+                except:
+                    pass
 
         result = self.conn.search_s('ou=appliances,o=gluu',ldap.SCOPE_SUBTREE,'(oxCacheConfiguration=*)', ['oxCacheConfiguration','oxAuthenticationMode', 'oxTrustAuthenticationMode'])
         dn = result[0][0]
