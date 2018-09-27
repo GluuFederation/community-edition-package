@@ -831,20 +831,32 @@ class GluuUpdater:
             return
 
         change_default=(
-                ('/etc/default/oxauth', 'JAVA_OPTIONS', 'JAVA_OPTIONS="-server -Xms256m -Xmx920m -XX:MaxMetaspaceSize=395m -XX:+DisableExplicitGC -Dgluu.base=/etc/gluu -Dserver.base=/opt/gluu/jetty/oxauth -Dlog.base=/opt/gluu/jetty/oxauth -Dpython.home=/opt/jython"'),
-                ('/etc/default/identity', 'JAVA_OPTIONS', 'JAVA_OPTIONS="-server -Xms256m -Xmx613m -XX:MaxMetaspaceSize=263m -XX:+DisableExplicitGC -Dgluu.base=/etc/gluu -Dserver.base=/opt/gluu/jetty/identity -Dlog.base=/opt/gluu/jetty/identity -Dpython.home=/opt/jython -Dorg.eclipse.jetty.server.Request.maxFormContentSize=50000000"'),
-                ('/etc/default/idp', 'JAVA_OPTIONS', 'JAVA_OPTIONS="-server -Xms179m -Xmx179m -XX:MaxMetaspaceSize=77m -XX:+DisableExplicitGC -XX:+UseG1GC -Dgluu.base=/etc/gluu -Dserver.base=/opt/gluu/jetty/idp"'),
-           
-           )
+                        ('/etc/default/idp', ['-XX:+DisableExplicitGC', '-XX:+UseG1GC', '-Dgluu.base=/etc/gluu', '-Dserver.base=/opt/gluu/jetty/idp']),
+                        )
 
-        for opt in change_default:
-            if os.path.exists(opt[0]):
-                tmp = open(opt[0]).readlines()
+        for file_n, ext in change_default:
+            if os.path.exists(file_n):
+                tmp = open(file_n).readlines()
+                
                 for i in range(len(tmp)):
-                    if tmp[i].startswith(opt[1]):
-                        tmp[i] = opt[2]+'\n'
-                with open(opt[0],'w') as f:
+                    line = tmp[i].strip()
+                    
+                    if line.startswith('JAVA_OPTIONS'):
+                        n = line.find('=')
+                        JAVA_OPTIONS = line[n+1:].strip().strip('"')
+                        cur_options = ['-server']
+                        
+                        for opt in JAVA_OPTIONS.split():
+                            if opt.startswith('-Xms') or opt.startswith('-Xmx') or opt.startswith('-XX:MaxMetaspaceSize'):
+                                cur_options.append(opt)
+
+                        cur_options += ext
+                        new_line = 'JAVA_OPTIONS="{0}"\n'.format(' '.join(cur_options))
+                        tmp[i] = new_line
+                        
+                with open(file_n,'w') as f:
                     f.write(''.join(tmp))
+
 
     def updateStartIni(self):
         if self.cur_version >= '3.1.3':
