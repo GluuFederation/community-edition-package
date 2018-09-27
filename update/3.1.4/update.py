@@ -11,6 +11,9 @@ import sys
 import uuid
 import io
 import platform
+import uuid
+import random
+import string
 
 import xml.etree.ElementTree as ET
 
@@ -86,6 +89,19 @@ def parse_setup_properties(prop_file='/install/community-edition-setup/setup.pro
                     setup_prop[k] = v
 
     return setup_prop
+
+def getQuad():
+    return str(uuid.uuid4())[:4].upper()
+
+def getPW(size=12, chars=string.ascii_uppercase + string.digits + string.lowercase):
+        return ''.join(random.choice(chars) for _ in range(size))
+
+def obscure(data, encode_salt):
+    engine = triple_des(encode_salt, ECB, pad=None, padmode=PAD_PKCS5)
+    data = data.encode('ascii')
+    en_data = engine.encrypt(data)
+    return base64.b64encode(en_data)
+
 
 def get_ldap_admin_password():
     salt_file = open('/etc/gluu/conf/salt').read()
@@ -193,7 +209,7 @@ class GluuUpdater:
         self.inumOrg = self.setup_properties['inumOrg']
         self.hostname = self.setup_properties['hostname'] 
         self.backup_time = time.strftime('%Y-%m-%d.%H:%M:%S')
-        self.backup_folder = '/opt/upd/{0}/backup_openldap_{1}'.format(self.update_version, self.backup_time)
+        self.backup_folder = '/opt/upd/{0}/backup_{1}'.format(self.update_version, self.backup_time)
 
 
         p = platform.linux_distribution()
@@ -685,10 +701,12 @@ class GluuUpdater:
                 w.write(passport_default_content)
 
         pp_conf = json.load(open('/etc/gluu/conf/passport-config.json'))
-        pp_conf['applicationEndpoint'] = 'https://{0}/oxauth/postlogin'.format(self.setup_properties['hostname'])
-        w = open('/etc/gluu/conf/passport-config.json','w')
-        json.dump(pp_conf, w)
-        w.close()
+        
+        pp_conf['applicationStartpoint'] = "https://{0}/oxauth/auth/passport/passportlogin.htm".format(self.setup_properties['hostname'])
+        pp_conf['applicationEndpoint'] = 'https://{0}/oxauth/postlogin.htm'.format(self.setup_properties['hostname'])
+
+        with open('/etc/gluu/conf/passport-config.json','w') as W:
+            json.dump(pp_conf, W, indent=2)
 
         if not os.path.exists('/etc/certs/passport-sp.key'):
             os.system('/usr/bin/openssl genrsa -des3 -out /etc/certs/passport-sp.key.orig -passout pass:secret 2048')
@@ -997,7 +1015,6 @@ class GluuUpdater:
                     ('ScimProperties','add', 'entry', {'maxCount': 200}),
 
                 ],
-                   
         }
 
 
@@ -1037,10 +1054,21 @@ class GluuUpdater:
 
 
         mod_dict = {'oxAuthGrantType': ['authorization_code', 'implicit', 'refresh_token'],
-                    'oxAuthRedirectURI': ['https://{0}/identity/authentication/getauthcode'.format(self.setup_properties['hostname']), 'https://{0}/oxauth/restv1/uma/gather_claims?authentication=true'.format(self.setup_properties['hostname'])],
                     'oxClaimRedirectURI': ['https://{0}/oxauth/restv1/uma/gather_claims'.format(self.setup_properties['hostname'])],
+                    'oxAuthPostLogoutRedirectURI': ['https://{0}/identity/authentication/finishlogout'.format(self.hostname),
+                                    ],
+
                     }
 
+        rep_dict = { 'oxAuthRedirectURI': [
+                                        'https://{0}/identity/scim/auth'.format(self.hostname),
+                                        'https://{0}/identity/authentication/authcode'.format(self.hostname),
+                                        'https://{0}/identity/authentication/getauthcode'.format(self.hostname),
+                                        'https://{0}/cas/login'.format(self.hostname),
+                                        'https://{0}/oxauth/restv1/uma/gather_claims?authentication=true'.format(self.hostname),
+                                        'https://{0}/oxauth/restv1/uma/gather_claims'.format(self.hostname),
+                                        ],
+                    }
 
         result = self.conn.search_s(dn, ldap.SCOPE_BASE,'(objectClass=*)', mod_dict.keys())
 
@@ -1055,9 +1083,12 @@ class GluuUpdater:
 
             if add_list:
                 self.conn.modify_s(dn, [( ldap.MOD_ADD, entry,  add_list)])
-
+        
+        for entry in rep_dict:
+            self.conn.modify_s(dn, [( ldap.MOD_REPLACE, entry,  rep_dict[entry])])
 
     def update_shib(self):
+        #saml-nameid.xml.vm is missing after upgrade
 
         if not os.path.exists(self.saml_meta_data):
             return
@@ -1202,11 +1233,69 @@ class GluuUpdater:
             with open('/etc/apache2/sites-available/https_gluu.conf','w') as w:
                 w.write(apache2_ssl_conf)
 
+    def createIDPClient(self):
+        
+        clientTwoQuads = '%s.%s' % (getQuad(),getQuad())
+
+        idp_client_id = '%s!0008!%s' % (self.setup_properties['inumOrg'], clientTwoQuads)
+        self.setup_properties['idp_client_id'] = idp_client_id
+
+        dn = "inum=%(idp_client_id)s,ou=clients,o=%(inumOrg)s,o=gluu" % self.setup_properties
+        
+        idpClient_pw = getPW()
+        idpClient_encoded_pw = obscure(idpClient_pw, self.setup_properties['encode_salt'])
+
+
+        with open('/install/community-edition-setup/setup.properties.last','a') as W:
+            W.write('idp_client_id=' + idp_client_id+'\n')
+            W.write('idpClient_pw=' + idpClient_pw+'\n')
+            W.write('idpClient_encoded_pw=' + idpClient_encoded_pw+'\n')
+
+
+        attrs = { 'objectClass': ['oxAuthClient', 'top'],
+                  'displayName': ['IDP client'],
+                  'inum': [idp_client_id],
+                  'oxAuthClientSecret': [idpClient_encoded_pw],
+                  'oxAuthAppType': ['web'],
+                  'oxAuthResponseType': ['code'],
+                  'oxAuthGrantType': ['authorization_code','refresh_token'],
+                  'oxAuthScope': [ 'inum=%(inumOrg)s!0009!F0C4,ou=scopes,o=%(inumOrg)s,o=gluu' % self.setup_properties,
+                                   'inum=%(inumOrg)s!0009!10B2,ou=scopes,o=%(inumOrg)s,o=gluu' % self.setup_properties,
+                                   'inum=%(inumOrg)s!0009!764C,ou=scopes,o=%(inumOrg)s,o=gluu' % self.setup_properties,
+                                ],
+                  'oxAuthRedirectURI': ['https://%(hostname)s/idp/Authn/oxAuth' % self.setup_properties],
+                  'oxAuthPostLogoutRedirectURI': ['https://%(hostname)s/idp/profile/Logout' % self.setup_properties],
+                  'oxAuthPostLogoutRedirectURI': ['https://%(hostname)s/identity/authentication/finishlogout' % self.setup_properties],
+                  'oxAuthTokenEndpointAuthMethod': ['client_secret_basic'],
+                  'oxAuthIdTokenSignedResponseAlg': ['HS256'],
+                  'oxAuthTrustedClient': ['true'],
+                  'oxAuthSubjectType': ['public'],
+                  'oxPersistClientAuthorizations': ['false'],
+                  'oxAuthLogoutSessionRequired': ['true'],
+                  }
+
+        ldif = modlist.addModlist(attrs)
+        self.conn.add_s(dn,ldif)
+
+
+        #Fix oxIDP for SAML
+        dn = 'ou=oxidp,ou=configuration,inum=%(inumAppliance)s,ou=appliances,o=gluu' % self.setup_properties        
+        result = self.conn.search_s(dn, ldap.SCOPE_BASE,'(objectClass=*)')
+        oxConfApplication = json.loads(result[0][1]['oxConfApplication'][0])
+        oxConfApplication['openIdClientId'] = idp_client_id
+        oxConfApplication['openIdClientPassword'] = idpClient_encoded_pw
+        
+        oxConfApplication['openIdRedirectUrl'] = 'https://{0}/idp/Authn/oxAuth'.format(self.hostname)
+        oxConfApplication['openIdPostLogoutRedirectUri'] = 'https://{0}/idp/profile/Logout'.format(self.hostname)
+        oxConfApplication_js = json.dumps(oxConfApplication)
+        self.conn.modify_s(dn, [( ldap.MOD_REPLACE, 'oxConfApplication',  oxConfApplication_js)])        
+
 
 updaterObj = GluuUpdater()
 updaterObj.updateApacheConfig()
 updaterObj.updateLdapSchema()
 updaterObj.ldappConn()
+updaterObj.createIDPClient()
 updaterObj.replace_scripts()
 updaterObj.updateWar()
 updaterObj.addUserCertificateMetadata()
