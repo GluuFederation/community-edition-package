@@ -1346,7 +1346,10 @@ updaterObj.update_shib()
 
 #./makeself.sh --target /opt/upd/3.1.4sp1/  /opt/upd/3.1.4sp1/ 3-1-4-sp1.sh  "Gluu Updater Package 3.1.4.sp1" /opt/upd/3.1.4sp1/bin/update.py
 
-print """Please Note: oxAuthenticationMode and oxTrustAuthenticationMode was
+print """
+\033[;1mPlease Note:\033[0;0m oxAuthenticationMode and oxTrustAuthenticationMode was
 set to auth_ldap_server in case custom authentication script fails.
-Please review your scripts and adjust default authentication method."""
+Please review your scripts and adjust default authentication method
+
+"""
 print "Update is complete, please exit from container and restart gluu server"
