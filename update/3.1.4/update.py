@@ -1113,16 +1113,27 @@ class GluuUpdater:
             f.write(new_saml_meta_data)
 
 
-        prop_file = '/opt/shibboleth-idp/conf/ldap.properties'
-        if os.path.exists(prop_file):
-            f=open(prop_file).readlines()
-            for i in range(len(f)):
-                l = f[i]
-                ls = l.split('=')
-                if ls and ls[0].strip() == 'idp.attribute.resolver.LDAP.searchFilter':
-                    f[i] = 'idp.attribute.resolver.LDAP.searchFilter        = (|(uid=$requestContext.principalName)(mail=$requestContext.principalName))\n'
-            with open(prop_file,'w') as w:
-                w.write(''.join(f))
+        changes = (('/opt/shibboleth-idp/conf/ldap.properties', [('idp.attribute.resolver.LDAP.searchFilter', '(|(uid=$requestContext.principalName)(mail=$requestContext.principalName))'),
+                                                                ]),
+                    ('/opt/shibboleth-idp/conf/idp.properties', [
+                                                                ('idp.authn.flows', 'oxAuth'),
+                                                                ]),
+                    )
+        
+        for prop_file, change_list in changes:
+        
+            if os.path.exists(prop_file):
+                f=open(prop_file).readlines()
+                for i in range(len(f)):
+                    l = f[i]
+                    ls = l.split('=')
+                    if ls:
+                        for change in change_list:
+                            if ls[0].strip() == change[0]:
+                                f[i] = ' = '.join(change) + '\n'
+                with open(prop_file,'w') as w:
+                    w.write(''.join(f))
+
 
         print "Updadting shibboleth-idp"
         os.chdir('/opt')
