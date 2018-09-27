@@ -902,10 +902,16 @@ class GluuUpdater:
         if not 'oxAuthenticationMode' in result[0][1]:
             self.conn.modify_s(dn, [( ldap.MOD_ADD, 'oxAuthenticationMode',  ['auth_ldap_server'])])
             print 'oxAuthenticationMode added'
+        else:
+            self.conn.modify_s(dn, [( ldap.MOD_REPLACE, 'oxAuthenticationMode',  ['auth_ldap_server'])])
+            print 'oxAuthenticationMode was set to auth_ldap_server'
 
         if not 'oxTrustAuthenticationMode' in result[0][1]:
             self.conn.modify_s(dn, [( ldap.MOD_ADD, 'oxTrustAuthenticationMode',  ['auth_ldap_server'])])
             print 'oxTrustAuthenticationMode added'
+        else:
+            self.conn.modify_s(dn, [( ldap.MOD_REPLACE, 'oxTrustAuthenticationMode',  ['auth_ldap_server'])])
+            print 'oxTrustAuthenticationMode was set to auth_ldap_server'
         
         oxCacheConfiguration = '{"cacheProviderType": "IN_MEMORY", "memcachedConfiguration": {"servers":"localhost:11211", "maxOperationQueueLength":100000, "bufferSize":32768, "defaultPutExpiration":60, "connectionFactoryType": "DEFAULT"}, "inMemoryConfiguration": {"defaultPutExpiration":60}, "redisConfiguration":{"servers":"localhost:6379", "defaultPutExpiration": 60}}'
         self.conn.modify_s(dn, [( ldap.MOD_REPLACE, 'oxCacheConfiguration',  oxCacheConfiguration)])
@@ -1340,4 +1346,7 @@ updaterObj.update_shib()
 
 #./makeself.sh --target /opt/upd/3.1.4sp1/  /opt/upd/3.1.4sp1/ 3-1-4-sp1.sh  "Gluu Updater Package 3.1.4.sp1" /opt/upd/3.1.4sp1/bin/update.py
 
+print """Please Note: oxAuthenticationMode and oxTrustAuthenticationMode was
+set to auth_ldap_server in case custom authentication script fails.
+Please review your scripts and adjust default authentication method."""
 print "Update is complete, please exit from container and restart gluu server"
