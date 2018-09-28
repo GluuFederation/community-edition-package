@@ -1031,6 +1031,7 @@ class GluuUpdater:
                     ('scimTestModeAccessToken','remove', 'entry', None),
                     ('ScimProperties','remove', 'entry', None),
                     ('ScimProperties','add', 'entry', {'maxCount': 200}),
+                    ('passwordResetRequestExpirationTime', 'add', 'entry', 600),
 
                 ],
         }
@@ -1351,5 +1352,5 @@ print """
 set to auth_ldap_server in case custom authentication script fails.
 Please review your scripts and adjust default authentication method
 
+Update is complete, please exit from container and restart gluu server
 """
-print "Update is complete, please exit from container and restart gluu server"
