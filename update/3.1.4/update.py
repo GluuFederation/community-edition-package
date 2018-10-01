@@ -254,7 +254,9 @@ class GluuUpdater:
                 print "Updating", war_app
                 shutil.copy(new_war_app_file, app_dir)
 
-
+        shutil.copy('/opt/dist/gluu/idp3_cml_keygenerator.jar', self.backup_folder)
+        shutil.copy(os.path.join(self.app_dir, 'idp3_cml_keygenerator.jar'), '/opt/dist/gluu/')
+        
     # TODO: Do we still need this?
     def updateOxAuthConf(self):
 
