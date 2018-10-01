@@ -172,7 +172,7 @@ class MyLdif(LDIFParser):
 class GluuUpdater:
     def __init__(self):
         self.gluu_version = '3.1.4'
-        self.update_version = self.gluu_version + 'sp1'
+        self.update_version = self.gluu_version + 'upg'
         self.update_dir = os.path.join('/opt/upd/', self.update_version)
         self.app_dir = os.path.join(self.update_dir,'app')
         self.setup_properties = parse_setup_properties()
@@ -1358,7 +1358,7 @@ updaterObj.update_shib()
 # TODO: is this necassary?
 #updaterObj.updateOtherLDAPEntries()
 
-#./makeself.sh --target /opt/upd/3.1.4sp1/  /opt/upd/3.1.4sp1/ 3-1-4-sp1.sh  "Gluu Updater Package 3.1.4.sp1" /opt/upd/3.1.4sp1/bin/update.py
+#./makeself.sh --target /opt/upd/3.1.4upg/  /opt/upd/3.1.4sp1/ 3-1-4-upg.sh  "Gluu Updater Package 3.1.4.upg" /opt/upd/3.1.4upg/bin/update.py
 
 print """
 \033[;1mPlease Note:\033[0;0m oxAuthenticationMode and oxTrustAuthenticationMode was
