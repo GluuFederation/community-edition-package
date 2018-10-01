@@ -65,6 +65,14 @@ if not result.strip() or (result.strip() and result.strip().lower()[0] != 'y'):
     print "You can re-run this script to upgrade. Bye now ..."
     sys.exit()
 
+msg = """Would you like to replace all the default Gluu Server scripts for 3.1.4?
+(This will replace any customization you may have made to these default script entries)
+(Y|n)"""
+repace_scripts = False
+result = raw_input(msg)
+if not result.strip() or result.strip().lower()[0] == 'y':
+    repace_scripts = True
+
 print "Starting Upgrade..."
 
 def parse_setup_properties(prop_file='/install/community-edition-setup/setup.properties.last'):
@@ -1326,7 +1334,10 @@ updaterObj.updateApacheConfig()
 updaterObj.updateLdapSchema()
 updaterObj.ldappConn()
 updaterObj.createIDPClient()
-updaterObj.replace_scripts()
+
+if repace_scripts:
+    updaterObj.replace_scripts()
+
 updaterObj.updateWar()
 updaterObj.addUserCertificateMetadata()
 updaterObj.fixAttributeTypes()
