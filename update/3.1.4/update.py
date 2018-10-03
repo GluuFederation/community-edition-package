@@ -1,4 +1,4 @@
-#!/usr/bin/python(self.app_dir,'temp/metadata-providers.xml.vm')))
+#!/usr/bin/python
 
 import os
 import time
