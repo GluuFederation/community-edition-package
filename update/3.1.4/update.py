@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/python(self.app_dir,'temp/metadata-providers.xml.vm')))
 
 import os
 import time
@@ -1169,8 +1169,8 @@ class GluuUpdater:
         os.system('/opt/jre/bin/jar xf {0}'.format(os.path.join(self.app_dir,'shibboleth-idp.jar')))
         os.system('rm -r /opt/META-INF')
         os.system('chown -R jetty:jetty /opt/shibboleth-idp')
-        os.system('cp {} /opt/gluu/jetty/identity/conf/shibboleth3/idp'.format(os.path.join(self.app_dir,'temp/metadata-providers.xml.vm')))
-        os.system('cp {} /opt/gluu/jetty/identity/conf/shibboleth3/idp'.format(os.path.join(self.app_dir,'temp/saml-nameid.xml.vm')))
+        os.system('cp {0} /opt/gluu/jetty/identity/conf/shibboleth3/idp'.format(os.path.join(self.app_dir,'temp/metadata-providers.xml.vm')))
+        os.system('cp {0} /opt/gluu/jetty/identity/conf/shibboleth3/idp'.format(os.path.join(self.app_dir,'temp/saml-nameid.xml.vm')))
 
 
     def replace_scripts(self):
@@ -1358,7 +1358,7 @@ updaterObj.update_shib()
 # TODO: is this necassary?
 #updaterObj.updateOtherLDAPEntries()
 
-#./makeself.sh --target /opt/upd/3.1.4upg/  /opt/upd/3.1.4sp1/ 3-1-4-upg.sh  "Gluu Updater Package 3.1.4.upg" /opt/upd/3.1.4upg/bin/update.py
+#./makeself.sh --target /opt/upd/3.1.4upg/  /opt/upd/3.1.4upg/ 3-1-4-upg.sh  "Gluu Updater Package 3.1.4.upg" /opt/upd/3.1.4upg/bin/update.py
 
 print """
 \033[;1mPlease Note:\033[0;0m oxAuthenticationMode and oxTrustAuthenticationMode was
