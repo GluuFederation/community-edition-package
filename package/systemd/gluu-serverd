@@ -1,6 +1,6 @@
 #!/bin/bash
 
-GLUU_VERSION=4.0.0
+GLUU_VERSION=4.0
 
 ready() {
     	PORTS=`ss -tunpl | awk '{ print $5 }' |grep -Eohw ':(80|443|8080|8081|8082|8083|8084|8085|8086|8090|1389|1689|11211)$'`
