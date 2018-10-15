@@ -1171,7 +1171,8 @@ class GluuUpdater:
         os.system('chown -R jetty:jetty /opt/shibboleth-idp')
         os.system('cp {0} /opt/gluu/jetty/identity/conf/shibboleth3/idp'.format(os.path.join(self.app_dir,'temp/metadata-providers.xml.vm')))
         os.system('cp {0} /opt/gluu/jetty/identity/conf/shibboleth3/idp'.format(os.path.join(self.app_dir,'temp/saml-nameid.xml.vm')))
-
+        os.system('chmod u=rw,g=r,o=r /opt/gluu/jetty/identity/conf/shibboleth3/idp/metadata-providers.xml.vm')
+        os.system('chmod u=rw,g=r,o=r /opt/gluu/jetty/identity/conf/shibboleth3/idp/saml-nameid.xml.vm')
 
     def replace_scripts(self):
 
