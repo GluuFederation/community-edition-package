@@ -58,6 +58,7 @@ if missing_packages:
 import ldap
 import ldap.modlist as modlist
 ldap.set_option(ldap.OPT_X_TLS_REQUIRE_CERT, ldap.OPT_X_TLS_ALLOW)
+from ldap.schema import ObjectClass
 
 
 result = raw_input("Starting upgrade. CONTINUE? (y|N): ")
@@ -111,17 +112,25 @@ def obscure(data, encode_salt):
     return base64.b64encode(en_data)
 
 
-def get_ldap_admin_password():
+def get_ldap_admin_serevers_password():
     salt_file = open('/etc/gluu/conf/salt').read()
     salt = salt_file.split('=')[1].strip()
     ox_ldap_properties_file = '/etc/gluu/conf/ox-ldap.properties'
+    
     for l in open(ox_ldap_properties_file):
         if l.startswith('bindPassword'):
             s = l.split(':')[1].strip()
             engine = triple_des(salt, ECB, pad=None, padmode=PAD_PKCS5)
             cipher = triple_des(salt)
             decrypted = cipher.decrypt(base64.b64decode(s), padmode=PAD_PKCS5)
-            return decrypted
+            passwd = decrypted
+        elif l.startswith('servers'):
+            s = l.split(':')[1].strip()
+            servers_s = s.split(',')
+            servers = [ ss.split(':')[0] for ss in servers_s ]
+            
+            
+    return passwd, servers
 
 def get_saml_certs(cfn):
     tree = ET.parse(cfn)
@@ -206,14 +215,17 @@ class GluuUpdater:
         else:
             self.ldap_type = 'openldap'
     
-        self.ldap_host = 'localhost'
+        
         
         if self.ldap_type == 'opendj':
             self.ldap_bind_dn = self.setup_properties['opendj_ldap_binddn']
         elif self.ldap_type == 'openldap':
             self.ldap_bind_dn = self.setup_properties['ldap_binddn']
             
-        self.ldap_bind_pw = get_ldap_admin_password()
+        self.ldap_bind_pw, self.ldap_servers = get_ldap_admin_serevers_password()
+        
+        self.ldap_host = self.ldap_servers[0]
+        
         self.inumOrg = self.setup_properties['inumOrg']
         self.hostname = self.setup_properties['hostname'] 
         self.backup_time = time.strftime('%Y-%m-%d.%H:%M:%S')
@@ -228,10 +240,27 @@ class GluuUpdater:
         if not os.path.exists(self.backup_folder):
             os.mkdir(self.backup_folder)
 
-    def ldappConn(self):
-        self.conn = ldap.initialize('ldaps://{0}:1636'.format(self.ldap_host))
-        self.conn.simple_bind_s(self.ldap_bind_dn, self.ldap_bind_pw)
+    def checkRemoteSchema(self):
+        result = self.conn.search_s('cn=schema',ldap.SCOPE_BASE,'(objectclass=*)',['objectClasses'])
+        for obj_s in result[0][1]['objectClasses']:
+            obj = ObjectClass(obj_s)
+            if  'oxCacheEntity' in obj.names:
+                return True
 
+
+    def ldappConn(self):
+        for i in range(5):
+            try:
+                self.conn = ldap.initialize('ldaps://{0}:1636'.format(self.ldap_host))
+                self.conn.simple_bind_s(self.ldap_bind_dn, self.ldap_bind_pw)
+                return
+            except:
+                print "Can't connect to LDAP Server. Retrying in 5 secs ..."
+                time.sleep(5)
+                
+        sys.exit("Max retry reached. Exiting...")
+        
+        
 
     def updateWar(self):
 
@@ -458,6 +487,25 @@ class GluuUpdater:
 
 
     def updateLdapSchema(self):
+        
+        if self.ldap_host != 'localhost':
+            self.ldappConn()
+            if self.ldap_host != 'localhost':
+                if not self.checkRemoteSchema():
+                    print ("LDAP server seems on remote server. Please update schema files\n"
+                        "as explained here https://www.gluu.org/docs/...\n"
+                        )
+                    s=raw_input("Please update schema and hit <ENTER> key")
+                while True:
+                    self.ldappConn()
+                    if self.checkRemoteSchema():
+                        break
+                    else:
+                        print("LDAP Server with new schema is not ready.\n")
+                        s=raw_input("Please update schema and hit <ENTER> key")
+                        
+            return
+
         if self.cur_version >= '3.1.4':
             return
         
@@ -1335,7 +1383,6 @@ class GluuUpdater:
 updaterObj = GluuUpdater()
 updaterObj.updateApacheConfig()
 updaterObj.updateLdapSchema()
-updaterObj.ldappConn()
 updaterObj.createIDPClient()
 
 if repace_scripts:
