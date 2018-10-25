@@ -1383,6 +1383,7 @@ class GluuUpdater:
 updaterObj = GluuUpdater()
 updaterObj.updateApacheConfig()
 updaterObj.updateLdapSchema()
+updaterObj.ldappConn()
 updaterObj.createIDPClient()
 
 if repace_scripts:
