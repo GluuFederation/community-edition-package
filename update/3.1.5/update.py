@@ -1398,8 +1398,9 @@ class GluuUpdater:
 
         else:
             dn = "inum=%(idp_client_id)s,ou=clients,o=%(inumOrg)s,o=gluu" % self.setup_properties
+            idp_client_id = '%(inumOrg)s!0008!%(idp_client_id)s' % (self.setup_properties)
             result = self.conn.search_s(dn, ldap.SCOPE_BASE,'(objectClass=*)')
-
+            idpClient_encoded_pw = result[0][1]['oxAuthClientSecret'][0]
             if not 'oxAuthLogoutURI' in result[0][1]:
                 self.conn.modify_s(dn, [( ldap.MOD_ADD, 'oxAuthLogoutURI', ['https://%(hostname)s/identity/logout' % self.setup_properties])])
                 print 'oxAuthLogoutURI added'
