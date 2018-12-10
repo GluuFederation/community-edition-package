@@ -112,10 +112,10 @@ def obscure(data, encode_salt):
     return base64.b64encode(en_data)
 
 
-def get_ldap_admin_serevers_password():
+def get_ldap_admin_serevers_password(ox_ldap_properties_file):
     salt_file = open('/etc/gluu/conf/salt').read()
     salt = salt_file.split('=')[1].strip()
-    ox_ldap_properties_file = '/etc/gluu/conf/ox-ldap.properties'
+    
     
     for l in open(ox_ldap_properties_file):
         if l.startswith('bindPassword'):
@@ -186,7 +186,8 @@ class GluuUpdater:
         self.app_dir = os.path.join(self.update_dir,'app')
         self.setup_properties = parse_setup_properties()
         self.inumOrg = self.setup_properties['inumOrg']
-
+        self.ox_ldap_properties_file = '/etc/gluu/conf/ox-ldap.properties'
+        
         self.gluu_app_dir = '/opt/gluu/jetty'
         self.update_temp_dir = os.path.join(self.app_dir,'temp')
         self.passport_mdules_archive = os.path.join(self.app_dir, 'passport-version_{0}-node_modules.tar.gz'.format(self.gluu_version))
@@ -220,7 +221,7 @@ class GluuUpdater:
         elif self.ldap_type == 'openldap':
             self.ldap_bind_dn = self.setup_properties['ldap_binddn']
             
-        self.ldap_bind_pw, self.ldap_servers = get_ldap_admin_serevers_password()
+        self.ldap_bind_pw, self.ldap_servers = get_ldap_admin_serevers_password(self.ox_ldap_properties_file)
         
         self.ldap_host = self.ldap_servers[0]
         
@@ -593,9 +594,16 @@ class GluuUpdater:
         
         os.system('tar --strip 1 -xzf {0} -C /opt/gluu/node/passport/node_modules --no-xattrs --no-same-owner --no-same-permissions'.format(self.passport_mdules_archive))
 
-        saml_config = os.path.join(self.update_dir, 'app', 'passport-saml-config.json')
-        os.system('cp {0} /etc/gluu/conf'.format(saml_config))
-        os.system('chown node:node /etc/gluu/conf/passport-saml-config.json')
+    
+        files_to_copy = [ 
+                            'passport-saml-config.json', 
+                            'passport-inbound-idp-initiated.json',
+                        ]
+        for file_name in files_to_copy:
+            source_path = os.path.join(self.update_dir, 'app', file_name)
+            os.system('cp {0} /etc/gluu/conf'.format(source_path))
+            os.system('chown node:node ' + file_name)
+        
         
         log_dir = '/opt/gluu/node/passport/server/logs'
 
@@ -1472,6 +1480,17 @@ class GluuUpdater:
                 ldif = ldap.modlist.addModlist(attrs)
                 self.conn.add_s(dn, ldif)
 
+
+        if self.ldap_type == 'openldap':
+            ox_ldap_properties = open(self.ox_ldap_properties_file).read()
+            if not 'metric.bindDN' in ox_ldap_properties:
+                ox_ldap_properties += '\nmetric.bindDN: cn=directory manager,o=metric\n'
+            if not 'metric.maxconnections' in ox_ldap_properties:
+                ox_ldap_properties += '\nmetric.maxconnections: 10\n'
+
+            with open(self.ox_ldap_properties_file,'w') as w:
+                w.write(ox_ldap_properties)
+            
 
 updaterObj = GluuUpdater()
 updaterObj.updateApacheConfig()
