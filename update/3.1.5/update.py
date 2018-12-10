@@ -1334,45 +1334,57 @@ class GluuUpdater:
         
         clientTwoQuads = '%s.%s' % (getQuad(),getQuad())
 
-        idp_client_id = '%s!0008!%s' % (self.setup_properties['inumOrg'], clientTwoQuads)
-        self.setup_properties['idp_client_id'] = idp_client_id
 
-        dn = "inum=%(idp_client_id)s,ou=clients,o=%(inumOrg)s,o=gluu" % self.setup_properties
-        
-        idpClient_pw = getPW()
-        idpClient_encoded_pw = obscure(idpClient_pw, self.setup_properties['encode_salt'])
+        if not self.setup_properties.get('idp_client_id'):
 
+            idp_client_id = '%s!0008!%s' % (self.setup_properties['inumOrg'], clientTwoQuads)
+            self.setup_properties['idp_client_id'] = idp_client_id
 
-        with open('/install/community-edition-setup/setup.properties.last','a') as W:
-            W.write('idp_client_id=' + idp_client_id+'\n')
-            W.write('idpClient_pw=' + idpClient_pw+'\n')
-            W.write('idpClient_encoded_pw=' + idpClient_encoded_pw+'\n')
+            dn = "inum=%(idp_client_id)s,ou=clients,o=%(inumOrg)s,o=gluu" % self.setup_properties
+            
+            idpClient_pw = getPW()
+            idpClient_encoded_pw = obscure(idpClient_pw, self.setup_properties['encode_salt'])
 
 
-        attrs = { 'objectClass': ['oxAuthClient', 'top'],
-                  'displayName': ['IDP client'],
-                  'inum': [idp_client_id],
-                  'oxAuthClientSecret': [idpClient_encoded_pw],
-                  'oxAuthAppType': ['web'],
-                  'oxAuthResponseType': ['code'],
-                  'oxAuthGrantType': ['authorization_code','refresh_token'],
-                  'oxAuthScope': [ 'inum=%(inumOrg)s!0009!F0C4,ou=scopes,o=%(inumOrg)s,o=gluu' % self.setup_properties,
-                                   'inum=%(inumOrg)s!0009!10B2,ou=scopes,o=%(inumOrg)s,o=gluu' % self.setup_properties,
-                                   'inum=%(inumOrg)s!0009!764C,ou=scopes,o=%(inumOrg)s,o=gluu' % self.setup_properties,
-                                ],
-                  'oxAuthRedirectURI': ['https://%(hostname)s/idp/Authn/oxAuth' % self.setup_properties],
-                  'oxAuthPostLogoutRedirectURI': ['https://%(hostname)s/idp/profile/Logout' % self.setup_properties],
-                  'oxAuthPostLogoutRedirectURI': ['https://%(hostname)s/identity/authentication/finishlogout' % self.setup_properties],
-                  'oxAuthTokenEndpointAuthMethod': ['client_secret_basic'],
-                  'oxAuthIdTokenSignedResponseAlg': ['HS256'],
-                  'oxAuthTrustedClient': ['true'],
-                  'oxAuthSubjectType': ['public'],
-                  'oxPersistClientAuthorizations': ['false'],
-                  'oxAuthLogoutSessionRequired': ['true'],
-                  }
+            with open('/install/community-edition-setup/setup.properties.last','a') as W:
+                W.write('idp_client_id=' + idp_client_id+'\n')
+                W.write('idpClient_pw=' + idpClient_pw+'\n')
+                W.write('idpClient_encoded_pw=' + idpClient_encoded_pw+'\n')
 
-        ldif = modlist.addModlist(attrs)
-        self.conn.add_s(dn,ldif)
+
+            attrs = { 'objectClass': ['oxAuthClient', 'top'],
+                      'displayName': ['IDP client'],
+                      'inum': [idp_client_id],
+                      'oxAuthClientSecret': [idpClient_encoded_pw],
+                      'oxAuthAppType': ['web'],
+                      'oxAuthResponseType': ['code'],
+                      'oxAuthGrantType': ['authorization_code','refresh_token'],
+                      'oxAuthScope': [ 'inum=%(inumOrg)s!0009!F0C4,ou=scopes,o=%(inumOrg)s,o=gluu' % self.setup_properties,
+                                       'inum=%(inumOrg)s!0009!10B2,ou=scopes,o=%(inumOrg)s,o=gluu' % self.setup_properties,
+                                       'inum=%(inumOrg)s!0009!764C,ou=scopes,o=%(inumOrg)s,o=gluu' % self.setup_properties,
+                                    ],
+                      'oxAuthRedirectURI': ['https://%(hostname)s/idp/Authn/oxAuth' % self.setup_properties],
+                      'oxAuthPostLogoutRedirectURI': ['https://%(hostname)s/idp/profile/Logout' % self.setup_properties],
+                      'oxAuthPostLogoutRedirectURI': ['https://%(hostname)s/identity/authentication/finishlogout' % self.setup_properties],
+                      'oxAuthLogoutURI': ['https://%(hostname)s/identity/logout' % self.setup_properties],
+                      'oxAuthTokenEndpointAuthMethod': ['client_secret_basic'],
+                      'oxAuthIdTokenSignedResponseAlg': ['HS256'],
+                      'oxAuthTrustedClient': ['true'],
+                      'oxAuthSubjectType': ['public'],
+                      'oxPersistClientAuthorizations': ['false'],
+                      'oxAuthLogoutSessionRequired': ['true'],
+                      }
+
+            ldif = modlist.addModlist(attrs)
+            self.conn.add_s(dn,ldif)
+
+        else:
+            dn = "inum=%(idp_client_id)s,ou=clients,o=%(inumOrg)s,o=gluu" % self.setup_properties
+            result = self.conn.search_s(dn, ldap.SCOPE_BASE,'(objectClass=*)')
+
+            if not 'oxAuthLogoutURI' in result[0][1]:
+                self.conn.modify_s(dn, [( ldap.MOD_ADD, 'oxAuthLogoutURI', ['https://%(hostname)s/identity/logout' % self.setup_properties])])
+                print 'oxAuthLogoutURI added'
 
 
         #Fix oxIDP for SAML
@@ -1432,18 +1444,22 @@ class GluuUpdater:
 
     def openLdapMetric(self):
         slapd_conf_fn = '/opt/symas/etc/openldap/slapd.conf'
-        slapd_conf = open(slapd_conf_fn).readlines()
+        slapd_conf = open(slapd_conf_fn).read()
+         
+        if not 'o=metric' in slapd_conf:
 
-        for l in slapd_conf:
-            if l.startswith('rootpw'):
-                rootpw = l.split()[1]
+            for l in slapd_conf.split('\n'):
+                if l.startswith('rootpw'):
+                    rootpw = l.split()[1]
 
-        
-        metric_tmp = open('slapd_metric.conf.tmp').read()
-        metric_tmp = metric_tmp.replace('{{rootpw}}', rootpw)
+            metric_tmp_fn = os.path.join(self.update_temp_dir, 'slapd_metric.conf')
+            
+            metric_tmp = open(metric_tmp_fn).read()
+            
+            metric_tmp = metric_tmp.replace('{{rootpw}}', rootpw)
 
-        with open(slapd_conf_fn, 'a') as W:
-            W.write(metric_tmp)
+            with open(slapd_conf_fn, 'a') as W:
+                W.write(metric_tmp)
 
 
         metric_db_dir = '/opt/gluu/data/metric_db'
