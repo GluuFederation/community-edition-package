@@ -1100,6 +1100,10 @@ class GluuUpdater:
                     ('passwordResetRequestExpirationTime', 'add', 'entry', 600),
 
                 ],
+            'oxAuthConfStatic': [
+                ('baseDn',  'change', 'subentry', ('metric', 'ou=statistic,o=metric')),
+            
+                ],
         }
 
 
@@ -1123,6 +1127,8 @@ class GluuUpdater:
                 elif change_type == 'change':
                     if how_change == 'entry':
                         js_conf[key] = value
+                    if how_change == 'subentry':
+                        js_conf[key][value[0]] = value[1]
                 elif change_type == 'remove':
                     if how_change == 'entry':
                         if key in js_conf:
@@ -1509,28 +1515,28 @@ class GluuUpdater:
             
 
 updaterObj = GluuUpdater()
-updaterObj.updateApacheConfig()
-updaterObj.updateLdapSchema()
+#updaterObj.updateApacheConfig()
+#updaterObj.updateLdapSchema()
 updaterObj.ldappConn()
-updaterObj.createIDPClient()
+#updaterObj.createIDPClient()
 
-if repace_scripts:
-    updaterObj.replace_scripts()
+#if repace_scripts:
+#    updaterObj.replace_scripts()
 
-updaterObj.checkAndCreateMetricBackend()
-updaterObj.updateWar()
-updaterObj.addUserCertificateMetadata()
-updaterObj.fixAttributeTypes()
-updaterObj.addOxAuthClaimName()
-updaterObj.modifySectorIdentifiers()
-updaterObj.checkIdpMetadata()
-updaterObj.upgradeJetty()
-updaterObj.updatePassport()
-updaterObj.createOpenTrustStore()
-updaterObj.updateDefaultDettings()
-updaterObj.updateStartIni()
+#updaterObj.checkAndCreateMetricBackend()
+#updaterObj.updateWar()
+#updaterObj.addUserCertificateMetadata()
+#updaterObj.fixAttributeTypes()
+#updaterObj.addOxAuthClaimName()
+#updaterObj.modifySectorIdentifiers()
+#updaterObj.checkIdpMetadata()
+#updaterObj.upgradeJetty()
+#updaterObj.updatePassport()
+#updaterObj.createOpenTrustStore()
+#updaterObj.updateDefaultDettings()
+#updaterObj.updateStartIni()
 updaterObj.updateOtherLDAP()
-updaterObj.update_shib()
+#updaterObj.update_shib()
 
 
 # TODO: is this necassary?
