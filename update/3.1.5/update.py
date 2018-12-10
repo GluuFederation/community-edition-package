@@ -180,7 +180,7 @@ class MyLdif(LDIFParser):
 
 class GluuUpdater:
     def __init__(self):
-        self.gluu_version = '3.1.4'
+        self.gluu_version = '3.1.5'
         self.update_version = self.gluu_version + 'upg'
         self.update_dir = os.path.join('/opt/upd/', self.update_version)
         self.app_dir = os.path.join(self.update_dir,'app')
