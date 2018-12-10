@@ -1178,6 +1178,18 @@ class GluuUpdater:
         for entry in rep_dict:
             self.conn.modify_s(dn, [( ldap.MOD_REPLACE, entry,  rep_dict[entry])])
 
+
+        dn = 'inum=%(inumOrg)s!0011!4BBE.C6A8,ou=scripts,o=%(inumOrg)s,o=gluu' % self.setup_properties
+        result = self.conn.search_s(dn, ldap.SCOPE_BASE,'(objectClass=*)', ['oxConfigurationProperty'])
+        
+        for val in result[0][1]["oxConfigurationProperty"]:
+            js_object = json.loads(val)
+            if js_object.get('value1') == 'lock_expiration_time':
+                break
+        else:
+            self.conn.modify_s(dn, [( ldap.MOD_ADD, 'oxConfigurationProperty',  ['{"value1":"lock_expiration_time","value2":"120","description":""}'])])
+
+
     def update_shib(self):
         #saml-nameid.xml.vm is missing after upgrade
 
@@ -1515,34 +1527,34 @@ class GluuUpdater:
             
 
 updaterObj = GluuUpdater()
-#updaterObj.updateApacheConfig()
-#updaterObj.updateLdapSchema()
+updaterObj.updateApacheConfig()
+updaterObj.updateLdapSchema()
 updaterObj.ldappConn()
-#updaterObj.createIDPClient()
+updaterObj.createIDPClient()
 
-#if repace_scripts:
-#    updaterObj.replace_scripts()
+if repace_scripts:
+    updaterObj.replace_scripts()
 
-#updaterObj.checkAndCreateMetricBackend()
-#updaterObj.updateWar()
-#updaterObj.addUserCertificateMetadata()
-#updaterObj.fixAttributeTypes()
-#updaterObj.addOxAuthClaimName()
-#updaterObj.modifySectorIdentifiers()
-#updaterObj.checkIdpMetadata()
-#updaterObj.upgradeJetty()
-#updaterObj.updatePassport()
-#updaterObj.createOpenTrustStore()
-#updaterObj.updateDefaultDettings()
-#updaterObj.updateStartIni()
+updaterObj.checkAndCreateMetricBackend()
+updaterObj.updateWar()
+updaterObj.addUserCertificateMetadata()
+updaterObj.fixAttributeTypes()
+updaterObj.addOxAuthClaimName()
+updaterObj.modifySectorIdentifiers()
+updaterObj.checkIdpMetadata()
+updaterObj.upgradeJetty()
+updaterObj.updatePassport()
+updaterObj.createOpenTrustStore()
+updaterObj.updateDefaultDettings()
+updaterObj.updateStartIni()
 updaterObj.updateOtherLDAP()
-#updaterObj.update_shib()
+updaterObj.update_shib()
 
 
 # TODO: is this necassary?
 #updaterObj.updateOtherLDAPEntries()
 
-#./makeself.sh --target /opt/upd/3.1.4upg/  /opt/upd/3.1.4upg/ 3-1-4-upg.sh  "Gluu Updater Package 3.1.4.upg" /opt/upd/3.1.4upg/bin/update.py
+#./makeself.sh --target /opt/upd/3.1.5upg/  /opt/upd/3.1.5upg/ 3-1-5-upg.sh  "Gluu Updater Package 3.1.5.upg" /opt/upd/3.1.5upg/bin/update.py
 
 print """
 \033[;1mPlease Note:\033[0;0m oxAuthenticationMode and oxTrustAuthenticationMode was
