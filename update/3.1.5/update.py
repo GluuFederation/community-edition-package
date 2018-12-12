@@ -260,6 +260,9 @@ class GluuUpdater:
         sys.exit("Max retry reached. Exiting...")
         
         
+    def stopJettyServices(self):
+        os.system('/etc/init.d/identity stop')
+        os.system('/etc/init.d/oxauth stop')
 
     def updateWar(self):
 
@@ -485,6 +488,29 @@ class GluuUpdater:
         os.system('chown -R jetty:jetty /opt/jetty-9.4/')
 
 
+    def stop_opendj(self):
+        print "Stopping OpenDJ"
+        if self.os_type == 'red' and self.os_version == '7':
+            cmd = 'systemctl stop opendj'
+            print "Executing", cmd
+            os.system(cmd)
+        else:
+            cmd = '/etc/init.d/opendj stop'
+            print "Executing", cmd
+            os.system(cmd)
+
+
+    def start_opendj(self):
+        print "Starting OpenDJ"
+        if self.os_type == 'red' and self.os_version == '7':
+            cmd = 'systemctl start opendj'
+            print "Executing", cmd
+            os.system(cmd)
+        else:
+            cmd = '/etc/init.d/opendj start'
+            print "Executing", cmd
+            os.system(cmd)
+
     def updateLdapSchema(self):
         
         if self.ldap_host != 'localhost':
@@ -516,7 +542,9 @@ class GluuUpdater:
         if self.ldap_type == 'openldap':
             os.system('/etc/init.d/solserver stop')
         else:
-            os.system('/etc/init.d/opendj stop')
+           self.stop_opendj()
+
+            
         
         #wait 5 secs for ldap server to stop
         time.sleep(5)
@@ -547,7 +575,7 @@ class GluuUpdater:
         if self.ldap_type == 'openldap':
             os.system('/etc/init.d/solserver start')
         else:
-            os.system('/etc/init.d/opendj start')
+            self.start_opendj()
         #wait 10 secs for ldap server to start
         time.sleep(10)
 
@@ -600,9 +628,9 @@ class GluuUpdater:
                             'passport-inbound-idp-initiated.json',
                         ]
         for file_name in files_to_copy:
-            source_path = os.path.join(self.update_dir, 'app', file_name)
+            source_path = os.path.join(self.update_dir, 'app', 'temp', file_name)
             os.system('cp {0} /etc/gluu/conf'.format(source_path))
-            os.system('chown node:node ' + file_name)
+            os.system('chown node:node /etc/gluu/conf'.format(source_path))
         
         
         log_dir = '/opt/gluu/node/passport/server/logs'
@@ -1243,10 +1271,10 @@ class GluuUpdater:
         os.system('/opt/jre/bin/jar xf {0}'.format(os.path.join(self.app_dir,'shibboleth-idp.jar')))
         os.system('rm -r /opt/META-INF')
         os.system('chown -R jetty:jetty /opt/shibboleth-idp')
-        os.system('cp {0} /opt/gluu/jetty/identity/conf/shibboleth3/idp'.format(os.path.join(self.app_dir,'temp/metadata-providers.xml.vm')))
-        os.system('cp {0} /opt/gluu/jetty/identity/conf/shibboleth3/idp'.format(os.path.join(self.app_dir,'temp/saml-nameid.xml.vm')))
-        os.system('chmod u=rw,g=r,o=r /opt/gluu/jetty/identity/conf/shibboleth3/idp/metadata-providers.xml.vm')
-        os.system('chmod u=rw,g=r,o=r /opt/gluu/jetty/identity/conf/shibboleth3/idp/saml-nameid.xml.vm')
+        os.system('cp {0} /opt/shibboleth-idp/conf'.format(os.path.join(self.app_dir,'temp/metadata-providers.xml.vm')))
+        os.system('cp {0} /opt/shibboleth-idp/conf'.format(os.path.join(self.app_dir,'temp/saml-nameid.xml.vm')))
+        os.system('chmod u=rw,g=r,o=r /opt/shibboleth-idp/conf/metadata-providers.xml.vm')
+        os.system('chmod u=rw,g=r,o=r /opt/shibboleth-idp/conf/saml-nameid.xml.vm')
 
     def replace_scripts(self):
 
@@ -1442,24 +1470,25 @@ class GluuUpdater:
                 '/opt/opendj/bin/dsjavaproperties',
                 ]
         for cmd in cmd_list:
+            print "Executing", cmd
             os.system(cmd)
 
-        self.run_service_command('opendj', 'stop')
-        self.run_service_command('opendj', 'start')
+        self.stop_opendj()
+        self.start_opendj()
+
+
 
         cmd_list = [
                 '/opt/opendj/bin/dsconfig --trustAll --no-prompt --hostname localhost --port 4444 --bindDN "cn=directory manager" --bindPassword Gluu1234  set-backend-prop --backend-name userRoot --set db-cache-percent:70',
                 '/opt/opendj/bin/dsconfig --trustAll --no-prompt --hostname localhost --port 4444 --bindDN "cn=directory manager" --bindPassword Gluu1234  set-backend-prop --backend-name site --set db-cache-percent:20',
                 '/opt/opendj/bin/dsconfig --trustAll --no-prompt --hostname localhost --port 4444 --bindDN "cn=directory manager" --bindPassword Gluu1234 create-backend --backend-name metric --set base-dn:o=metric --type je --set enabled:true --set db-cache-percent:10',
-                "sed -i 's/^start-ds.java-args=*/start-ds.java-args=-server/' /opt/opendj/config/java.properties",
+                #"sed -i 's/^start-ds.java-args=*/start-ds.java-args=-server/' /opt/opendj/config/java.properties",
+                #'/opt/opendj/bin/dsjavaproperties',
                 ]
 
         for cmd in cmd_list:
+            print "Executing", cmd
             os.system(cmd)
-
-        # wait 10 secs for opendj to start  
-        time.sleep(10)
-
 
     def openLdapMetric(self):
         slapd_conf_fn = '/opt/symas/etc/openldap/slapd.conf'
@@ -1499,10 +1528,12 @@ class GluuUpdater:
                 return
         except:
 
-            if self.ldap_type == 'opendj':
-                self.openDjMetric()
-            else:
+            if self.ldap_type == 'openldap':
                 self.openLdapMetric()
+            else:
+                #disable creating opendj metric backend until the issue is resolved.
+                return
+                self.openDjMetric()
 
             self.ldappConn()
 
@@ -1528,6 +1559,7 @@ class GluuUpdater:
             
 
 updaterObj = GluuUpdater()
+updaterObj.stopJettyServices()
 updaterObj.updateApacheConfig()
 updaterObj.updateLdapSchema()
 updaterObj.ldappConn()
@@ -1536,7 +1568,6 @@ updaterObj.createIDPClient()
 if repace_scripts:
     updaterObj.replace_scripts()
 
-updaterObj.checkAndCreateMetricBackend()
 updaterObj.updateWar()
 updaterObj.addUserCertificateMetadata()
 updaterObj.fixAttributeTypes()
@@ -1550,6 +1581,7 @@ updaterObj.updateDefaultDettings()
 updaterObj.updateStartIni()
 updaterObj.updateOtherLDAP()
 updaterObj.update_shib()
+updaterObj.checkAndCreateMetricBackend()
 
 
 # TODO: is this necassary?
