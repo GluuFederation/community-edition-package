@@ -630,9 +630,9 @@ class GluuUpdater:
         for file_name in files_to_copy:
             source_path = os.path.join(self.update_dir, 'app', 'temp', file_name)
             os.system('cp {0} /etc/gluu/conf'.format(source_path))
-            os.system('chown node:node /etc/gluu/conf'.format(source_path))
-        
-        
+            cmd = 'chown node:node /etc/gluu/conf/{0}'.format(file_name)
+            os.system(cmd)
+
         log_dir = '/opt/gluu/node/passport/server/logs'
 
         if not os.path.exists(log_dir): 
@@ -1126,14 +1126,15 @@ class GluuUpdater:
                     ('ScimProperties','remove', 'entry', None),
                     ('ScimProperties','add', 'entry', {'maxCount': 200}),
                     ('passwordResetRequestExpirationTime', 'add', 'entry', 600),
+                    ]
 
-                ],
-            'oxAuthConfStatic': [
-                ('baseDn',  'change', 'subentry', ('metric', 'ou=statistic,o=metric')),
-            
-                ],
         }
 
+
+        if self.ldap_type == 'openldap':
+            changes['oxAuthConfStatic'] = [
+                            ('baseDn',  'change', 'subentry', ('metric', 'ou=statistic,o=metric')),
+                        ]
 
         for config_element in changes:
             print "Updating", config_element
@@ -1377,9 +1378,8 @@ class GluuUpdater:
                 w.write(apache2_ssl_conf)
 
     def createIDPClient(self):
-        
-        clientTwoQuads = '%s.%s' % (getQuad(),getQuad())
 
+        clientTwoQuads = '%s.%s' % (getQuad(),getQuad())
 
         if not self.setup_properties.get('idp_client_id'):
 
@@ -1444,7 +1444,7 @@ class GluuUpdater:
         oxConfApplication['openIdRedirectUrl'] = 'https://{0}/idp/Authn/oxAuth'.format(self.hostname)
         oxConfApplication['openIdPostLogoutRedirectUri'] = 'https://{0}/idp/profile/Logout'.format(self.hostname)
         oxConfApplication_js = json.dumps(oxConfApplication)
-        self.conn.modify_s(dn, [( ldap.MOD_REPLACE, 'oxConfApplication',  oxConfApplication_js)])        
+        self.conn.modify_s(dn, [( ldap.MOD_REPLACE, 'oxConfApplication',  oxConfApplication_js)])
 
     def run_service_command(self, service, operation):
 
