@@ -1438,7 +1438,7 @@ class GluuUpdater:
         dn = 'ou=oxidp,ou=configuration,inum=%(inumAppliance)s,ou=appliances,o=gluu' % self.setup_properties        
         result = self.conn.search_s(dn, ldap.SCOPE_BASE,'(objectClass=*)')
         oxConfApplication = json.loads(result[0][1]['oxConfApplication'][0])
-        oxConfApplication['openIdClientId'] = idp_client_id
+        oxConfApplication['openIdClientId'] = self.setup_properties['idp_client_id']
         oxConfApplication['openIdClientPassword'] = idpClient_encoded_pw
         
         oxConfApplication['openIdRedirectUrl'] = 'https://{0}/idp/Authn/oxAuth'.format(self.hostname)
