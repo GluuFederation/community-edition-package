@@ -50,6 +50,7 @@ if missing_packages:
     if package_type == 'rpm':
         cmd = "yum install -y {0}".format(packages_str)
     else:
+        os.system('apt-get update')
         cmd = "apt-get install -y {0}".format(packages_str)
 
     print "Installing package(s) with command: "+ cmd
@@ -533,9 +534,6 @@ class GluuUpdater:
                         
             return
 
-        if self.cur_version >= '3.1.4':
-            return
-        
         print "Updating ldap schema"
         
         print "Stopping LDAP Server"
