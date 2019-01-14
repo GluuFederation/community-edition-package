@@ -764,25 +764,28 @@ class GluuUpdater:
                     new_strategies_list = new_strategies.values()
                     self.conn.modify_s(dn, [( ldap.MOD_REPLACE, 'gluuPassportConfiguration',  new_strategies_list)])
 
-            print "Modifying User's oxExternalUid entries ..."
-            result = self.conn.search_s('o=gluu',ldap.SCOPE_SUBTREE,'(&(objectClass=gluuPerson)(oxExternalUid=*))')
+            print "Modifying User's oxExternalUid entries. This will take time ..."
+
+            searchDn = 'ou=people,o={0},o=gluu'.format(self.setup_properties['inumOrg'])
+
+            s_filter = '(&(objectClass=gluuPerson)(oxExternalUid=*))'
+
+            result = self.conn.search_s(searchDn,ldap.SCOPE_SUBTREE, s_filter, ['oxExternalUid'])
 
             for people in result:
                 dn = people[0]
-                for oxExternalUid in people[1]['oxExternalUid']:
-                    strategy_p = oxExternalUid.split(':')
-                    new_oxExternalUid = []
-                    change = False
-                    if strategy_p[0] in strategies:
-                        change = True
-                        str_text = 'passport-{0}:{1}'.format(strategy_p[0],strategy_p[1]) 
-                        new_oxExternalUid.append(str_text)
-                    else:
-                        new_oxExternalUid.append(oxExternalUid)
+                modify = False
+                oxExternalUid_list = people[1]['oxExternalUid'][:]
+                
+                for i, oxExternalUid in enumerate(oxExternalUid_list):
+                    if not (oxExternalUid.startswith('hotp:') or oxExternalUid.startswith('totp:') or oxExternalUid.startswith('passport-')):
+                        oxExternalUid_list[i] = 'passport-' +  oxExternalUid
+                        modify = True
 
-                    if change:                
-                        self.conn.modify_s(dn, [(ldap.MOD_REPLACE, 'oxExternalUid',  new_oxExternalUid)])
-            
+                if modify:
+                    self.conn.modify_s(dn, [(ldap.MOD_REPLACE, 'oxExternalUid',  oxExternalUid_list)])
+
+
         passport_default_fn = '/etc/default/passport'
         passport_default_content = open(passport_default_fn).read()
 
