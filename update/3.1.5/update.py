@@ -188,7 +188,8 @@ class GluuUpdater:
         self.setup_properties = parse_setup_properties()
         self.inumOrg = self.setup_properties['inumOrg']
         self.ox_ldap_properties_file = '/etc/gluu/conf/ox-ldap.properties'
-        
+        self.gluuBaseFolder = '/etc/gluu'
+        self.configFolder = '%s/conf' % self.gluuBaseFolder
         self.gluu_app_dir = '/opt/gluu/jetty'
         self.update_temp_dir = os.path.join(self.app_dir,'temp')
         self.passport_mdules_archive = os.path.join(self.app_dir, 'passport-version_{0}-node_modules.tar.gz'.format(self.gluu_version))
@@ -196,6 +197,8 @@ class GluuUpdater:
         self.extensionFolder = os.path.join(self.app_dir, 'extension')
         self.scripts_ldif = os.path.join(self.update_temp_dir, 'scripts.ldif')
         self.passport_config = os.path.join(self.update_temp_dir, 'passport-config.json')
+
+        self.fido2ConfigFolder = '%s/fido2' % self.configFolder
 
 
         if self.setup_properties.has_key('currentGluuVersion'):
@@ -1012,6 +1015,10 @@ class GluuUpdater:
         self.conn.modify_s(dn, [( ldap.MOD_REPLACE, 'oxCacheConfiguration',  oxCacheConfiguration)])
 
 
+
+
+
+
         changes = { 'oxAuthConfDynamic': [
 
                         ("baseEndpoint", 'change', 'entry', "https://{0}/oxauth/restv1".format(self.hostname)),
@@ -1113,6 +1120,19 @@ class GluuUpdater:
                         ('disableU2fEndpoint', 'add', 'entry', False),
                         ('authenticationProtectionConfiguration', 'add', 'entry', {"attemptExpiration": 15, "maximumAllowedAttempts": 10, "maximumAllowedAttemptsWithoutDelay": 4, "delayTime": 2, "bruteForceProtectionEnabled": False } ),
                         ('openidScopeBackwardCompatibility', 'add',  'entry', True),
+                        
+                        ('fido2Configuration', 'add', 'entry', {
+                                                                'authenticatorCertsFolder':'{0}/authenticator_cert'.format(self.fido2ConfigFolder),
+                                                                'mdsCertsFolder':'{0}/mds/cert'.format(self.fido2ConfigFolder),
+                                                                'mdsTocsFolder':'{0}/mds/toc'.format(self.fido2ConfigFolder),
+                                                                'serverMetadataFolder':'{0}/server_metadata',
+                                                                'userAutoEnrollment':False,
+                                                                'unfinishedRequestExpiration':120,
+                                                                'authenticationHistoryExpiration':1296000,
+                                                                'disableFido2':True,
+                                                                }),
+                        ('loginPage', 'remove', 'entry', None),
+                        ('authorizationPage', 'remove', 'entry', None),
                     ],
     
             'oxTrustConfApplication' : [
