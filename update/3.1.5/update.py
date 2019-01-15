@@ -994,6 +994,27 @@ class GluuUpdater:
                 except:
                     pass
 
+        result = self.conn.search_s('ou=appliances,o=gluu',ldap.SCOPE_SUBTREE, ('(oxTrustConfImportPerson=*)'), ['oxTrustConfImportPerson'])
+        dn = result[0][0]
+        oxTrustConfImportPerson_s = result[0][1]['oxTrustConfImportPerson'][0]
+        oxTrustConfImportPerson = json.loads(oxTrustConfImportPerson_s)
+        
+        for ox_map in oxTrustConfImportPerson['mappings']:
+            if ox_map['ldapName'] == 'gluuStatus':
+                break
+        else:
+            oxTrustConfImportPerson['mappings'].append(
+                                    {
+                                    "ldapName": "gluuStatus", 
+                                    "displayName": "User Status", 
+                                    "dataType": "string", 
+                                    "required": False
+                                    }
+                                    )
+            oxTrustConfImportPerson_s = json.dumps(oxTrustConfImportPerson, indent=2)
+            self.conn.modify_s(dn, [( ldap.MOD_REPLACE, 'oxTrustConfImportPerson',  oxTrustConfImportPerson_s)])
+
+
         result = self.conn.search_s('ou=appliances,o=gluu',ldap.SCOPE_SUBTREE,'(oxCacheConfiguration=*)', ['oxCacheConfiguration','oxAuthenticationMode', 'oxTrustAuthenticationMode'])
         dn = result[0][0]
 
@@ -1015,10 +1036,6 @@ class GluuUpdater:
         self.conn.modify_s(dn, [( ldap.MOD_REPLACE, 'oxCacheConfiguration',  oxCacheConfiguration)])
 
 
-
-
-
-
         changes = { 'oxAuthConfDynamic': [
 
                         ("baseEndpoint", 'change', 'entry', "https://{0}/oxauth/restv1".format(self.hostname)),
@@ -1035,10 +1052,8 @@ class GluuUpdater:
                         ("idGenerationEndpoint", 'change', 'entry', "https://{0}/oxauth/restv1/id".format(self.hostname)),
                         ("introspectionEndpoint", 'change', 'entry', "https://{0}/oxauth/restv1/introspection".format(self.hostname)),
                         ("umaConfigurationEndpoint", 'change', 'entry', "https://{0}/oxauth/restv1/uma2-configuration".format(self.hostname)),
-                        ("loginPage", 'change', 'entry', "https://{0}/oxauth/login.htm".format(self.hostname)),
-                        ("authorizationPage", 'change', 'entry', "https://{0}/oxauth/authorize.htm".format(self.hostname)),
                         ("checkSessionIFrame", 'change', 'entry', "https://{0}.gluu.org/oxauth/opiframe.htm".format(self.hostname)),
-                        
+
                         ('responseTypesSupported', 'change', 'entry',[
                                     ["code"],
                                     ["code", "id_token"],
@@ -1133,6 +1148,14 @@ class GluuUpdater:
                                                                 }),
                         ('loginPage', 'remove', 'entry', None),
                         ('authorizationPage', 'remove', 'entry', None),
+                        ('umaRequesterPermissionTokenLifetime', 'remove', 'entry', None),
+                        ('validateTokenEndpoint', 'remove', 'entry', None),
+                        ('shortLivedAccessTokenLifetime', 'remove', 'entry', None),
+                        ('longLivedAccessTokenLifetime', 'remove', 'entry', None),
+                        ('sessionStateHttpOnly', 'remove', 'entry', None),
+                        ('velocityLog', 'remove', 'entry', None),
+                        ('dynamicRegistrationExpirationTime', 'change', 'entry', -1),
+
                     ],
     
             'oxTrustConfApplication' : [
