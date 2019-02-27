@@ -1052,7 +1052,7 @@ class GluuUpdater:
                         ("idGenerationEndpoint", 'change', 'entry', "https://{0}/oxauth/restv1/id".format(self.hostname)),
                         ("introspectionEndpoint", 'change', 'entry', "https://{0}/oxauth/restv1/introspection".format(self.hostname)),
                         ("umaConfigurationEndpoint", 'change', 'entry', "https://{0}/oxauth/restv1/uma2-configuration".format(self.hostname)),
-                        ("checkSessionIFrame", 'change', 'entry', "https://{0}.gluu.org/oxauth/opiframe.htm".format(self.hostname)),
+                        ("checkSessionIFrame", 'change', 'entry', "https://{0}/oxauth/opiframe.htm".format(self.hostname)),
 
                         ('responseTypesSupported', 'change', 'entry',[
                                     ["code"],

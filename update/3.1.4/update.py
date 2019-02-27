@@ -995,7 +995,7 @@ class GluuUpdater:
                         ("umaConfigurationEndpoint", 'change', 'entry', "https://{0}/oxauth/restv1/uma2-configuration".format(self.hostname)),
                         ("loginPage", 'change', 'entry', "https://{0}/oxauth/login.htm".format(self.hostname)),
                         ("authorizationPage", 'change', 'entry', "https://{0}/oxauth/authorize.htm".format(self.hostname)),
-                        ("checkSessionIFrame", 'change', 'entry', "https://{0}.gluu.org/oxauth/opiframe.htm".format(self.hostname)),
+                        ("checkSessionIFrame", 'change', 'entry', "https://{0}/oxauth/opiframe.htm".format(self.hostname)),
                         
                         ('responseTypesSupported', 'change', 'entry',[
                                     ["code"],
