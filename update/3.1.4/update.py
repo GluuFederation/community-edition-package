@@ -420,8 +420,9 @@ class GluuUpdater:
 
     # TODO: Do we still need this?
     def checkIdpMetadata(self):
-        print "checking /opt/shibboleth-idp/metadata/idp-metadata.xml"
         idp_meatdata_file = '/opt/shibboleth-idp/metadata/idp-metadata.xml'
+        print "checking {0}".format(idp_meatdata_file)
+        
         if os.path.exists(idp_meatdata_file):
             change_str = 'https://ce.gluu.info/idp/profile/SAML2/SOAP/ArtifactResolution'
             to_str = 'https://{0}/idp/profile/SAML2/SOAP/ArtifactResolution'.format(self.hostname)

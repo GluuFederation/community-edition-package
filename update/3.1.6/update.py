@@ -17,6 +17,11 @@ import string
 
 import xml.etree.ElementTree as ET
 
+up_version = '3.1.6'
+
+if not os.path.exists('/etc/gluu/conf'):
+    sys.exit('Please run this script inside Gluu container.')
+
 from pyDes import *
 
 package_type = None
@@ -38,24 +43,42 @@ try:
     import ldap
 except:
     missing_packages.append('python-ldap')
-    
 
-if missing_packages:
-    
-    packages_str = ' '.join(missing_packages)
-    result = raw_input("Missing package(s): {0}. Install now? (Y|n): ".format(packages_str))
-    if result.strip() and result.strip().lower()[0] == 'n':
-        sys.exit("Can't continue without installing these packages. Exiting ...")
+try:
+    import jsonschema
+except:
+    missing_packages.append('python-jsonschema')
 
-    if package_type == 'rpm':
-        cmd = "yum install -y {0}".format(packages_str)
-    else:
-        os.system('apt-get update')
-        cmd = "apt-get install -y {0}".format(packages_str)
+if not '-n' in sys.argv:
 
-    print "Installing package(s) with command: "+ cmd
-    os.system(cmd)
+    if missing_packages:
+        
+        packages_str = ' '.join(missing_packages)
+        result = raw_input("Missing package(s): {0}. Install now? (Y|n): ".format(packages_str))
+        if result.strip() and result.strip().lower()[0] == 'n':
+            sys.exit("Can't continue without installing these packages. Exiting ...")
 
+
+
+        if package_type == 'rpm':
+            cmd = 'yum install -y epel-release'
+            os.system(cmd)
+            cmd = 'yum clean all'
+            os.system(cmd)
+            cmd = "yum install -y {0}".format(packages_str)
+        else:
+            os.system('apt-get update')
+            cmd = "apt-get install -y {0}".format(packages_str)
+
+        print "Installing package(s) with command: "+ cmd
+        os.system(cmd)
+
+        print("Restarting program")
+        os.execl(sys.executable, sys.executable, *sys.argv)
+
+sys.path.append('/opt/upd/{0}upg/pylib'.format(up_version))
+
+import jsonmerge
 import ldap
 import ldap.modlist as modlist
 ldap.set_option(ldap.OPT_X_TLS_REQUIRE_CERT, ldap.OPT_X_TLS_ALLOW)
@@ -181,7 +204,7 @@ class MyLdif(LDIFParser):
 
 class GluuUpdater:
     def __init__(self):
-        self.gluu_version = '3.1.6'
+        self.gluu_version = up_version
         self.update_version = self.gluu_version + 'upg'
         self.update_dir = os.path.join('/opt/upd/', self.update_version)
         self.app_dir = os.path.join(self.update_dir,'app')
@@ -851,42 +874,6 @@ class GluuUpdater:
             os.system('chown node:node /etc/certs/passport-sp.key')
             os.system('chown node:node /etc/certs/passport-sp.crt')
 
-
-    def updateOtherLDAPEntries(self):
-        
-        result = self.conn.search_s('o=gluu',ldap.SCOPE_SUBTREE,'(|(objectClass=oxAuthUmaResourceSet)(structuralObjectClass=oxAuthUmaResourceSet))')
-        
-        for entry in result:
-            dn = entry[0]            
-            for e in entry[1]:
-                if 'oxAuthUmaResourceSet' in entry[1][e]:
-                    entry[1][e].remove('oxAuthUmaResourceSet')
-                    entry[1][e].append('oxUmaResource')
-                
-            self.conn.delete_s(dn)
-            self.conn.add_s(dn, modlist.addModlist(entry[1]))
-
-        result = self.conn.search_s('o=gluu',ldap.SCOPE_SUBTREE,'(|(objectClass=oxAuthUmaResourceSetPermission)(structuralObjectClass=oxAuthUmaResourceSetPermission))')
-        
-        for entry in result:
-            dn = entry[0]
-            for e in entry[1]:
-                if 'oxAuthUmaResourceSet' in entry[1][e]:
-                    entry[1][e].remove('oxAuthUmaResourceSetPermission')
-                    entry[1][e].append('oxUmaResourcePermission')
-                
-            self.conn.delete_s(dn)
-            self.conn.add_s(dn, modlist.addModlist(entry[1]))
-
-        result = self.conn.search_s('o=gluu',ldap.SCOPE_SUBTREE,'(|(oxMemcachedConfiguration=*)(oxCacheConfiguration=*))', ['oxMemcachedConfiguration','oxCacheConfiguration'])
-
-        for entry in result:
-            dn = entry[0]
-            for e in entry[1]:
-                entry[1][e] = 'oxCacheConfiguration: {"cacheProviderType":"IN_MEMORY","memcachedConfiguration":{"servers":"localhost:11211","maxOperationQueueLength":100000,"bufferSize":32768,"defaultPutExpiration":60,"connectionFactoryType":"DEFAULT"},"inMemoryConfiguration":{"defaultPutExpiration":60},"redisConfiguration":{"redisProviderType":"STANDALONE","servers":"localhost:6379","defaultPutExpiration":60}, nativePersistenceConfiguration: {"defaultPutExpiration":60}}'
-
-            self.conn.modify_s(dn, [( ldap.MOD_REPLACE, e,  entry[1][e])])
-
     def createOpenTrustStore(self):
         if self.ldap_type == 'openldap':
 
@@ -1059,9 +1046,14 @@ class GluuUpdater:
         else:
             self.conn.modify_s(dn, [( ldap.MOD_REPLACE, 'oxTrustAuthenticationMode',  ['auth_ldap_server'])])
             print 'oxTrustAuthenticationMode was set to auth_ldap_server'
-        
-        oxCacheConfiguration = '{"cacheProviderType": "IN_MEMORY", "memcachedConfiguration": {"servers":"localhost:11211", "maxOperationQueueLength":100000, "bufferSize":32768, "defaultPutExpiration":60, "connectionFactoryType": "DEFAULT"}, "inMemoryConfiguration": {"defaultPutExpiration":60}, "redisConfiguration":{"servers":"localhost:6379", "defaultPutExpiration": 60}}'
-        self.conn.modify_s(dn, [( ldap.MOD_REPLACE, 'oxCacheConfiguration',  oxCacheConfiguration)])
+
+        oxCacheConfiguration_cur = json.loads(result[0][1]['oxCacheConfiguration'][0])
+        oxCacheConfiguration_new = {"cacheProviderType": "IN_MEMORY", "memcachedConfiguration": {"servers":"localhost:11211", "maxOperationQueueLength":100000, "bufferSize":32768, "defaultPutExpiration":60, "connectionFactoryType": "DEFAULT"}, "inMemoryConfiguration": {"defaultPutExpiration":60}, "nativePersistenceConfiguration": {"defaultPutExpiration":60}, "redisConfiguration":{"servers":"localhost:6379", "defaultPutExpiration": 60}}
+        oxCacheConfiguration = jsonmerge.merge(oxCacheConfiguration_new, oxCacheConfiguration_cur)
+        oxCacheConfiguration_json = json.dumps(oxCacheConfiguration)
+        self.conn.modify_s(dn, [( ldap.MOD_REPLACE, 'oxCacheConfiguration',  oxCacheConfiguration_json)])
+
+        print "oxCacheConfiguration was modified as", oxCacheConfiguration_json
 
 
         changes = { 'oxAuthConfDynamic': [
@@ -1080,7 +1072,7 @@ class GluuUpdater:
                         ("idGenerationEndpoint", 'change', 'entry', "https://{0}/oxauth/restv1/id".format(self.hostname)),
                         ("introspectionEndpoint", 'change', 'entry', "https://{0}/oxauth/restv1/introspection".format(self.hostname)),
                         ("umaConfigurationEndpoint", 'change', 'entry', "https://{0}/oxauth/restv1/uma2-configuration".format(self.hostname)),
-                        ("checkSessionIFrame", 'change', 'entry', "https://{0}/oxauth/opiframe.htm".format(self.hostname)),
+                        ("checkSessionIFrame", 'change', 'entry', "https://{0}.gluu.org/oxauth/opiframe.htm".format(self.hostname)),
 
                         ('responseTypesSupported', 'change', 'entry',[
                                     ["code"],
@@ -1668,12 +1660,9 @@ updaterObj.createOpenTrustStore()
 updaterObj.updateDefaultDettings()
 updaterObj.updateStartIni()
 updaterObj.updateOtherLDAP()
-#updaterObj.update_shib()
-#updaterObj.checkAndCreateMetricBackend()
+updaterObj.update_shib()
+updaterObj.checkAndCreateMetricBackend()
 
-
-# TODO: is this necassary?
-#updaterObj.updateOtherLDAPEntries()
 
 #./makeself.sh --target /opt/upd/3.1.6upg/  /opt/upd/3.1.6upg/ 3-1-6-upg.sh  "Gluu Updater Package 3.1.6.upg" /opt/upd/3.1.6upg/bin/update.py
 
