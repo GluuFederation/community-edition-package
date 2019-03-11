@@ -90,9 +90,10 @@ if not result.strip() or (result.strip() and result.strip().lower()[0] != 'y'):
     print "You can re-run this script to upgrade. Bye now ..."
     sys.exit()
 
-msg = """Would you like to replace all the default Gluu Server scripts for 3.1.4?
+msg = """Would you like to replace all the default Gluu Server scripts WITH SCRIPTS FROM {0}?
 (This will replace any customization you may have made to these default script entries)
-(Y|n)"""
+(Y|n)""".format(up_version)
+
 repace_scripts = False
 result = raw_input(msg)
 if not result.strip() or result.strip().lower()[0] == 'y':
