@@ -569,9 +569,9 @@ class GluuUpdater:
 
     def updateLdapSchema(self):
         
-        if self.ldap_host != 'localhost':
+        if (self.ldap_host != 'localhost') or (self.ldap_host != self.hostname):
             self.ldappConn()
-            if self.ldap_host != 'localhost':
+            if (self.ldap_host != 'localhost') or (self.ldap_host != self.hostname):
                 if not self.checkRemoteSchema():
                     print ("LDAP server seems on remote server. Please copy content of \n"
                         "/opt/upd/3.1.4upg/ldap/opendj (from the machine you are \n"
