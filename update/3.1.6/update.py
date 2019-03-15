@@ -573,7 +573,7 @@ class GluuUpdater:
             self.ldappConn()
             if self.ldap_host != 'localhost':
                 if not self.checkRemoteSchema():
-                    cprint ("LDAP server seems on remote server. Please copy content of \n"
+                    print ("LDAP server seems on remote server. Please copy content of \n"
                         "/opt/upd/3.1.4upg/ldap/opendj (from the machine you are \n"
                         "running this script) to /opt/opendj/config/schema \n"
                         "(on remote opendj server) and restart opendj"
