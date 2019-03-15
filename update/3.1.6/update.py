@@ -1451,9 +1451,12 @@ class GluuUpdater:
 
     def createIDPClient(self):
 
-        clientTwoQuads = '%s.%s' % (getQuad(),getQuad())
 
-        if not self.setup_properties.get('idp_client_id'):
+        cur_client = self.conn.search_s('o=gluu',ldap.SCOPE_SUBTREE,'(displayName=IDP client)')
+
+        if not (self.setup_properties.get('idp_client_id') or cur_client):
+
+            clientTwoQuads = '%s.%s' % (getQuad(),getQuad())
 
             idp_client_id = '%s!0008!%s' % (self.setup_properties['inumOrg'], clientTwoQuads)
             self.setup_properties['idp_client_id'] = idp_client_id
@@ -1497,10 +1500,17 @@ class GluuUpdater:
             self.conn.add_s(dn,ldif)
 
         else:
-            dn = "inum=%(idp_client_id)s,ou=clients,o=%(inumOrg)s,o=gluu" % self.setup_properties
-            idp_client_id = '%(inumOrg)s!0008!%(idp_client_id)s' % (self.setup_properties)
+            
+            if cur_client:
+                dn = cur_client[0][0]
+                self.setup_properties['idp_client_id'] = cur_client[0][1]['inum'][0]
+            else:
+                dn = "inum=%(idp_client_id)s,ou=clients,o=%(inumOrg)s,o=gluu" % self.setup_properties
+                idp_client_id = '%(inumOrg)s!0008!%(idp_client_id)s' % (self.setup_properties)
+            
             result = self.conn.search_s(dn, ldap.SCOPE_BASE,'(objectClass=*)')
             idpClient_encoded_pw = result[0][1]['oxAuthClientSecret'][0]
+
             if not 'oxAuthLogoutURI' in result[0][1]:
                 self.conn.modify_s(dn, [( ldap.MOD_ADD, 'oxAuthLogoutURI', ['https://%(hostname)s/idp/Authn/oxAuth/ssologout' % self.setup_properties])])
                 print 'oxAuthLogoutURI modified'
