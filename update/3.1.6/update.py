@@ -224,6 +224,7 @@ class GluuUpdater:
         self.extensionFolder = os.path.join(self.app_dir, 'extension')
         self.scripts_ldif = os.path.join(self.update_temp_dir, 'scripts.ldif')
         self.passport_config = os.path.join(self.update_temp_dir, 'passport-config.json')
+        self.oxauth_errors = os.path.join(self.update_temp_dir, 'oxauth-errors.json')
 
         self.fido2ConfigFolder = '%s/fido2' % self.configFolder
 
@@ -271,7 +272,10 @@ class GluuUpdater:
             os.mkdir(self.backup_folder)
 
     def checkRemoteSchema(self):
-        result = self.conn.search_s('cn=schema',ldap.SCOPE_BASE,'(objectclass=*)',['objectClasses'])
+
+        s_base = 'cn=Subschema' if self.ldap_type == 'openldap' else 'cn=schema'
+        
+        result = self.conn.search_s(s_base,ldap.SCOPE_BASE,'(objectclass=*)',['objectClasses'])
         for obj_s in result[0][1]['objectClasses']:
             obj = ObjectClass(obj_s)
             if  'oxCacheEntity' in obj.names:
@@ -343,50 +347,6 @@ class GluuUpdater:
 
         shutil.copy('/opt/dist/gluu/idp3_cml_keygenerator.jar', self.backup_folder)
         shutil.copy(os.path.join(self.app_dir, 'idp3_cml_keygenerator.jar'), '/opt/dist/gluu/')
-        
-    # TODO: Do we still need this?
-    def updateOxAuthConf(self):
-
-        if self.cur_version >= '3.1.3':
-            return
-
-        result = self.conn.search_s('ou=appliances,o=gluu',ldap.SCOPE_SUBTREE,'(objectClass=oxAuthConfiguration)',['oxAuthConfDynamic'])
-
-        dn = result[0][0]
-        oxAuthConfDynamic = json.loads(result[0][1]['oxAuthConfDynamic'][0])
-
-        json_update = False
-
-        if not 'umaResourceLifetime' in oxAuthConfDynamic: 
-            oxAuthConfDynamic['umaResourceLifetime'] = 2592000
-            json_update = True
-            
-        if not 'authorizationRequestCustomAllowedParameters' in oxAuthConfDynamic: 
-            oxAuthConfDynamic['authorizationRequestCustomAllowedParameters'] = []
-            json_update = True
-
-        if not 'legacyDynamicRegistrationScopeParam' in oxAuthConfDynamic: 
-            oxAuthConfDynamic['legacyDynamicRegistrationScopeParam'] = False
-            json_update = True
-
-        if not 'useCacheForAllImplicitFlowObjects' in oxAuthConfDynamic: 
-            oxAuthConfDynamic['useCacheForAllImplicitFlowObjects'] = False
-            json_update = True
-
-        if not 'umaGrantAccessIfNoPolicies' in oxAuthConfDynamic: 
-            oxAuthConfDynamic['umaGrantAccessIfNoPolicies'] = True
-            json_update = True
-
-        if not 'corsConfigurationFilters' in oxAuthConfDynamic:
-            oxAuthConfDynamic['corsConfigurationFilters'] = [{"filterName": "CorsFilter", "corsAllowedOrigins": "*", "corsAllowedMethods": "GET,POST,HEAD,OPTIONS", "corsAllowedHeaders": "Origin,Authorization,Accept,X-Requested-With,Content-Type,Access-Control-Request-Method,Access-Control-Request-Headers", "corsExposedHeaders": "", "corsSupportCredentials": True, "corsLoggingEnabled": False, "corsPreflightMaxAge": 1800, "corsRequestDecorate": True}]
-            json_update = True
-
-        if json_update:
-            jsons = json.dumps(oxAuthConfDynamic)
-            self.conn.modify_s(dn, [( ldap.MOD_REPLACE, 'oxAuthConfDynamic',  jsons)])
-            print 'oxAuthConfDynamic updated'
-        else:
-            print 'No need to update oxAuthConfDynamic'
 
 
     def addUserCertificateMetadata(self):
@@ -569,24 +529,24 @@ class GluuUpdater:
 
     def updateLdapSchema(self):
         
-        if (self.ldap_host != 'localhost') or (self.ldap_host != self.hostname):
+        if not (self.ldap_host == 'localhost' or self.ldap_host == self.hostname):
             self.ldappConn()
-            if (self.ldap_host != 'localhost') or (self.ldap_host != self.hostname):
-                if not self.checkRemoteSchema():
-                    print ("LDAP server seems on remote server. Please copy content of \n"
-                        "/opt/upd/3.1.4upg/ldap/opendj (from the machine you are \n"
-                        "running this script) to /opt/opendj/config/schema \n"
-                        "(on remote opendj server) and restart opendj"
-                        )
+            
+            if not self.checkRemoteSchema():
+                print ("LDAP server seems on remote server. Please copy content of \n"
+                    "/opt/upd/3.1.4upg/ldap/opendj (from the machine you are \n"
+                    "running this script) to /opt/opendj/config/schema \n"
+                    "(on remote opendj server) and restart opendj"
+                    )
+                s=raw_input("Please update schema and hit <ENTER> key")
+            while True:
+                self.ldappConn()
+                if self.checkRemoteSchema():
+                    break
+                else:
+                    print("LDAP Server with new schema is not ready.\n")
                     s=raw_input("Please update schema and hit <ENTER> key")
-                while True:
-                    self.ldappConn()
-                    if self.checkRemoteSchema():
-                        break
-                    else:
-                        print("LDAP Server with new schema is not ready.\n")
-                        s=raw_input("Please update schema and hit <ENTER> key")
-                        
+                    
             return
 
         print "Updating ldap schema"
@@ -1012,6 +972,7 @@ class GluuUpdater:
 
         result = self.conn.search_s('ou=appliances,o=gluu',ldap.SCOPE_SUBTREE, ('(oxTrustConfImportPerson=*)'), ['oxTrustConfImportPerson'])
         dn = result[0][0]
+        
         oxTrustConfImportPerson_s = result[0][1]['oxTrustConfImportPerson'][0]
         oxTrustConfImportPerson = json.loads(oxTrustConfImportPerson_s)
         
@@ -1290,6 +1251,11 @@ class GluuUpdater:
             self.conn.modify_s(dn, [( ldap.MOD_ADD, 'oxConfigurationProperty',  ['{"value1":"lock_expiration_time","value2":"120","description":""}'])])
 
 
+        print "Updating oxAuthConfErrors"
+        dn = 'ou=oxauth,ou=configuration,inum=%(inumAppliance)s,ou=appliances,o=gluu' % self.setup_properties
+        oxauth_errors = open(self.oxauth_errors).read()
+        self.conn.modify_s(dn, [( ldap.MOD_REPLACE, 'oxAuthConfErrors',  oxauth_errors)])
+        
 
     def update_shib(self):
         #saml-nameid.xml.vm is missing after upgrade
