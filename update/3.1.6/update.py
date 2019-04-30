@@ -636,10 +636,31 @@ class GluuUpdater:
         os.system('tar --strip 1 -xzf {0} -C /opt/gluu/node/passport/node_modules --no-xattrs --no-same-owner --no-same-permissions'.format(self.passport_mdules_archive))
 
     
-        files_to_copy = [ 
-                            'passport-saml-config.json', 
-                            'passport-inbound-idp-initiated.json',
-                        ]
+        files_to_copy = [ 'passport-inbound-idp-initiated.json' ]
+        
+        #check if passport-saml-config.json exists and update
+        passport_saml_config_json_fn = os.path.join(self.configFolder, 
+                                                'passport-saml-config.json')
+
+        if os.path.exists(passport_saml_config_json_fn):
+            update_json = False
+            passport_saml_config_json = json.load(open(passport_saml_config_json_fn))
+
+            for idp in passport_saml_config_json:
+                for k,v in (('logo_img','{Provider Logo url}'), ('enable', 'true')):                
+                    if not k in passport_saml_config_json[idp]:
+                        passport_saml_config_json[idp][k] = v
+                        update_json = True
+
+            if update_json:
+                json.dump(passport_saml_config_json,
+                          open(passport_saml_config_json_fn,'w'),
+                            indent=2,
+                          )
+        else:
+            files_to_copy.append('passport-saml-config.json')
+        
+                        
         for file_name in files_to_copy:
             source_path = os.path.join(self.update_dir, 'app', 'temp', file_name)
             os.system('cp {0} /etc/gluu/conf'.format(source_path))
