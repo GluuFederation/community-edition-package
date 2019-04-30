@@ -816,7 +816,10 @@ class GluuUpdater:
                 for i, oxExternalUid in enumerate(oxExternalUid_list):
                     if not (oxExternalUid.startswith('hotp:') or oxExternalUid.startswith('totp:') or oxExternalUid.startswith('passport-')):
                         if ':' in oxExternalUid:
-                            providerName, userName = oxExternalUid.split(':')
+                            n=oxExternalUid.rfind(':')
+                            providerName = oxExternalUid[:n]
+                            userName = oxExternalUid[n+1:]
+
                             if providerName in ('dropbox', 'facebook', 'github', 'google', 'linkedin', 'tumblr', 'twitter', 'windowslive', 'yahoo'):
                                 oxExternalUid_list[i] = 'passport-{}:{}'.format(providerName, userName)
                             else:
