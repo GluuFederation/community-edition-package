@@ -794,8 +794,13 @@ class GluuUpdater:
                 
                 for i, oxExternalUid in enumerate(oxExternalUid_list):
                     if not (oxExternalUid.startswith('hotp:') or oxExternalUid.startswith('totp:') or oxExternalUid.startswith('passport-')):
-                        oxExternalUid_list[i] = 'passport-' +  oxExternalUid
-                        modify = True
+                        if ':' in oxExternalUid:
+                            providerName, userName = oxExternalUid.split(':')
+                            if providerName in ('dropbox', 'facebook', 'github', 'google', 'linkedin', 'tumblr', 'twitter', 'windowslive', 'yahoo'):
+                                oxExternalUid_list[i] = 'passport-{}:{}'.format(providerName, userName)
+                            else:
+                                oxExternalUid_list[i] = 'passport-saml:{}'.format(userName)
+                            modify = True
 
                 if modify:
                     self.conn.modify_s(dn, [(ldap.MOD_REPLACE, 'oxExternalUid',  oxExternalUid_list)])
@@ -1380,6 +1385,13 @@ class GluuUpdater:
                 self.conn.delete_s(dn)
             print "Adding new script", dn
             self.conn.add_s(dn, ldif)
+
+        dn = 'inum=%(inumAppliance)s,ou=appliances,o=gluu' % self.setup_properties
+        result = self.conn.search_s(dn,ldap.SCOPE_BASE)
+        if 'enabled' in result[0][1].get('gluuPassportEnabled'):
+            scim_access_policy_dn = 'inum=%(inumOrg)s!0011!2DAF.F9A5,ou=scripts,o=%(inumOrg)s,o=gluu' %  self.setup_properties 
+            self.conn.modify_s(scim_access_policy_dn, [(ldap.MOD_REPLACE, 'gluuStatus',  ['true'])])
+
 
     def updateApacheConfig(self):
         
