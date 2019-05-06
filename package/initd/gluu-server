@@ -394,7 +394,9 @@ case "$1" in
 	;;
     ready)
 	;;
-	
+    tune_os)
+                tune_os
+        ;;
     *)
 
         echo "Usage:  {start|stop|status|restart|login|ready|clear-logs}"
