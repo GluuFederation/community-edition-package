@@ -153,9 +153,10 @@ def get_ldap_admin_serevers_password(ox_ldap_properties_file):
             s = l.split(':')[1].strip()
             servers_s = s.split(',')
             servers = [ ss.split(':')[0] for ss in servers_s ]
+        elif l.startswith('bindDN'):
+            binddn = l.split(':')[1].strip()
             
-            
-    return passwd, servers
+    return passwd, servers, binddn
 
 def get_saml_certs(cfn):
     tree = ET.parse(cfn)
@@ -243,17 +244,13 @@ class GluuUpdater:
 
         self.setup_properties['shibboleth_version'] = 'v3'
 
-        if self.setup_properties.get('ldap_type'):
-            self.ldap_type = self.setup_properties['ldap_type']
-        else:
+        self.ldap_bind_pw, self.ldap_servers, self.ldap_bind_dn = get_ldap_admin_serevers_password(self.ox_ldap_properties_file)
+
+        if self.ldap_bind_dn.endswith('o=gluu'):
             self.ldap_type = 'openldap'
-    
-        if self.ldap_type == 'opendj':
-            self.ldap_bind_dn = self.setup_properties['opendj_ldap_binddn']
-        elif self.ldap_type == 'openldap':
-            self.ldap_bind_dn = self.setup_properties['ldap_binddn']
-            
-        self.ldap_bind_pw, self.ldap_servers = get_ldap_admin_serevers_password(self.ox_ldap_properties_file)
+        else:
+            self.ldap_type = 'opendj'
+
         
         self.ldap_host = self.ldap_servers[0]
         
@@ -557,8 +554,7 @@ class GluuUpdater:
         else:
            self.stop_opendj()
 
-            
-        
+
         #wait 5 secs for ldap server to stop
         time.sleep(5)
         
