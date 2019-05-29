@@ -17,7 +17,12 @@ import string
 
 import xml.etree.ElementTree as ET
 
-up_version = '3.1.6'
+
+cur_dir=os.path.dirname(os.path.realpath(__file__))
+
+
+
+up_version = '3.1.6-sp1'
 
 if not os.path.exists('/etc/gluu/conf'):
     sys.exit('Please run this script inside Gluu container.')
@@ -76,7 +81,9 @@ if not '-n' in sys.argv:
         print("Restarting program")
         os.execl(sys.executable, sys.executable, *sys.argv)
 
-sys.path.append('/opt/upd/{0}upg/pylib'.format(up_version))
+pylib_dir = os.path.join(os.path.dirname(cur_dir), 'pylib')
+print pylib_dir
+sys.path.append(pylib_dir)
 
 import jsonmerge
 import ldap
@@ -207,7 +214,7 @@ class MyLdif(LDIFParser):
 class GluuUpdater:
     def __init__(self):
         self.gluu_version = up_version
-        self.update_version = self.gluu_version + 'upg'
+        self.update_version = self.gluu_version + '-upg'
         self.update_dir = os.path.join('/opt/upd/', self.update_version)
         self.app_dir = os.path.join(self.update_dir,'app')
         self.setup_properties = parse_setup_properties()
@@ -1673,7 +1680,7 @@ updaterObj.update_shib()
 updaterObj.checkAndCreateMetricBackend()
 
 
-#./makeself.sh --target /opt/upd/3.1.6upg/  /opt/upd/3.1.6upg/ 3-1-6-upg.sh  "Gluu Updater Package 3.1.6.upg" /opt/upd/3.1.6upg/bin/update.py
+#./makeself.sh --target /opt/upd/3.1.6-sp1-upg/  /opt/upd/3.1.6-sp1-upg/ 3-1-6-sp1-upg.sh  "Gluu Updater Package 3.1.6-sp1-upg" /opt/upd/3.1.6-sp1-upg/bin/update.py
 
 print """
 \033[;1mPlease Note:\033[0;0m oxAuthenticationMode and oxTrustAuthenticationMode was

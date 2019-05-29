@@ -214,6 +214,7 @@ stop() {
         stopGenericService oxd-server "oxd-server"
         stopGenericService rsyslog "RSyslog"
         stopGenericService memcached "Memcached"
+        stopGenericService gluu-radius "Gluu Radius"
 
         if [ -x /opt/gluu-server-$GLUU_VERSION/etc/init.d/opendj ] && [ "`ps aux | grep opendj | grep -v grep`"  != "" ]; then
              	echo "Stopping OpendDJ..."
