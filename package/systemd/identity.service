@@ -5,8 +5,8 @@ After=oxauth.service
 
 [Service]
 Type=forking
-ExecStart=/etc/init.d/identity start
-ExecStop=/etc/init.d/identity stop
+ExecStart=/opt/dist/scripts/identity start
+ExecStop=/opt/dist/scripts/identity stop
 User=jetty
 Group=jetty
 
