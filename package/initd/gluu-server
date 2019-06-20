@@ -86,7 +86,7 @@ else
 	LOCK_PATH="/var/lock/subsys"
 fi
 
-CHROOT_DIR=/opt/gluu-server-$GLUU_VERSION
+CHROOT_DIR=/opt/gluu-server
 PIDFILE=/var/run/gluu-server-$GLUU_VERSION.pid
 
 STAT=(`df -aP |grep \/opt\/gluu-server\/ | awk '{ print $6 }' | grep -Eohw 'proc|lo|pts|modules|dev'|sort|uniq`)
@@ -115,10 +115,10 @@ start() {
                         cp --parents -f $RESOLV_CONF -H /opt/gluu-server/
                 fi
 	
-		/bin/mount /dev                    /opt/gluu-server-$GLUU_VERSION/dev -o bind
-		/bin/mount /proc                   /opt/gluu-server-$GLUU_VERSION/proc -t proc -o defaults,noatime
-		/bin/mount /sys/class/net/lo       /opt/gluu-server-$GLUU_VERSION/sys/class/net/lo -t sysfs -o defaults
-		/bin/mount /lib/modules            /opt/gluu-server-$GLUU_VERSION/lib/modules -o bind
+		/bin/mount /dev                    /opt/gluu-server/dev -o bind
+		/bin/mount /proc                   /opt/gluu-server/proc -t proc -o defaults,noatime
+		/bin/mount /sys/class/net/lo       /opt/gluu-server/sys/class/net/lo -t sysfs -o defaults
+		/bin/mount /lib/modules            /opt/gluu-server/lib/modules -o bind
 
                 if [[ $DETECTED_OS == "Ubuntu 14.04" || $DETECTED_OS == "Ubuntu 16.04" || $DETECTED_OS == "Ubuntu 18.04" || $DETECTED_OS == "Debian GNU/Linux 8" || $DETECTED_OS == "Debian GNU/Linux 9" ]]; then 
 			/bin/mount /dev/pts                /opt/gluu-server/dev/pts -t devpts -o gid=5,mode=620
@@ -148,7 +148,7 @@ stopGenericService() {
     serviceName=$1
     serviceDescription=$2
 
-    serviceFile="/opt/gluu-server-$GLUU_VERSION/etc/init.d/$serviceName"
+    serviceFile="/opt/gluu-server/etc/init.d/$serviceName"
     serviceStatusCheck=$(echo "ps aux | grep $serviceName | grep -v grep")
     serviceStopCommand=$(echo "service $serviceName stop")
 
@@ -171,7 +171,7 @@ stopGenericService() {
 
     if $found_service; then
         echo "Stopping $serviceDescription..."
-        /usr/sbin/chroot /opt/gluu-server-$GLUU_VERSION su - root -c 'service $0 stop' -- $serviceName > /dev/null 2>&1
+        /usr/sbin/chroot /opt/gluu-server su - root -c 'service $0 stop' -- $serviceName > /dev/null 2>&1
 
         if [ "`ps aux | grep $serviceName | grep -v grep | grep -i gluu`"  != "" ]; then
             echo "Failed"
@@ -194,7 +194,7 @@ stop() {
 
         if [ -x /opt/gluu-server-$GLUU_VERSION/etc/init.d/$APACHE ] && [ "`ps aux | grep $APACHE | grep -v grep`"  != "" ]; then
              	echo "Stopping Apache..."
-            	/usr/sbin/chroot /opt/gluu-server-$GLUU_VERSION su - root -c "service $APACHE stop" > /dev/null 2>&1
+            	/usr/sbin/chroot /opt/gluu-server su - root -c "service $APACHE stop" > /dev/null 2>&1
                 if [ "`ps aux | grep $APACHE | grep -v grep`"  != "" ]; then
                    echo "Failed"
                 else
@@ -216,7 +216,7 @@ stop() {
         stopGenericService memcached "Memcached"
         stopGenericService gluu-radius "Gluu Radius"
 
-        if [ -x /opt/gluu-server-$GLUU_VERSION/etc/init.d/opendj ] && [ "`ps aux | grep opendj | grep -v grep`"  != "" ]; then
+        if [ -x /opt/gluu-server/etc/init.d/opendj ] && [ "`ps aux | grep opendj | grep -v grep`"  != "" ]; then
              	echo "Stopping OpendDJ..."
             	/usr/sbin/chroot /opt/gluu-server su - root -c 'service opendj stop' > /dev/null 2>&1
                 sleep 5
@@ -227,7 +227,7 @@ stop() {
                 fi
         fi
 
-        if [ -x /opt/gluu-server-$GLUU_VERSION/etc/init.d/solserver ] && [ "`ps aux | grep slapd | grep -v grep`"  != "" ]; then
+        if [ -x /opt/gluu-server/etc/init.d/solserver ] && [ "`ps aux | grep slapd | grep -v grep`"  != "" ]; then
              	echo "Stopping OpenLDAP..."
             	/usr/sbin/chroot /opt/gluu-server su - root -c 'service solserver stop' > /dev/null 2>&1
                 sleep 5
@@ -238,7 +238,7 @@ stop() {
                 fi
         fi
 
-        if [ -x /opt/gluu-server-$GLUU_VERSION/etc/init.d/couchbase-server ] && [ "`ps aux | grep beam.smp | grep -v grep`"  != "" ]; then
+        if [ -x /opt/gluu-server/etc/init.d/couchbase-server ] && [ "`ps aux | grep beam.smp | grep -v grep`"  != "" ]; then
              	echo "Stopping Couchbase Server..."
             	/usr/sbin/chroot /opt/gluu-server su - root -c 'service couchbase-server stop' > /dev/null 2>&1
                 sleep 5
