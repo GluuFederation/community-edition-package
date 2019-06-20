@@ -25,8 +25,8 @@ GLUU_VERSION=4.0
 
 
 detect_os() {
-        OS_VERSION_FILE_1=/opt/gluu-server-$GLUU_VERSION/etc/redhat-release
-        OS_VERSION_FILE_2=/opt/gluu-server-$GLUU_VERSION/etc/os-release
+        OS_VERSION_FILE_1=/opt/gluu-server/etc/redhat-release
+        OS_VERSION_FILE_2=/opt/gluu-server/etc/os-release
         if [ -f $OS_VERSION_FILE_1 ]; then
                 MAJOR_VERSION="`awk '{print $3}' $OS_VERSION_FILE_1 |cut -d '.' -f1`"
                 GLUU_OS="`awk '{print $1}' $OS_VERSION_FILE_1`"
@@ -89,7 +89,7 @@ fi
 CHROOT_DIR=/opt/gluu-server-$GLUU_VERSION
 PIDFILE=/var/run/gluu-server-$GLUU_VERSION.pid
 
-STAT=(`df -aP |grep \/opt\/gluu-server-$GLUU_VERSION\/ | awk '{ print $6 }' | grep -Eohw 'proc|lo|pts|modules|dev'|sort|uniq`)
+STAT=(`df -aP |grep \/opt\/gluu-server\/ | awk '{ print $6 }' | grep -Eohw 'proc|lo|pts|modules|dev'|sort|uniq`)
 
 start() {
 	PORTS=`netstat -tunpl | awk '{ print $4 }' |grep -Eoh ':(80|443|8080|8081|8082|8083|8084|8085|8086|8090|8091|1389|1689|11211)$'`
@@ -108,11 +108,11 @@ start() {
  		echo "Starting Gluu server, please wait..."    	
 
                 if [ -f $RESOLV_CONF ]; then
-                        local target_resolv_conf=/opt/gluu-server-${GLUU_VERSION}/${RESOLV_CONF}
+                        local target_resolv_conf=/opt/gluu-server/${RESOLV_CONF}
                         if [ -h "${target_resolv_conf}" ]; then
                                 rm "${target_resolv_conf}"
                         fi
-                        cp --parents -f $RESOLV_CONF -H /opt/gluu-server-$GLUU_VERSION/
+                        cp --parents -f $RESOLV_CONF -H /opt/gluu-server/
                 fi
 	
 		/bin/mount /dev                    /opt/gluu-server-$GLUU_VERSION/dev -o bind
@@ -121,20 +121,20 @@ start() {
 		/bin/mount /lib/modules            /opt/gluu-server-$GLUU_VERSION/lib/modules -o bind
 
                 if [[ $DETECTED_OS == "Ubuntu 14.04" || $DETECTED_OS == "Ubuntu 16.04" || $DETECTED_OS == "Ubuntu 18.04" || $DETECTED_OS == "Debian GNU/Linux 8" || $DETECTED_OS == "Debian GNU/Linux 9" ]]; then 
-			/bin/mount /dev/pts                /opt/gluu-server-$GLUU_VERSION/dev/pts -t devpts -o gid=5,mode=620
-                	/usr/sbin/chroot /opt/gluu-server-$GLUU_VERSION su - root -c '/bin/hostname -b -F /etc/hostname' > /dev/null 2>&1
+			/bin/mount /dev/pts                /opt/gluu-server/dev/pts -t devpts -o gid=5,mode=620
+                	/usr/sbin/chroot /opt/gluu-server su - root -c '/bin/hostname -b -F /etc/hostname' > /dev/null 2>&1
         		sleep 2
-                	/usr/sbin/chroot /opt/gluu-server-$GLUU_VERSION su - root -c '/etc/init.d/rc 3' > /dev/null 2>&1 \
+                	/usr/sbin/chroot /opt/gluu-server su - root -c '/etc/init.d/rc 3' > /dev/null 2>&1 \
 			&& echo "started" > $PIDFILE  || failure $"Chroot start"
                 	RETVAL=$?
                 	echo
                 	[ $RETVAL -eq 0 ] && touch $LOCK_PATH/gluu-server-$GLUU_VERSION
                 	return $RETVAL
 		else
-			/bin/mount /dev/pts                /opt/gluu-server-$GLUU_VERSION/dev/pts -t devpts -o gid=5,mode=62
-			/usr/sbin/chroot /opt/gluu-server-$GLUU_VERSION su - root -c '/etc/rc.d/rc.sysinit' > /dev/null 2>&1
+			/bin/mount /dev/pts                /opt/gluu-server/dev/pts -t devpts -o gid=5,mode=62
+			/usr/sbin/chroot /opt/gluu-server su - root -c '/etc/rc.d/rc.sysinit' > /dev/null 2>&1
                 	sleep 2 
-                	/usr/sbin/chroot /opt/gluu-server-$GLUU_VERSION su - root -c '/etc/rc.d/rc 3' > /dev/null 2>&1 \
+                	/usr/sbin/chroot /opt/gluu-server su - root -c '/etc/rc.d/rc 3' > /dev/null 2>&1 \
                 	&& echo "started" > $PIDFILE  || failure $"Chroot start"
                 	RETVAL=$?
                 	echo
@@ -218,7 +218,7 @@ stop() {
 
         if [ -x /opt/gluu-server-$GLUU_VERSION/etc/init.d/opendj ] && [ "`ps aux | grep opendj | grep -v grep`"  != "" ]; then
              	echo "Stopping OpendDJ..."
-            	/usr/sbin/chroot /opt/gluu-server-$GLUU_VERSION su - root -c 'service opendj stop' > /dev/null 2>&1
+            	/usr/sbin/chroot /opt/gluu-server su - root -c 'service opendj stop' > /dev/null 2>&1
                 sleep 5
                 if [ "`ps aux | grep opendj | grep -v grep`"  != "" ]; then
                    echo "Failed"
@@ -229,7 +229,7 @@ stop() {
 
         if [ -x /opt/gluu-server-$GLUU_VERSION/etc/init.d/solserver ] && [ "`ps aux | grep slapd | grep -v grep`"  != "" ]; then
              	echo "Stopping OpenLDAP..."
-            	/usr/sbin/chroot /opt/gluu-server-$GLUU_VERSION su - root -c 'service solserver stop' > /dev/null 2>&1
+            	/usr/sbin/chroot /opt/gluu-server su - root -c 'service solserver stop' > /dev/null 2>&1
                 sleep 5
                 if [ "`ps aux | grep slapd | grep -v grep`"  != "" ]; then
                    echo "Failed"
@@ -240,7 +240,7 @@ stop() {
 
         if [ -x /opt/gluu-server-$GLUU_VERSION/etc/init.d/couchbase-server ] && [ "`ps aux | grep beam.smp | grep -v grep`"  != "" ]; then
              	echo "Stopping Couchbase Server..."
-            	/usr/sbin/chroot /opt/gluu-server-$GLUU_VERSION su - root -c 'service couchbase-server stop' > /dev/null 2>&1
+            	/usr/sbin/chroot /opt/gluu-server su - root -c 'service couchbase-server stop' > /dev/null 2>&1
                 sleep 5
                 if [ "`ps aux | grep slapd | grep -v grep`"  != "" ]; then
                    echo "Failed"
@@ -250,17 +250,17 @@ stop() {
         fi
 
         if ! [[ $DETECTED_OS == "Ubuntu 14.04" || $DETECTED_OS == "Ubuntu 16.04" || $DETECTED_OS == "Ubuntu 18.04" || $DETECTED_OS == "Debian GNU/Linux 8" || $DETECTED_OS == "Debian GNU/Linux 9" ]]; then
-		/usr/sbin/chroot /opt/gluu-server-$GLUU_VERSION su - root -c '/etc/rc.d/rc 7' > /dev/null 2>&1
+		/usr/sbin/chroot /opt/gluu-server su - root -c '/etc/rc.d/rc 7' > /dev/null 2>&1
         	sleep 5
-        	/usr/sbin/chroot /opt/gluu-server-$GLUU_VERSION su - root -c '/etc/init.d/denyhosts stop' &> /dev/null
+        	/usr/sbin/chroot /opt/gluu-server su - root -c '/etc/init.d/denyhosts stop' &> /dev/null
 		sleep 5
 	fi
 
-	/bin/umount -l /opt/gluu-server-$GLUU_VERSION/proc
-	/bin/umount -l /opt/gluu-server-$GLUU_VERSION/sys/class/net/lo
-	/bin/umount -l /opt/gluu-server-$GLUU_VERSION/lib/modules
-	/bin/umount -l /opt/gluu-server-$GLUU_VERSION/dev/pts
-	/bin/umount -l /opt/gluu-server-$GLUU_VERSION/dev
+	/bin/umount -l /opt/gluu-server/proc
+	/bin/umount -l /opt/gluu-server/sys/class/net/lo
+	/bin/umount -l /opt/gluu-server/lib/modules
+	/bin/umount -l /opt/gluu-server/dev/pts
+	/bin/umount -l /opt/gluu-server/dev
 
 	rm -f $LOCK_PATH/gluu-server-$GLUU_VERSION $PIDFILE
 	RETVAL=$?
@@ -289,7 +289,7 @@ login() {
 	if [ -f $PIDFILE ] && [ ${#STAT[@]} = "5" ]; then
                 echo gluu-server-$GLUU_VERSION is running...
                 echo logging in...
-                /usr/sbin/chroot /opt/gluu-server-$GLUU_VERSION/ su -
+                /usr/sbin/chroot /opt/gluu-server/ su -
         else
                 echo "gluu-server-$GLUU_VERSION is not running"
                 echo "please start it by running: /etc/init.d/gluu-server-$GLUU_VERSION start" 
@@ -299,7 +299,7 @@ login() {
 
 ready() {
         ### We should check STAT with every call to this function. So that we get fresh status till we're done stop.
-        STAT=(`df -aP |grep \/opt\/gluu-server-$GLUU_VERSION\/ | awk '{ print $6 }' | grep -Eohw 'proc|lo|pts|modules|dev'|sort|uniq`)
+        STAT=(`df -aP |grep \/opt\/gluu-server\/ | awk '{ print $6 }' | grep -Eohw 'proc|lo|pts|modules|dev'|sort|uniq`)
         ### Since, PORTS is also in use for checking the status, So we should check PORTS as well with every call to this function.
         PORTS=`netstat -tunpl | awk '{ print $4 }' |grep -Eoh ':(80|443|8080|8081|8082|8083|8084|8085|8086|8090|8091|1389|1689|11211)$'`
         if [ -f $PIDFILE ] && [ ${#STAT[@]} = "5" ]; then
