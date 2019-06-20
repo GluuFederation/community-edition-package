@@ -4,7 +4,7 @@ GLUU_VERSION=4.0
 
 ready() {
     	PORTS=`ss -tunpl | awk '{ print $5 }' |grep -Eohw ':(80|443|8080|8081|8082|8083|8084|8085|8086|8090|1389|1689|11211)$'`
-    	STAT=(`df -aP |grep \/opt\/gluu-server-$GLUU_VERSION\/ | awk '{ print $6 }' | grep -Eohw 'proc|lo|pts|modules|dev'`)
+    	STAT=(`df -aP |grep \/opt\/gluu-server\/ | awk '{ print $6 }' | grep -Eohw 'proc|lo|pts|modules|dev'`)
     	if [ -f $PIDFILE ] && [ ${#STAT[@]} = "6" ]; then
             PID=`cat $PIDFILE`
             return 1
