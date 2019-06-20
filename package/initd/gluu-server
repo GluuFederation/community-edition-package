@@ -192,7 +192,7 @@ stop() {
         	exit 2
         fi
 
-        if [ -x /opt/gluu-server-$GLUU_VERSION/etc/init.d/$APACHE ] && [ "`ps aux | grep $APACHE | grep -v grep`"  != "" ]; then
+        if [ -x /opt/gluu-server/etc/init.d/$APACHE ] && [ "`ps aux | grep $APACHE | grep -v grep`"  != "" ]; then
              	echo "Stopping Apache..."
             	/usr/sbin/chroot /opt/gluu-server su - root -c "service $APACHE stop" > /dev/null 2>&1
                 if [ "`ps aux | grep $APACHE | grep -v grep`"  != "" ]; then
