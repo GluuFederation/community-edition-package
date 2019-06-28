@@ -1175,6 +1175,8 @@ class GluuUpdater:
                         ('idTokenSigningAlgValuesSupported', 'add','element', 'PS256'),
                         ('idTokenSigningAlgValuesSupported', 'add','element', 'PS384'),
                         ('idTokenSigningAlgValuesSupported', 'add','element', 'PS512'),
+                        
+                        ('shareSubjectIdBetweenClientsWithSameSectorId', 'add',  'entry', True),
 
                     ],
     
@@ -1341,11 +1343,25 @@ class GluuUpdater:
         os.chdir('/opt')
         os.system('/opt/jre/bin/jar xf {0}'.format(os.path.join(self.app_dir,'shibboleth-idp.jar')))
         os.system('rm -r /opt/META-INF')
+        
+        idp_tmp_dir = '/tmp/{0}'.format(str(int(time.time()*1000)))
+        os.system('mkdir '+idp_tmp_dir)
+        
+        os.chdir(idp_tmp_dir)
+        
+        os.system('/opt/jre/bin/jar xf {0}'.format(os.path.join(self.update_dir, 'war/idp.war')))
+
+        os.system('rm -f /opt/shibboleth-idp/webapp/WEB-INF/lib/*')
+
+        os.system('cp -r {0}/WEB-INF/ /opt/shibboleth-idp/webapp'.format(idp_tmp_dir))
+
         os.system('chown -R jetty:jetty /opt/shibboleth-idp')
         os.system('cp {0} /opt/shibboleth-idp/conf'.format(os.path.join(self.app_dir,'temp/metadata-providers.xml.vm')))
         os.system('cp {0} /opt/shibboleth-idp/conf'.format(os.path.join(self.app_dir,'temp/saml-nameid.xml.vm')))
         os.system('chmod u=rw,g=r,o=r /opt/shibboleth-idp/conf/metadata-providers.xml.vm')
         os.system('chmod u=rw,g=r,o=r /opt/shibboleth-idp/conf/saml-nameid.xml.vm')
+
+        os.system('rm -r -f '+ idp_tmp_dir)
 
     def replace_scripts(self):
 
