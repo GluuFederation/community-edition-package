@@ -1,0 +1,14 @@
+[Unit]
+Description=Casa service
+Requires=oxauth.service
+After=oxauth.service
+
+[Service]
+Type=forking
+ExecStart=/opt/dist/scripts/casa start
+ExecStop=/opt/dist/scripts/casa stop
+User=jetty
+Group=jetty
+
+[Install]
+WantedBy=multi-user.target
