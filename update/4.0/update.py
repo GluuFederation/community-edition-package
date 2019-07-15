@@ -128,6 +128,7 @@ class GluuUpdater:
         self.backup_time = time.ctime().replace(' ','_')
         self.newDns = []
         self.enabled_scripts = []
+        self.current_version = '4.0.0-SNAPSHOT'
 
         self.script_replacements = {
                 '2DAF-F995': '2DAF-F9A5'
@@ -144,6 +145,16 @@ class GluuUpdater:
         target_schema = os.path.join(setupObject.ldapBaseFolder, 'config/schema/101-ox.ldif')
         shutil.copy(new_schema, target_schema)
         os.system('chown ldap:ldap ' + target_schema)
+
+    def upgrade_war_files(self):
+        print "Downloading oxtrust-server"
+        os.system('wget https://ox.gluu.org/maven/org/gluu/oxtrust-server/{0}/oxtrust-server-{0}.war -O /opt/gluu/jetty/identity/webapps/identity.war'.format(self.current_version))
+        print "Downloading oxauth-server"
+        os.system('wget https://ox.gluu.org/maven/org/gluu/oxauth-server/{0}/oxauth-server-{0}.war -O /opt/gluu/jetty/oxauth/webapps/oxauth.war'.format(self.current_version))
+        if os.path.exists('/opt/gluu/jetty/idp/webapps/'):
+            print "Downloading idp server"
+            os.system('wget https://ox.gluu.org/maven/org/gluu/oxshibbolethIdp/{0}/oxshibbolethIdp-{0}.war -O /opt/gluu/jetty/idp/webapps/idp.war'.format(self.current_version))
+
 
     def parse_current_ldif(self):
         self.ldif_parser = MyLDIF(open(self.current_ldif_fn))
@@ -266,7 +277,7 @@ class GluuUpdater:
                 if 'true' in new_entry['gluuStatus']:
                     scr_inum = self.inum2uuid(new_entry['inum'][0])
                     self.enabled_scripts.append(self.script_replacements.get(scr_inum, scr_inum))
-                    continue
+                continue
 
             # we don't need existing tokens, passing
             elif 'oxAuthGrant' in new_entry['objectClass']:
@@ -525,6 +536,27 @@ class GluuUpdater:
 
     def fix_passport_config(self, new_dn, new_entry):
         
+        if not os.path.exists('/opt/gluu/node/passport'):
+            return
+        
+        print "Updating Passport"
+        
+        print "Stopping passport server"
+        
+        setupObject.run_service_command('passport', 'stop')
+
+        print "Downloading passport server"
+        os.system('wget https://ox.gluu.org/npm/passport/passport-4.0.0.tgz -O passport.tgz')
+        print "Downloading passport node libraries"
+        os.system('wget https://ox.gluu.org/npm/passport/passport-master-node_modules.tar.gz -O passport-master-node_modules.tar.gz')
+
+        print "Extracting passport.tgz into /opt/gluu/node/passport"
+        os.system('tar --strip 1 -xzf passport.tgz -C /opt/gluu/node/passport --no-xattrs --no-same-owner --no-same-permissions')
+ 
+        print "Extracting passport node modules"
+        
+        os.system('tar --strip 1 -xzf passport-master-node_modules.tar.gz -C /opt/gluu/node/passport/node_modules --no-xattrs --no-same-owner --no-same-permissions')
+
         setupObject.generate_passport_configuration()
         
         
@@ -577,10 +609,8 @@ class GluuUpdater:
         
         passport_rp_client_id = self.inum2uuid(cur_config['clientId'])
 
-
         setupObject.templateRenderingDict['passport_rp_client_id'] = passport_rp_client_id
         setupObject.templateRenderingDict['passport_rp_client_cert_alias'] = cur_config['keyId']
-
 
         passport_config = self.render_template(os.path.join(self.template_dir, 'passport-config.json'))
 
@@ -595,6 +625,9 @@ class GluuUpdater:
         new_entry['gluuPassportConfiguration'] = [passport_central_config]
 
         self.write2ldif(new_dn, new_entry)
+
+        os.system('chown -R node:node /opt/gluu/node/')
+        setupObject.run_service_command('passport', 'start')
 
     def update_conf_files(self):
 
@@ -615,14 +648,11 @@ class GluuUpdater:
         
 
 updaterObj = GluuUpdater()
-#updaterObj.dump_current_db()
+updaterObj.upgrade_war_files()
+updaterObj.dump_current_db()
 updaterObj.update_schema()
-updaterObj.import_ldif2ldap()
-
-"""
-
 updaterObj.parse_current_ldif()
 updaterObj.process_ldif()
 updaterObj.update_conf_files()
+updaterObj.import_ldif2ldap()
 setupObject.save_properties()
-"""
