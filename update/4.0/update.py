@@ -6,17 +6,61 @@ import base64
 import io
 import re
 import uuid
+import time
+import shutil
 
-from ldif import LDIFParser, LDIFWriter
-from ldap.dn import explode_dn, str2dn, dn2str
+from setup.pylib.ldif import LDIFParser, LDIFWriter
 
-from setup.setup import Setup
 
 cur_dir = os.path.dirname(os.path.realpath(__file__))
 
+
+package_type = None
+
+if os.path.exists('/etc/yum.repos.d/'):
+    package_type = 'rpm'
+elif os.path.exists('/etc/apt/sources.list'):
+    package_type = 'deb'
+        
+
+missing_packages = []
+
+try:
+    import ldap
+except:
+    missing_packages.append('python-ldap')
+
+
+if missing_packages:
+    packages_str = ' '.join(missing_packages)
+    result = raw_input("Missing package(s): {0}. Install now? (Y|n): ".format(packages_str))
+    if result.strip() and result.strip().lower()[0] == 'n':
+        sys.exit("Can't continue without installing these packages. Exiting ...")
+            
+
+    if package_type == 'rpm':
+        cmd = 'yum install -y epel-release'
+        os.system(cmd)
+        cmd = 'yum clean all'
+        os.system(cmd)
+        cmd = "yum install -y {0}".format(packages_str)
+    else:
+        os.system('apt-get update')
+        cmd = "apt-get install -y {0}".format(packages_str)
+
+    print "Installing package(s) with command: "+ cmd
+    os.system(cmd)
+
+
+from setup.setup import Setup
+from ldap.dn import explode_dn, str2dn
+
+
 setupObject = Setup(os.path.join(cur_dir,'setup'))
 setupObject.load_properties('/install/community-edition-setup/setup.properties.last')
+#setupObject.load_properties('./setup.properties.last')
 setupObject.check_properties()
+setupObject.os_version = setupObject.detect_os_type()
 setupObject.generate_oxtrust_api_configuration()
 
 
@@ -79,9 +123,28 @@ class GluuUpdater:
         self.scripts_ldif = os.path.join(self.template_dir, 'scripts.ldif')
         self.current_ldif_fn = os.path.join(cur_dir, 'gluu.ldif')
         self.processed_ldif_fn = os.path.join(cur_dir, 'gluu_noinum.ldif')
-        self.extensionFolder = os.path.join(cur_dir, 'extension')
+        self.extensionFolder = os.path.join(self.setup_dir, 'static/extension')
         self.oxtrust_api_ldif = os.path.join(self.template_dir, 'oxtrust_api.ldif')
-        
+        self.backup_time = time.ctime().replace(' ','_')
+        self.newDns = []
+        self.enabled_scripts = []
+
+        self.script_replacements = {
+                '2DAF-F995': '2DAF-F9A5'
+            }
+
+    def dump_current_db(self):
+        print "Dumping ldap to gluu.ldif"
+        os.system('cp -r -f /opt/opendj /opt/opendj.bak_'+self.backup_time)
+        os.system('/opt/opendj/bin/ldapsearch -X -Z -D "cn=directory manager" -w {} -h localhost -p 1636 -b "o=gluu" "Objectclass=*" > ./gluu.ldif'.format(setupObject.ldapPass))
+
+    def update_schema(self):
+        print "Updating schema"
+        new_schema = os.path.join(self.setup_dir, 'static/opendj/101-ox.ldif')
+        target_schema = os.path.join(setupObject.ldapBaseFolder, 'config/schema/101-ox.ldif')
+        shutil.copy(new_schema, target_schema)
+        os.system('chown ldap:ldap ' + target_schema)
+
     def parse_current_ldif(self):
         self.ldif_parser = MyLDIF(open(self.current_ldif_fn))
         self.ldif_parser.parse()
@@ -111,14 +174,18 @@ class GluuUpdater:
         self.add_template(self.scripts_ldif)
 
 
-    def add_template(self, tmp_file):
-        
+    def render_template(self, tmp_file):
         data_dict = setupObject.__dict__
         data_dict.update(setupObject.templateRenderingDict)
         
         ldif_temp = open(tmp_file).read()
         ldif_temp = setupObject.fomatWithDict(ldif_temp,  data_dict)
         
+        return ldif_temp
+
+    def add_template(self, tmp_file):
+
+        ldif_temp = self.render_template(tmp_file)
 
         ldif_io = io.StringIO(ldif_temp.decode('utf-8'))
         ldif_io.seek(0)
@@ -127,8 +194,19 @@ class GluuUpdater:
         parser.parse()
 
         for scr_dn in parser.DNs:
-            self.ldif_writer.unparse(scr_dn, parser.entries[scr_dn])
-
+            
+            if 'inum' in parser.entries[scr_dn]:
+                if parser.entries[scr_dn]['inum'][0] in ('2DAF-F995', '2DAF-F9A5'):
+                    oxConfigurationProperty = json.loads(parser.entries[scr_dn]['oxConfigurationProperty'][0])
+                    
+                    tmp_ = [self.inum2uuid(v.strip()) for v in oxConfigurationProperty['value2'].split(',')]
+                    oxConfigurationProperty['value2'] = ', '.join(tmp_)
+                    parser.entries[scr_dn]['oxConfigurationProperty'] = [ json.dumps(oxConfigurationProperty) ]
+                if parser.entries[scr_dn]['inum'][0] in self.enabled_scripts:
+                    parser.entries[scr_dn]['oxEnabled'] = ['true']
+            
+            self.newDns.append(scr_dn)
+            self.write2ldif(scr_dn, parser.entries[scr_dn])
         
     def add_new_entries(self):
         
@@ -154,6 +232,23 @@ class GluuUpdater:
         return tmps
 
 
+    def add_missing_attributes(self):
+        
+        with open(os.path.join(self.template_dir, 'attributes.ldif')) as attributes_file:
+
+            attributes_parser = pureLDIFParser(attributes_file)
+            attributes_parser.parse()
+            
+            for attr_dn in attributes_parser.DNs:
+                if not attr_dn in self.newDns:
+                    self.write2ldif(attr_dn, attributes_parser.entries[attr_dn])
+
+
+    def write2ldif(self, new_dn, new_entry):
+        self.newDns.append(new_dn)
+        self.ldif_writer.unparse(new_dn, new_entry)
+
+
     def process_ldif(self):
 
         attributes_parser = pureLDIFParser(open(os.path.join(self.template_dir, 'attributes.ldif')))
@@ -168,11 +263,30 @@ class GluuUpdater:
 
             # we don't need existing scripts won't work in 4.0, passing
             if 'oxCustomScript' in new_entry['objectClass']:
+                if 'true' in new_entry['gluuStatus']:
+                    scr_inum = self.inum2uuid(new_entry['inum'][0])
+                    self.enabled_scripts.append(self.script_replacements.get(scr_inum, scr_inum))
                     continue
+
+            # we don't need existing tokens, passing
+            elif 'oxAuthGrant' in new_entry['objectClass']:
+                continue
+            
+            elif 'oxAuthExpiration' in new_entry:
+                continue
+            #elif 'oxAuthTokenCode' in new_entry:
+            #    continue
+            #elif 'oxTicket' in new_entry:
+            #    continue
 
             #we won't have asimba, passing asimba related entries
             if checkIfAsimbaEntry(dn, new_entry):
                 continue
+
+
+            if 'ou' in new_entry and new_entry['ou'][0] in ('uma_permission', 'uma_rpt'):
+                continue
+
 
             dne = explode_dn(dn)
 
@@ -205,7 +319,6 @@ class GluuUpdater:
                 oxIDPAuthentication_config['baseDNs'][0] = 'ou=people,o=gluu'
                 oxIDPAuthentication['config'] = json.dumps(oxIDPAuthentication_config)
                 new_entry['oxIDPAuthentication'][0] = json.dumps(oxIDPAuthentication, indent=2)
-                           
 
             if 'oxAuthConfDynamic' in new_entry:
                 oxAuthConfDynamic = json.loads(new_entry['oxAuthConfDynamic'][0])
@@ -287,6 +400,10 @@ class GluuUpdater:
 
 
             if 'ou=configuration,o=gluu' == new_dn:
+                # we need to set authentication mode to ldap
+                new_entry['oxAuthenticationMode'] =  ['auth_ldap_server']
+                new_entry['oxTrustAuthenticationMode'] = ['auth_ldap_server']
+                
                 if not 'oxCacheConfiguration' in new_entry:
                     continue
 
@@ -352,6 +469,8 @@ class GluuUpdater:
                 if not 'organization' in new_entry['objectClass']:
                     new_entry['objectClass'].append('organization')
             
+            
+            # check for objectClass
             if 'oxAuthCustomScope' in new_entry['objectClass']:
                 new_entry['oxId']  = new_entry['displayName']
                 new_entry.pop('displayName')
@@ -369,6 +488,11 @@ class GluuUpdater:
                     new_dn_e.remove('ou=uma')
                 new_dn = ','.join(new_dn_e)
 
+            elif 'oxPassportConfiguration' in  new_entry['objectClass']:
+                self.fix_passport_config(new_dn, new_entry)
+                continue
+
+
             if 'oxAuthUmaScope' in new_entry:
                 tmp_dn_e = explode_dn(new_entry['oxAuthUmaScope'][0])
                 if 'ou=uma' in tmp_dn_e:
@@ -383,34 +507,122 @@ class GluuUpdater:
 
 
             #Write modified entry to ldif
-            self.ldif_writer.unparse(new_dn, new_entry)
+            self.newDns.append(new_dn)
+            self.write2ldif(new_dn, new_entry)
 
         
         self.add_new_scripts()
         self.add_new_entries()
+        self.add_missing_attributes()
 
-        self.ldif_writer.unparse('ou=resetPasswordRequests,o=gluu', {'objectClass': ['top', 'organizationalUnit'], 'ou': ['resetPasswordRequests']})
-        self.ldif_writer.unparse('ou=metric,o=gluu', {'objectClass':['top','organizationalunit'], 'ou': ['metric'] })
-        self.ldif_writer.unparse('ou=tokens,o=gluu', {'objectClass':['top','organizationalunit'], 'ou': ['tokens'] })
-        self.ldif_writer.unparse('ou=pct,ou=uma,o=gluu', {'objectClass':['top','organizationalunit'], 'ou': ['pct'] })
+
+        self.write2ldif('ou=resetPasswordRequests,o=gluu', {'objectClass': ['top', 'organizationalUnit'], 'ou': ['resetPasswordRequests']})
+        self.write2ldif('ou=metric,o=gluu', {'objectClass':['top','organizationalunit'], 'ou': ['metric'] })
+        self.write2ldif('ou=tokens,o=gluu', {'objectClass':['top','organizationalunit'], 'ou': ['tokens'] })
+        #self.write2ldif('ou=pct,ou=uma,o=gluu', {'objectClass':['top','organizationalunit'], 'ou': ['pct'] })
 
         processed_fp.close()
 
-    def fix_ldap_properties(self):
+    def fix_passport_config(self, new_dn, new_entry):
+        
+        setupObject.generate_passport_configuration()
+        
+        
+        passportStrategyId_mapping = {
+                'github': 'passport-github',
+                'openidconnect-default': 'passport-openidconnect',
+                'twitter': 'passport-twitter',
+                'yahoo': 'passport-yahoo-oauth2',
+                'tumblr': 'passport-tumblr',
+                'linkedin': 'passport-linkedin-oauth2',
+                'google': 'passport-google-oauth2',
+                'facebook': 'passport-facebook',
+                'dropbox': 'passport-dropbox-oauth2',
+                'windowslive': 'passport-windowslive',
+            }
+        
+        providers = []
 
-        ox_ldap_prop_fn = '/etc/gluu/conf/ox-ldap.properties'
+        for passport_configuration in new_entry['gluuPassportConfiguration']:
 
-        ox_ldap_prop = open(ox_ldap_prop_fn).read()
-        ox_ldap_prop = ox_ldap_prop.replace(self.inumApllience_inum+',ou=appliances,', '')
+            gluuPassportConfiguration = json.loads(passport_configuration)
+            strategy = gluuPassportConfiguration['strategy']
 
-        with open(ox_ldap_prop_fn,'w') as w:
-            w.write(ox_ldap_prop)
+            field_key = { field['value1']: field['value2'] for field in  gluuPassportConfiguration['fieldset'] }
 
+            provider =  {
+                  'displayName': strategy, 
+                  'passportStrategyId': passportStrategyId_mapping[strategy],
+                  'requestForEmail': False, 
+                  'enabled': True, 
+                  'mapping': strategy if strategy in ('dropbox', 'facebook', 'github', 'google', 'linkedin', 'openidconnect', 'tumblr', 'twitter', 'windowslive', 'yahoo') else 'openidconnect-default',
+                  'emailLinkingSafe': False, 
+                  'options': {
+                    'clientSecret': field_key['clientSecret'], 
+                    'clientID': field_key['clientID'],
+                  }, 
+                  'type': 'oauth' if strategy in ('dropbox', 'facebook', 'github', 'google', 'linkedin', 'tumblr', 'twitter', 'windowslive', 'yahoo') else 'openidconnect',
+                  'id': strategy
+                }
+
+            if 'logo_img' in field_key:
+                provider_tmp = field_key['logo_img']
+
+            providers.append(provider)
+
+        passport_config_fn = '/etc/gluu/conf/passport-config.json'
+
+        with open(passport_config_fn) as pcr:
+            cur_config = json.load(pcr)
+        
+        passport_rp_client_id = self.inum2uuid(cur_config['clientId'])
+
+
+        setupObject.templateRenderingDict['passport_rp_client_id'] = passport_rp_client_id
+        setupObject.templateRenderingDict['passport_rp_client_cert_alias'] = cur_config['keyId']
+
+
+        passport_config = self.render_template(os.path.join(self.template_dir, 'passport-config.json'))
+
+        with open(passport_config_fn,'w') as pcw:
+            pcw.write(passport_config)
+
+        passport_central_config = self.render_template(os.path.join(self.template_dir, 'passport-central-config.json'))
+        passport_central_config_js = json.loads(passport_central_config)
+        passport_central_config_js['providers'] = providers
+        passport_central_config = json.dumps(passport_central_config_js, indent=2)
+        
+        new_entry['gluuPassportConfiguration'] = [passport_central_config]
+
+        self.write2ldif(new_dn, new_entry)
+
+    def update_conf_files(self):
+
+        for prop_file in ('gluu.properties', 'gluu-ldap.properties'):
+            properties =  self.render_template(os.path.join(self.template_dir, prop_file))
+            with open( os.path.join(setupObject.configFolder, prop_file), 'w') as w:
+                w.write(properties)
+
+
+    def import_ldif2ldap(self):
+        print "Stopping OpenDj"
+        os.system('sudo -i -u ldap "/opt/opendj/bin/stop-ds"')
+        os.system('rm -f rejects.txt')
+        print "Importing processed ldif"
+        os.system('/opt/opendj/bin/import-ldif -b o=gluu -n userRoot -l gluu_noinum.ldif -R rejects.txt')
+        print "Starting OpenDj"
+        os.system('sudo -i -u ldap "/opt/opendj/bin/start-ds"')
+        
 
 updaterObj = GluuUpdater()
+#updaterObj.dump_current_db()
+updaterObj.update_schema()
+updaterObj.import_ldif2ldap()
+
+"""
+
 updaterObj.parse_current_ldif()
 updaterObj.process_ldif()
-
+updaterObj.update_conf_files()
 setupObject.save_properties()
-
-#updaterObj.fix_ldap_properties()
+"""
