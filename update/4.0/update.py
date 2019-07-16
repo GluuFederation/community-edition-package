@@ -118,6 +118,21 @@ def checkIfAsimbaEntry(dn, new_entry):
 
 class GluuUpdater:
     def __init__(self):
+        
+        self.update_dir = cur_dir
+        self.app_dir = os.path.join(self.update_dir,'app')
+        self.gluuBaseFolder = '/etc/gluu'
+        self.certFolder = '/etc/certs'
+        self.configFolder = '%s/conf' % self.gluuBaseFolder
+        self.gluu_app_dir = '/opt/gluu/jetty'
+        self.backup_time = time.strftime('%Y-%m-%d.%H:%M:%S')
+        self.backup_folder = os.path.join(cur_dir, 'backup_{}'.format(self.backup_time))
+        self.saml_meta_data = '/opt/shibboleth-idp/metadata/idp-metadata.xml'
+        
+        if not os.path.exists(self.backup_folder):
+            os.mkdir(self.backup_folder)
+
+        
         self.setup_dir = os.path.join(cur_dir, 'setup')
         self.template_dir = os.path.join(self.setup_dir, 'templates')
         self.scripts_ldif = os.path.join(self.template_dir, 'scripts.ldif')
@@ -134,6 +149,12 @@ class GluuUpdater:
                 '2DAF-F995': '2DAF-F9A5'
             }
 
+
+        for d in ('app', 'war'):
+            if not os.path.exists(d):
+                os.mkdir(d)
+
+
     def dump_current_db(self):
         print "Dumping ldap to gluu.ldif"
         os.system('cp -r -f /opt/opendj /opt/opendj.bak_'+self.backup_time)
@@ -146,14 +167,40 @@ class GluuUpdater:
         shutil.copy(new_schema, target_schema)
         os.system('chown ldap:ldap ' + target_schema)
 
-    def upgrade_war_files(self):
-        print "Downloading oxtrust-server"
-        os.system('wget https://ox.gluu.org/maven/org/gluu/oxtrust-server/{0}/oxtrust-server-{0}.war -O /opt/gluu/jetty/identity/webapps/identity.war'.format(self.current_version))
-        print "Downloading oxauth-server"
-        os.system('wget https://ox.gluu.org/maven/org/gluu/oxauth-server/{0}/oxauth-server-{0}.war -O /opt/gluu/jetty/oxauth/webapps/oxauth.war'.format(self.current_version))
-        if os.path.exists('/opt/gluu/jetty/idp/webapps/'):
-            print "Downloading idp server"
-            os.system('wget https://ox.gluu.org/maven/org/gluu/oxshibbolethIdp/{0}/oxshibbolethIdp-{0}.war -O /opt/gluu/jetty/idp/webapps/idp.war'.format(self.current_version))
+
+    def download_war_files(self):
+        os.system('wget -nv https://ox.gluu.org/maven/org/gluu/oxshibbolethIdp/{0}/oxshibbolethIdp-{0}.war -O war/idp.war'.format(self.current_version))
+        os.system('wget -nv https://ox.gluu.org/maven/org/gluu/oxtrust-server/{0}/oxtrust-server-{0}.war -O war/identity.war'.format(self.current_version))
+        os.system('wget -nv https://ox.gluu.org/maven/org/gluu/oxauth-server/{0}/oxauth-server-{0}.war -O war/oxauth.war'.format(self.current_version))
+        os.system('wget -nv https://ox.gluu.org/maven/org/gluu/oxShibbolethStatic/{0}/oxShibbolethStatic-{0}.jar -O app/shibboleth-idp.jar'.format(self.current_version))
+        os.system('wget -nv https://ox.gluu.org/maven/org/gluu/oxShibbolethKeyGenerator/{0}/oxShibbolethKeyGenerator-{0}.jar -O app/idp3_cml_keygenerator.jar'.format(self.current_version))
+        os.system('wget -nv https://ox.gluu.org/npm/passport/passport-4.0.0.tgz -O app/passport.tgz'.format(self.current_version))
+        os.system('wget -nv https://ox.gluu.org/npm/passport/passport-version_3.1.6.sp1-node_modules.tar.gz -O app/passport-node_modules.tar.gz')
+
+
+    def updateWar(self):
+
+        new_war_dir = os.path.join(self.update_dir, 'war')
+        for app in os.listdir(self.gluu_app_dir):
+            war_app = app+'.war'
+            new_war_app_file = os.path.join(new_war_dir, war_app)
+            if os.path.exists(new_war_app_file):
+                app_dir = os.path.join(self.gluu_app_dir, app, 'webapps')
+                cur_war = os.path.join(app_dir, war_app)
+                if os.path.exists(cur_war):
+                    print "Backing up", war_app, "to", self.backup_folder
+                    shutil.copy(cur_war, self.backup_folder)
+                    
+                    resources_dir = os.path.join(self.gluu_app_dir, app, 'resources')
+                    if not os.path.exists(resources_dir):
+                        os.mkdir(resources_dir)
+                    os.system('chown jetty:jetty ' + resources_dir)
+                    
+                print "Updating", war_app
+                shutil.copy(new_war_app_file, app_dir)
+
+        shutil.copy('/opt/dist/gluu/idp3_cml_keygenerator.jar', self.backup_folder)
+        shutil.copy(os.path.join(self.app_dir, 'idp3_cml_keygenerator.jar'), '/opt/dist/gluu/')
 
 
     def parse_current_ldif(self):
@@ -239,6 +286,9 @@ class GluuUpdater:
 
         for x in re.findall('(00[0-9a-fA-F][0-9a-fA-F]-)', tmps):
             tmps = tmps.replace(x, '')
+
+        for x in re.findall(',\w+=,',tmps):
+            tmps = tmps.replace(x, ',')
 
         return tmps
 
@@ -331,6 +381,22 @@ class GluuUpdater:
                 oxIDPAuthentication['config'] = json.dumps(oxIDPAuthentication_config)
                 new_entry['oxIDPAuthentication'][0] = json.dumps(oxIDPAuthentication, indent=2)
 
+                for bool_attr in (
+                                'gluuPassportEnabled',
+                                'gluuManageIdentityPermission',
+                                'gluuOrgProfileMgt',
+                                'gluuScimEnabled',
+                                'gluuVdsCacheRefreshEnabled',
+                                'passwordResetAllowed',
+                                ):
+                    if bool_attr in new_entry:
+                        
+                        if new_entry[bool_attr][0] == 'enabled':
+                            new_entry[bool_attr] = ['true']
+                        else:
+                            new_entry[bool_attr] = ['false']
+
+
             if 'oxAuthConfDynamic' in new_entry:
                 oxAuthConfDynamic = json.loads(new_entry['oxAuthConfDynamic'][0])
                 oxAuthConfDynamic.pop('organizationInum')
@@ -403,6 +469,19 @@ class GluuUpdater:
                 oxTrustConfApplication['oxTrustApiTestMode'] = True
 
                 new_entry['oxTrustConfApplication'][0] = json.dumps(oxTrustConfApplication, indent=2)
+                
+                if 'oxTrustConfAttributeResolver' in new_entry:
+                    oxTrustConfAttributeResolver = json.loads(new_entry['oxTrustConfAttributeResolver'][0])
+                    for name_id in oxTrustConfAttributeResolver['nameIdConfigs']:
+                        name_id.pop('name')
+                        if 'persistent' in name_id['nameIdType']:
+                            name_id['nameIdType'] = 'urn:oasis:names:tc:SAML:2.0:nameid-format:persistent'
+                        elif 'emailAddress' in name_id['nameIdType']:
+                            name_id['nameIdType'] = 'urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress'
+                        else:
+                            name_id['nameIdType'] = 'urn:oasis:names:tc:SAML:1.1:nameid-format:X509SubjectName'
+                
+                    new_entry['oxTrustConfAttributeResolver'][0] = json.dumps(oxTrustConfAttributeResolver)
 
             elif 'oxIDPAuthentication' in new_entry:
                 oxIDPAuthentication = json.loads(new_entry['oxIDPAuthentication'][0])
@@ -502,7 +581,9 @@ class GluuUpdater:
             elif 'oxPassportConfiguration' in  new_entry['objectClass']:
                 self.fix_passport_config(new_dn, new_entry)
                 continue
-
+            
+            elif 'gluuSAMLconfig' in  new_entry['objectClass']:
+                new_entry['o'][0]='o=gluu'
 
             if 'oxAuthUmaScope' in new_entry:
                 tmp_dn_e = explode_dn(new_entry['oxAuthUmaScope'][0])
@@ -547,14 +628,20 @@ class GluuUpdater:
 
         print "Downloading passport server"
         os.system('wget https://ox.gluu.org/npm/passport/passport-4.0.0.tgz -O passport.tgz')
+        
         print "Downloading passport node libraries"
         os.system('wget https://ox.gluu.org/npm/passport/passport-master-node_modules.tar.gz -O passport-master-node_modules.tar.gz')
+
+
+        print "Removing existing passport server and node libraries"
+        os.system('rm -r -f /opt/gluu/node/passport/server/mappings')
+        os.system('rm -r -f /opt/gluu/node/passport/server/utils')
+        os.system('rm -r -f /opt/gluu/node/passport/node_modules')
 
         print "Extracting passport.tgz into /opt/gluu/node/passport"
         os.system('tar --strip 1 -xzf passport.tgz -C /opt/gluu/node/passport --no-xattrs --no-same-owner --no-same-permissions')
  
         print "Extracting passport node modules"
-        
         os.system('tar --strip 1 -xzf passport-master-node_modules.tar.gz -C /opt/gluu/node/passport/node_modules --no-xattrs --no-same-owner --no-same-permissions')
 
         setupObject.generate_passport_configuration()
@@ -646,13 +733,70 @@ class GluuUpdater:
         print "Starting OpenDj"
         os.system('sudo -i -u ldap "/opt/opendj/bin/start-ds"')
         
+    def update_shib(self):
+        
+        #saml-nameid.xml.vm is missing after upgrade
+
+        if not os.path.exists(self.saml_meta_data):
+            return
+
+
+        print "Backing up /opt/shibboleth-idp to", self.backup_folder
+        os.system('cp -r /opt/shibboleth-idp '+self.backup_folder)
+        print "Updating idp-metadata.xml"
+        setupObject.templateRenderingDict['idp3SigningCertificateText'] = open('/etc/certs/idp-signing.crt').read().replace('-----BEGIN CERTIFICATE-----','').replace('-----END CERTIFICATE-----','')
+        setupObject.templateRenderingDict['idp3EncryptionCertificateText'] = open('/etc/certs/idp-encryption.crt').read().replace('-----BEGIN CERTIFICATE-----','').replace('-----END CERTIFICATE-----','')
+
+        shutil.copy(self.saml_meta_data, self.backup_folder)
+
+        print "Updadting shibboleth-idp"
+        os.chdir('/opt')
+        os.system('/opt/jre/bin/jar xf {0}'.format(os.path.join(self.app_dir,'shibboleth-idp.jar')))
+        os.system('rm -r /opt/META-INF')
+        
+        idp_tmp_dir = '/tmp/{0}'.format(str(int(time.time()*1000)))
+        os.system('mkdir '+idp_tmp_dir)
+        
+        os.chdir(idp_tmp_dir)
+        
+        os.system('/opt/jre/bin/jar xf {0}'.format(os.path.join(self.update_dir, 'war/idp.war')))
+
+        os.system('rm -f /opt/shibboleth-idp/webapp/WEB-INF/lib/*')
+
+        os.system('cp -r {0}/WEB-INF/ /opt/shibboleth-idp/webapp'.format(idp_tmp_dir))
+
+        for prop_fn in ('idp.properties', 'ldap.properties', 'services.properties','saml-nameid.properties'):
+            print "Updating", prop_fn
+            properties = self.render_template(os.path.join(self.setup_dir, 'static/idp3/conf', prop_fn))
+            with open(os.path.join('/opt/shibboleth-idp/conf', prop_fn),'w') as w:
+                w.write(properties)
+
+        os.system('wget https://raw.githubusercontent.com/GluuFederation/oxTrust/master/configuration/template/shibboleth3/idp/saml-nameid.properties.vm -O /opt/gluu/jetty/identity/conf/shibboleth3/idp/saml-nameid.properties.vm')
+        os.system('chown -R jetty:jetty /opt/shibboleth-idp')
+
+        #os.system('cp {0} /opt/shibboleth-idp/conf'.format(os.path.join(self.app_dir,'temp/metadata-providers.xml.vm')))
+        #os.system('cp {0} /opt/shibboleth-idp/conf'.format(os.path.join(self.app_dir,'temp/saml-nameid.xml.vm')))
+        #os.system('chmod u=rw,g=r,o=r /opt/shibboleth-idp/conf/metadata-providers.xml.vm')
+        #os.system('chmod u=rw,g=r,o=r /opt/shibboleth-idp/conf/saml-nameid.xml.vm')
+
+        os.system('rm -r -f '+ idp_tmp_dir)
+
+
+        
+        
+        
+        
+        
 
 updaterObj = GluuUpdater()
-updaterObj.upgrade_war_files()
-updaterObj.dump_current_db()
-updaterObj.update_schema()
-updaterObj.parse_current_ldif()
-updaterObj.process_ldif()
-updaterObj.update_conf_files()
-updaterObj.import_ldif2ldap()
-setupObject.save_properties()
+#updaterObj.download_war_files()
+#updaterObj.updateWar()
+#updaterObj.dump_current_db()
+#updaterObj.update_schema()
+#updaterObj.parse_current_ldif()
+#updaterObj.process_ldif()
+#updaterObj.update_conf_files()
+#updaterObj.import_ldif2ldap()
+#setupObject.save_properties()
+updaterObj.update_shib()
+
