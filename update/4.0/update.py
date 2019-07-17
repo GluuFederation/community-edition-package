@@ -8,12 +8,9 @@ import re
 import uuid
 import time
 import shutil
-
-from setup.pylib.ldif import LDIFParser, LDIFWriter
-
+import argparse
 
 cur_dir = os.path.dirname(os.path.realpath(__file__))
-
 
 package_type = None
 
@@ -52,54 +49,6 @@ if missing_packages:
     os.system(cmd)
 
 
-from setup.setup import Setup
-from ldap.dn import explode_dn, str2dn
-
-
-setupObject = Setup(os.path.join(cur_dir,'setup'))
-setupObject.load_properties('/install/community-edition-setup/setup.properties.last')
-#setupObject.load_properties('./setup.properties.last')
-setupObject.check_properties()
-setupObject.os_version = setupObject.detect_os_type()
-setupObject.generate_oxtrust_api_configuration()
-
-
-class MyLDIF(LDIFParser):
-    def __init__(self, input_fd):
-        LDIFParser.__init__(self, input_fd)
-        self.DNs = []
-        self.entries = {}
-        self.inumOrg = None
-        self.inumOrg_dn = None
-        self.inumApllience = None
-        self.inumApllience_dn = None
-
-    def handle(self, dn, entry):
-        if (dn != 'o=gluu') and (dn != 'ou=appliances,o=gluu'):
-            self.DNs.append(dn)
-            self.entries[dn] = entry
-            
-            if not self.inumOrg and 'gluuOrganization' in entry['objectClass']:
-                self.inumOrg_dn  = dn
-                dne = str2dn(dn)
-                self.inumOrg = dne[0][0][1]
-
-            if not self.inumApllience and 'gluuAppliance' in entry['objectClass']:
-                self.inumApllience_dn = dn
-                dne = str2dn(dn)
-                self.inumApllience = dne[0][0][1]
-
-class pureLDIFParser(LDIFParser):
-    def __init__(self, input_fd):
-        LDIFParser.__init__(self, input_fd)
-        self.DNs = []
-        self.entries = {}
-
-    def handle(self, dn, entry):
-        self.DNs.append(dn)
-        self.entries[dn] = entry
-
-
 
 def checkIfAsimbaEntry(dn, new_entry):
     if 'ou=oxasimba' in dn:
@@ -121,6 +70,7 @@ class GluuUpdater:
         
         self.update_dir = cur_dir
         self.app_dir = os.path.join(self.update_dir,'app')
+        self.war_dir = os.path.join(self.update_dir,'war')
         self.gluuBaseFolder = '/etc/gluu'
         self.certFolder = '/etc/certs'
         self.configFolder = '%s/conf' % self.gluuBaseFolder
@@ -132,7 +82,6 @@ class GluuUpdater:
         if not os.path.exists(self.backup_folder):
             os.mkdir(self.backup_folder)
 
-        
         self.setup_dir = os.path.join(cur_dir, 'setup')
         self.template_dir = os.path.join(self.setup_dir, 'templates')
         self.scripts_ldif = os.path.join(self.template_dir, 'scripts.ldif')
@@ -150,11 +99,6 @@ class GluuUpdater:
             }
 
 
-        for d in ('app', 'war'):
-            if not os.path.exists(d):
-                os.mkdir(d)
-
-
     def dump_current_db(self):
         print "Dumping ldap to gluu.ldif"
         os.system('cp -r -f /opt/opendj /opt/opendj.bak_'+self.backup_time)
@@ -168,22 +112,31 @@ class GluuUpdater:
         os.system('chown ldap:ldap ' + target_schema)
 
 
-    def download_war_files(self):
-        os.system('wget -nv https://ox.gluu.org/maven/org/gluu/oxshibbolethIdp/{0}/oxshibbolethIdp-{0}.war -O war/idp.war'.format(self.current_version))
-        os.system('wget -nv https://ox.gluu.org/maven/org/gluu/oxtrust-server/{0}/oxtrust-server-{0}.war -O war/identity.war'.format(self.current_version))
-        os.system('wget -nv https://ox.gluu.org/maven/org/gluu/oxauth-server/{0}/oxauth-server-{0}.war -O war/oxauth.war'.format(self.current_version))
-        os.system('wget -nv https://ox.gluu.org/maven/org/gluu/oxShibbolethStatic/{0}/oxShibbolethStatic-{0}.jar -O app/shibboleth-idp.jar'.format(self.current_version))
-        os.system('wget -nv https://ox.gluu.org/maven/org/gluu/oxShibbolethKeyGenerator/{0}/oxShibbolethKeyGenerator-{0}.jar -O app/idp3_cml_keygenerator.jar'.format(self.current_version))
-        os.system('wget -nv https://ox.gluu.org/npm/passport/passport-4.0.0.tgz -O app/passport.tgz'.format(self.current_version))
-        os.system('wget -nv https://ox.gluu.org/npm/passport/passport-version_3.1.6.sp1-node_modules.tar.gz -O app/passport-node_modules.tar.gz')
+    def download_apps(self):
+        for d in (self.app_dir, self.war_dir):
+            if not os.path.exists(d):
+                os.mkdir(d)
+        
+        os.system('wget https://github.com/GluuFederation/community-edition-setup/archive/master.zip -O master.zip')
+        if os.path.exists('community-edition-setup-master'):
+            os.system('rm -r -f community-edition-setup-master')
+        os.system('unzip master.zip')
+        os.system('mv community-edition-setup-master setup')
+        os.system('touch setup/__init__.py')
+        os.system('wget -nv https://ox.gluu.org/maven/org/gluu/oxshibbolethIdp/{0}/oxshibbolethIdp-{0}.war -O {1}/idp.war'.format(self.current_version, self.war_dir))
+        os.system('wget -nv https://ox.gluu.org/maven/org/gluu/oxtrust-server/{0}/oxtrust-server-{0}.war -O {1}/identity.war'.format(self.current_version, self.war_dir))
+        os.system('wget -nv https://ox.gluu.org/maven/org/gluu/oxauth-server/{0}/oxauth-server-{0}.war -O {1}/oxauth.war'.format(self.current_version, self.war_dir))
+        os.system('wget -nv https://ox.gluu.org/maven/org/gluu/oxShibbolethStatic/{0}/oxShibbolethStatic-{0}.jar -O {1}/shibboleth-idp.jar'.format(self.current_version, self.app_dir))
+        os.system('wget -nv https://ox.gluu.org/maven/org/gluu/oxShibbolethKeyGenerator/{0}/oxShibbolethKeyGenerator-{0}.jar -O {1}/idp3_cml_keygenerator.jar'.format(self.current_version, self.app_dir))
+        os.system('wget -nv https://ox.gluu.org/npm/passport/passport-4.0.0.tgz -O {0}/passport.tgz'.format(self.app_dir))
+        os.system('wget -nv https://ox.gluu.org/npm/passport/passport-master-node_modules.tar.gz -O {0}/passport-node_modules.tar.gz'.format(self.app_dir))
 
 
     def updateWar(self):
 
-        new_war_dir = os.path.join(self.update_dir, 'war')
         for app in os.listdir(self.gluu_app_dir):
             war_app = app+'.war'
-            new_war_app_file = os.path.join(new_war_dir, war_app)
+            new_war_app_file = os.path.join(self.war_dir, war_app)
             if os.path.exists(new_war_app_file):
                 app_dir = os.path.join(self.gluu_app_dir, app, 'webapps')
                 cur_war = os.path.join(app_dir, war_app)
@@ -216,6 +169,8 @@ class GluuUpdater:
         print
 
     def add_new_scripts(self):
+
+        print "Replacing current custom scripts with latest scripts"
 
         for extensionType in os.listdir(self.extensionFolder):
             extensionTypeFolder = os.path.join(self.extensionFolder, extensionType)
@@ -311,6 +266,8 @@ class GluuUpdater:
 
 
     def process_ldif(self):
+
+        print "Processing ldif. This may take a while ...."
 
         attributes_parser = pureLDIFParser(open(os.path.join(self.template_dir, 'attributes.ldif')))
         attributes_parser.parse()
@@ -615,7 +572,7 @@ class GluuUpdater:
 
         processed_fp.close()
 
-    def fix_passport_config(self, new_dn, new_entry):
+    def update_passport(self):
         
         if not os.path.exists('/opt/gluu/node/passport'):
             return
@@ -626,11 +583,11 @@ class GluuUpdater:
         
         setupObject.run_service_command('passport', 'stop')
 
-        print "Downloading passport server"
-        os.system('wget https://ox.gluu.org/npm/passport/passport-4.0.0.tgz -O passport.tgz')
+        #print "Downloading passport server"
+        #os.system('wget https://ox.gluu.org/npm/passport/passport-4.0.0.tgz -O passport.tgz')
         
-        print "Downloading passport node libraries"
-        os.system('wget https://ox.gluu.org/npm/passport/passport-master-node_modules.tar.gz -O passport-master-node_modules.tar.gz')
+        #print "Downloading passport node libraries"
+        #os.system('wget https://ox.gluu.org/npm/passport/passport-master-node_modules.tar.gz -O passport-master-node_modules.tar.gz')
 
 
         print "Removing existing passport server and node libraries"
@@ -639,11 +596,23 @@ class GluuUpdater:
         os.system('rm -r -f /opt/gluu/node/passport/node_modules')
 
         print "Extracting passport.tgz into /opt/gluu/node/passport"
-        os.system('tar --strip 1 -xzf passport.tgz -C /opt/gluu/node/passport --no-xattrs --no-same-owner --no-same-permissions')
+        os.system('tar --strip 1 -xzf {0}/passport.tgz -C /opt/gluu/node/passport --no-xattrs --no-same-owner --no-same-permissions'.format(self.app_dir))
  
         print "Extracting passport node modules"
-        os.system('tar --strip 1 -xzf passport-master-node_modules.tar.gz -C /opt/gluu/node/passport/node_modules --no-xattrs --no-same-owner --no-same-permissions')
+        modules_dir = '/opt/gluu/node/passport/node_modules'
+        if not os.path.exists(modules_dir):
+            os.mkdir(modules_dir)
+        os.system('tar --strip 1 -xzf {0}/passport-node_modules.tar.gz -C {1} --no-xattrs --no-same-owner --no-same-permissions'.format(self.app_dir,modules_dir))
 
+        log_dir = '/opt/gluu/node/passport/server/logs'
+
+        if not os.path.exists(log_dir): 
+            os.mkdir(log_dir)
+
+        os.system('chown -R node:node /opt/gluu/node/passport/')
+
+    def fix_passport_config(self, new_dn, new_entry):
+        
         setupObject.generate_passport_configuration()
         
         
@@ -774,29 +743,78 @@ class GluuUpdater:
         os.system('wget https://raw.githubusercontent.com/GluuFederation/oxTrust/master/configuration/template/shibboleth3/idp/saml-nameid.properties.vm -O /opt/gluu/jetty/identity/conf/shibboleth3/idp/saml-nameid.properties.vm')
         os.system('chown -R jetty:jetty /opt/shibboleth-idp')
 
-        #os.system('cp {0} /opt/shibboleth-idp/conf'.format(os.path.join(self.app_dir,'temp/metadata-providers.xml.vm')))
-        #os.system('cp {0} /opt/shibboleth-idp/conf'.format(os.path.join(self.app_dir,'temp/saml-nameid.xml.vm')))
-        #os.system('chmod u=rw,g=r,o=r /opt/shibboleth-idp/conf/metadata-providers.xml.vm')
-        #os.system('chmod u=rw,g=r,o=r /opt/shibboleth-idp/conf/saml-nameid.xml.vm')
-
         os.system('rm -r -f '+ idp_tmp_dir)
 
 
-        
-        
-        
-        
-        
+if __name__ == '__main__':
+    
+    parser = argparse.ArgumentParser(description="This script upgrades OpenDJ gluu-servers (>3.0) to 4.0")
+    parser.add_argument('-o', '--online', help="online installation", action='store_true')
+    argsp = parser.parse_args()
 
-updaterObj = GluuUpdater()
-#updaterObj.download_war_files()
-#updaterObj.updateWar()
-#updaterObj.dump_current_db()
-#updaterObj.update_schema()
-#updaterObj.parse_current_ldif()
-#updaterObj.process_ldif()
-#updaterObj.update_conf_files()
-#updaterObj.import_ldif2ldap()
-#setupObject.save_properties()
-updaterObj.update_shib()
+    updaterObj = GluuUpdater()
+    
+    if argsp.online or not os.path.exists('setup'):
+        updaterObj.download_apps()
 
+    from setup.pylib.ldif import LDIFParser, LDIFWriter
+    from setup.setup import Setup
+    from ldap.dn import explode_dn, str2dn
+
+    class MyLDIF(LDIFParser):
+        def __init__(self, input_fd):
+            LDIFParser.__init__(self, input_fd)
+            self.DNs = []
+            self.entries = {}
+            self.inumOrg = None
+            self.inumOrg_dn = None
+            self.inumApllience = None
+            self.inumApllience_dn = None
+
+        def handle(self, dn, entry):
+            if (dn != 'o=gluu') and (dn != 'ou=appliances,o=gluu'):
+                self.DNs.append(dn)
+                self.entries[dn] = entry
+                
+                if not self.inumOrg and 'gluuOrganization' in entry['objectClass']:
+                    self.inumOrg_dn  = dn
+                    dne = str2dn(dn)
+                    self.inumOrg = dne[0][0][1]
+
+                if not self.inumApllience and 'gluuAppliance' in entry['objectClass']:
+                    self.inumApllience_dn = dn
+                    dne = str2dn(dn)
+                    self.inumApllience = dne[0][0][1]
+
+    class pureLDIFParser(LDIFParser):
+        def __init__(self, input_fd):
+            LDIFParser.__init__(self, input_fd)
+            self.DNs = []
+            self.entries = {}
+
+        def handle(self, dn, entry):
+            self.DNs.append(dn)
+            self.entries[dn] = entry
+
+
+    setupObject = Setup(os.path.join(cur_dir,'setup'))
+    setupObject.load_properties('/install/community-edition-setup/setup.properties.last')
+    #setupObject.load_properties('./setup.properties.last')
+    setupObject.check_properties()
+    setupObject.os_version = setupObject.detect_os_type()
+    setupObject.generate_oxtrust_api_configuration()
+        
+    updaterObj.updateWar()
+    updaterObj.update_passport()
+    
+    updaterObj.dump_current_db()
+    updaterObj.update_schema()
+    updaterObj.parse_current_ldif()
+    updaterObj.process_ldif()
+    updaterObj.update_conf_files()
+    updaterObj.import_ldif2ldap()
+    setupObject.save_properties()
+    updaterObj.update_shib()
+
+    print "Please logout from container and restart Gluu Server"
+    print "Note default authentication mode was set to auth_ldap_server"
