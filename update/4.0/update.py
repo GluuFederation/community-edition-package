@@ -66,6 +66,16 @@ def checkIfAsimbaEntry(dn, new_entry):
             return True
 
 
+attribute_type_changes = {
+                    'emailVerified': 'boolean',
+                    'phoneNumberVerified': 'boolean',
+                    'updatedAt': 'generalizedTime',
+                    'picture': 'binary',
+                    }
+                    
+                    
+
+
 class GluuUpdater:
     def __init__(self):
         
@@ -484,7 +494,7 @@ class GluuUpdater:
                 
                     new_entry['oxScopeType'] = ['uma']
 
-                if new_entry['inum'][0] == 'DF6B-4902' or new_entry['displayName'][0] == 'oxTrust Admin GUI':
+                elif new_entry['inum'][0] == 'DF6B-4902' or new_entry['displayName'][0] == 'oxTrust Admin GUI':
                     new_entry['oxAuthLogoutURI'] = [ 'https://%(hostname)s/identity/ssologout.htm' % setupObject.__dict__ ]
                     new_entry['oxAuthRedirectURI'] = [ 'https://%(hostname)s/identity/scim/auth' % setupObject.__dict__ ,
                                                     'https://%(hostname)s/identity/authcode.htm' % setupObject.__dict__ ,
@@ -493,8 +503,12 @@ class GluuUpdater:
                     new_entry['oxClaimRedirectURI'] = [ 'https://%(hostname)s/oxauth/restv1/uma/gather_claims' % setupObject.__dict__ ]
                     new_entry['oxAuthPostLogoutRedirectURI'] = [ 'https://%(hostname)s/identity/finishlogout.htm' % setupObject.__dict__ ]
 
-                if new_entry['inum'][0] == '6D99':
+                elif new_entry['inum'][0] == '6D99':
                     new_entry['oxScopeType'] = ['openid']
+
+                elif new_entry['inum'][0] == 'D2E0':
+                    new_entry['oxAuthClaimName'] = ['member_of']
+                
 
 
             if 'oxPolicyScriptDn' in new_entry:
@@ -554,7 +568,8 @@ class GluuUpdater:
             if 'gluuAttribute' in new_entry['objectClass']:
                 new_entry['gluuSAML1URI'] = [ 'urn:mace:dir:attribute-def:' + new_entry['gluuAttributeName'][0] ]
                 new_entry['gluuSAML2URI'] = attributes_parser.entries[new_dn]['gluuSAML2URI']
-
+                if  new_entry['gluuAttributeName'][0] in attribute_type_changes:
+                    new_entry['gluuAttributeType'] = attribute_type_changes[new_entry['gluuAttributeName'][0]]
 
             #Write modified entry to ldif
             self.newDns.append(new_dn)
