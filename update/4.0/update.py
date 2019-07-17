@@ -9,6 +9,7 @@ import uuid
 import time
 import shutil
 import argparse
+import shelve
 
 cur_dir = os.path.dirname(os.path.realpath(__file__))
 
@@ -206,7 +207,7 @@ class GluuUpdater:
         parser = pureLDIFParser(ldif_io)
         parser.parse()
 
-        for scr_dn in parser.DNs:
+        for scr_dn in parser.entries:
             
             if 'inum' in parser.entries[scr_dn]:
                 if parser.entries[scr_dn]['inum'][0] in ('2DAF-F995', '2DAF-F9A5'):
@@ -255,7 +256,7 @@ class GluuUpdater:
             attributes_parser = pureLDIFParser(attributes_file)
             attributes_parser.parse()
             
-            for attr_dn in attributes_parser.DNs:
+            for attr_dn in attributes_parser.entries:
                 if not attr_dn in self.newDns:
                     self.write2ldif(attr_dn, attributes_parser.entries[attr_dn])
 
@@ -275,7 +276,7 @@ class GluuUpdater:
         processed_fp = open(self.processed_ldif_fn,'w')
         self.ldif_writer = LDIFWriter(processed_fp)
 
-        for dn in self.ldif_parser.DNs:
+        for dn in self.ldif_parser.entries:
 
             new_entry = self.ldif_parser.entries[dn]
 
@@ -540,7 +541,7 @@ class GluuUpdater:
                 continue
             
             elif 'gluuSAMLconfig' in  new_entry['objectClass']:
-                new_entry['o'][0]='o=gluu'
+                new_entry['o'] = ['o=gluu']
 
             if 'oxAuthUmaScope' in new_entry:
                 tmp_dn_e = explode_dn(new_entry['oxAuthUmaScope'][0])
@@ -634,9 +635,14 @@ class GluuUpdater:
         for passport_configuration in new_entry['gluuPassportConfiguration']:
 
             gluuPassportConfiguration = json.loads(passport_configuration)
+            
             strategy = gluuPassportConfiguration['strategy']
 
-            field_key = { field['value1']: field['value2'] for field in  gluuPassportConfiguration['fieldset'] }
+
+            (key, val) = ('value1', 'value2') if 'value1' in gluuPassportConfiguration['fieldset'][0] else ('key','value')
+
+            field_key = { field[key]: field[val] for field in  gluuPassportConfiguration['fieldset'] }
+
 
             provider =  {
                   'displayName': strategy, 
@@ -754,18 +760,21 @@ if __name__ == '__main__':
 
     updaterObj = GluuUpdater()
     
-    if argsp.online or not os.path.exists('setup'):
-        updaterObj.download_apps()
+    #if argsp.online or not os.path.exists('setup'):
+    #    updaterObj.download_apps()
 
     from setup.pylib.ldif import LDIFParser, LDIFWriter
     from setup.setup import Setup
     from ldap.dn import explode_dn, str2dn
 
+    sdb_files = []
+
     class MyLDIF(LDIFParser):
         def __init__(self, input_fd):
             LDIFParser.__init__(self, input_fd)
-            self.DNs = []
-            self.entries = {}
+            fn = '/tmp/{}.sdb'.format(str(uuid.uuid4()))
+            sdb_files.append(fn)
+            self.entries = shelve.open(fn)
             self.inumOrg = None
             self.inumOrg_dn = None
             self.inumApllience = None
@@ -773,8 +782,7 @@ if __name__ == '__main__':
 
         def handle(self, dn, entry):
             if (dn != 'o=gluu') and (dn != 'ou=appliances,o=gluu'):
-                self.DNs.append(dn)
-                self.entries[dn] = entry
+                self.entries[str(dn)] = entry
                 
                 if not self.inumOrg and 'gluuOrganization' in entry['objectClass']:
                     self.inumOrg_dn  = dn
@@ -789,12 +797,12 @@ if __name__ == '__main__':
     class pureLDIFParser(LDIFParser):
         def __init__(self, input_fd):
             LDIFParser.__init__(self, input_fd)
-            self.DNs = []
-            self.entries = {}
+            fn = '/tmp/{}.sdb'.format(str(uuid.uuid4()))
+            sdb_files.append(fn)
+            self.entries = shelve.open(fn)
 
         def handle(self, dn, entry):
-            self.DNs.append(dn)
-            self.entries[dn] = entry
+            self.entries[str(dn)] = entry
 
 
     setupObject = Setup(os.path.join(cur_dir,'setup'))
@@ -803,10 +811,10 @@ if __name__ == '__main__':
     setupObject.check_properties()
     setupObject.os_version = setupObject.detect_os_type()
     setupObject.generate_oxtrust_api_configuration()
-        
+
     updaterObj.updateWar()
     updaterObj.update_passport()
-    
+
     updaterObj.dump_current_db()
     updaterObj.update_schema()
     updaterObj.parse_current_ldif()
@@ -816,5 +824,11 @@ if __name__ == '__main__':
     setupObject.save_properties()
     updaterObj.update_shib()
 
+    for sdbf in sdb_files:
+        if os.path.exists(sdbf):
+            os.remove(sdbf)
+
     print "Please logout from container and restart Gluu Server"
     print "Note default authentication mode was set to auth_ldap_server"
+
+
