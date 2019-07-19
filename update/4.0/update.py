@@ -110,7 +110,7 @@ class GluuUpdater:
         self.gluu_app_dir = '/opt/gluu/jetty'
         self.backup_time = time.strftime('%Y-%m-%d.%H:%M:%S')
         self.backup_folder = os.path.join(cur_dir, 'backup_{}'.format(self.backup_time))
-        self.saml_meta_data = '/opt/shibboleth-idp/metadata/idp-metadata.xml'
+        
         
         if not os.path.exists(self.backup_folder):
             os.mkdir(self.backup_folder)
@@ -1033,12 +1033,13 @@ class GluuUpdater:
         os.system('sudo -i -u ldap "/opt/opendj/bin/start-ds"')
         
     def update_shib(self):
-        
-        #saml-nameid.xml.vm is missing after upgrade
 
-        if not os.path.exists(self.saml_meta_data):
+        saml_meta_data = '/opt/shibboleth-idp/metadata/idp-metadata.xml'
+
+        if not os.path.exists(saml_meta_data):
             return
 
+        print "Updadting shibboleth-idp"
 
         print "Backing up /opt/shibboleth-idp to", self.backup_folder
         os.system('cp -r /opt/shibboleth-idp '+self.backup_folder)
@@ -1046,9 +1047,11 @@ class GluuUpdater:
         setupObject.templateRenderingDict['idp3SigningCertificateText'] = open('/etc/certs/idp-signing.crt').read().replace('-----BEGIN CERTIFICATE-----','').replace('-----END CERTIFICATE-----','')
         setupObject.templateRenderingDict['idp3EncryptionCertificateText'] = open('/etc/certs/idp-encryption.crt').read().replace('-----BEGIN CERTIFICATE-----','').replace('-----END CERTIFICATE-----','')
 
-        shutil.copy(self.saml_meta_data, self.backup_folder)
+        shutil.copy(saml_meta_data, self.backup_folder)
 
-        print "Updadting shibboleth-idp"
+
+        
+
         os.chdir('/opt')
         os.system('/opt/jre/bin/jar xf {0}'.format(os.path.join(self.app_dir,'shibboleth-idp.jar')))
         os.system('rm -r /opt/META-INF')
@@ -1057,12 +1060,17 @@ class GluuUpdater:
         os.system('mkdir '+idp_tmp_dir)
         
         os.chdir(idp_tmp_dir)
-        
+
         os.system('/opt/jre/bin/jar xf {0}'.format(os.path.join(self.update_dir, 'war/idp.war')))
-
         os.system('rm -f /opt/shibboleth-idp/webapp/WEB-INF/lib/*')
-
         os.system('cp -r {0}/WEB-INF/ /opt/shibboleth-idp/webapp'.format(idp_tmp_dir))
+
+        #Recreate idp-metadata.xml with new format
+        temp_fn = os.path.join(self.setup_dir, 'static/idp3/metadata/idp-metadata.xml')
+        new_saml_meta_data = self.render_template(temp_fn)
+        with open(saml_meta_data,'w') as f:
+            f.write(new_saml_meta_data)
+
 
         for prop_fn in ('idp.properties', 'ldap.properties', 'services.properties','saml-nameid.properties'):
             print "Updating", prop_fn
@@ -1075,6 +1083,7 @@ class GluuUpdater:
 
         os.system('rm -r -f '+ idp_tmp_dir)
 
+        os.chdir(cur_dir)
 
     def upgrade_jetty(self):
 
@@ -1195,23 +1204,24 @@ if __name__ == '__main__':
 
     setupObject = Setup(os.path.join(cur_dir,'setup'))
     setupObject.load_properties('/install/community-edition-setup/setup.properties.last')
-    setupObject.load_properties('./setup.properties.last')
+    #setupObject.load_properties('./setup.properties.last')
     setupObject.check_properties()
     setupObject.os_version = setupObject.detect_os_type()
     setupObject.calculate_selected_aplications_memory()
-    setupObject.generate_oxtrust_api_configuration()
-    updaterObj.update_default_settings()
+    setupObject.ldapCertFn = setupObject.opendj_cert_fn
+    
+    #setupObject.generate_oxtrust_api_configuration()
+    #updaterObj.update_default_settings()
 
-    updaterObj.update_war()
-    updaterObj.update_passport()
+    #updaterObj.update_war()
+    #updaterObj.update_passport()
 
-    updaterObj.dump_current_db()
-    updaterObj.update_schema()
-    updaterObj.parse_current_ldif()
-    updaterObj.process_ldif()
-    updaterObj.update_conf_files()
-    updaterObj.import_ldif2ldap()
-    setupObject.save_properties()
+    #updaterObj.dump_current_db()
+    #updaterObj.update_schema()
+    #updaterObj.parse_current_ldif()
+    #updaterObj.process_ldif()
+    #updaterObj.update_conf_files()
+    #updaterObj.import_ldif2ldap()
     updaterObj.update_shib()
 
     updaterObj.upgrade_jetty()
@@ -1219,6 +1229,8 @@ if __name__ == '__main__':
     for sdbf in sdb_files:
         if os.path.exists(sdbf):
             os.remove(sdbf)
+
+    #setupObject.save_properties()
 
     print "Please logout from container and restart Gluu Server"
     print "Notes:"
