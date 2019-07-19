@@ -1158,6 +1158,27 @@ class GluuUpdater:
         os.system('chown -R jetty:jetty ' + new_folder)
 
 
+    def update_apache_conf(self):
+        
+        setupObject.install_dir = setup_install_dir
+        setupObject.outputFolder = os.path.join(setup_install_dir, 'output')
+        setupObject.templateFolder = os.path.join(setup_install_dir, 'templates')
+
+        setupObject.apache2_conf = os.path.join(setup_install_dir, 'output', os.path.basename(setupObject.apache2_conf))
+        setupObject.apache2_ssl_conf = os.path.join(setup_install_dir, 'output', os.path.basename(setupObject.apache2_ssl_conf))
+        setupObject.apache2_24_conf = os.path.join(setup_install_dir, 'output', os.path.basename(setupObject.apache2_24_conf))
+        setupObject.apache2_ssl_24_conf = os.path.join(setup_install_dir, 'output', os.path.basename(setupObject.apache2_ssl_24_conf))
+
+        apache_templates = {
+                             setupObject.apache2_conf: False,
+                             setupObject.apache2_ssl_conf: False,
+                             setupObject.apache2_24_conf: False,
+                             setupObject.apache2_ssl_24_conf: False,
+                            }
+
+        setupObject.render_templates(apache_templates)
+        setupObject.configure_httpd()
+
 
 if __name__ == '__main__':
     
@@ -1216,8 +1237,11 @@ if __name__ == '__main__':
             self.entries[str(dn)] = entry
 
 
+    setup_install_dir = os.path.join(cur_dir,'setup')
     
-    setupObject = Setup(os.path.join(cur_dir,'setup'))
+    print "setup_install_dir", setup_install_dir
+    
+    setupObject = Setup(setup_install_dir)
     setupObject.load_properties('/install/community-edition-setup/setup.properties.last')
     #setupObject.load_properties('./setup.properties.last')
     setupObject.check_properties()
@@ -1225,10 +1249,12 @@ if __name__ == '__main__':
     setupObject.calculate_selected_aplications_memory()
     setupObject.ldapCertFn = setupObject.opendj_cert_fn
     
+    updaterObj.update_apache_conf()
+    
     #setupObject.generate_oxtrust_api_configuration()
     #updaterObj.update_default_settings()
-    updaterObj.upgrade_jetty()
-    updaterObj.update_war()
+    #updaterObj.upgrade_jetty()
+    #updaterObj.update_war()
     #updaterObj.update_passport()
 
     #updaterObj.dump_current_db()
@@ -1237,7 +1263,7 @@ if __name__ == '__main__':
     #updaterObj.process_ldif()
     #updaterObj.update_conf_files()
     #updaterObj.import_ldif2ldap()
-    updaterObj.update_shib()
+    #updaterObj.update_shib()
 
     
 
