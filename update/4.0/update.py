@@ -184,10 +184,8 @@ class GluuUpdater:
                         os.mkdir(resources_dir)
                     
                     start_ini = '/opt/gluu/jetty/{}/start.ini'.format(app)
-                    print "START INI", start_ini
                     if os.path.exists(start_ini):
                         os.remove(start_ini)
-                        
 
                     setupObject.run([
                         '/opt/jre/bin/java', '-jar', 
@@ -1129,27 +1127,6 @@ class GluuUpdater:
         os.system('tar -xf {0} -C {1}'.format(new_ver, new_folder))
         os.system('ln -sf {0}/{1} /opt/jetty'.format(new_folder,jetty_base_name[:-7]))
         os.system('chown -h jetty:jetty /opt/jetty')
-
-        cur_temp_s = 'TMPDIR={0}/temp'.format(cur_folder)
-        new_temp_s = 'TMPDIR={0}/temp'.format(new_folder)
-
-        for fn in glob.glob('/etc/default/*'):
-            f = open(fn).read()
-            if cur_temp_s in f:
-                f = f.replace(cur_temp_s, new_temp_s)
-                with open(fn,'w') as w:
-                    w.write(f)
-
-        for fn in glob.glob('/opt/gluu/jetty/*/start.ini'):
-            f = open(fn).readlines()
-            wf = False
-            for i in range(len(f)):
-                if f[i].startswith('--module=logging'):
-                    wf = True
-                    f[i] = '--module=console-capture\n'
-            if wf:
-                with open(fn,'w') as w:
-                    w.write(''.join(f))
 
         setupObject.jetty_dist = new_folder
 
