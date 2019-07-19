@@ -266,8 +266,8 @@ class GluuUpdater:
         parser = pureLDIFParser(ldif_io)
         parser.parse()
 
-        for scr_dn in parser.entries:
-            
+        for scr_dn in parser.DNs:
+            scr_dn = str(scr_dn)
             if 'inum' in parser.entries[scr_dn]:
                 if parser.entries[scr_dn]['inum'][0] in ('2DAF-F995', '2DAF-F9A5'):
                     oxConfigurationProperty = json.loads(parser.entries[scr_dn]['oxConfigurationProperty'][0])
@@ -315,7 +315,8 @@ class GluuUpdater:
             attributes_parser = pureLDIFParser(attributes_file)
             attributes_parser.parse()
             
-            for attr_dn in attributes_parser.entries:
+            for attr_dn in attributes_parser.DNs:
+                attr_dn = str(attr_dn)
                 if not attr_dn in self.newDns:
                     self.write2ldif(attr_dn, attributes_parser.entries[attr_dn])
 
@@ -396,8 +397,8 @@ class GluuUpdater:
         self.ldif_writer = LDIFWriter(processed_fp)
 
 
-        for dn in self.ldif_parser.entries:
-
+        for dn in self.ldif_parser.DNs:
+            dn = str(dn)
             new_entry = self.ldif_parser.entries[dn]
 
             # we don't need existing scripts won't work in 4.0, passing
@@ -894,7 +895,7 @@ class GluuUpdater:
                 new_entry['gluuSAML1URI'] = [ 'urn:mace:dir:attribute-def:' + new_entry['gluuAttributeName'][0] ]
                 new_entry['gluuSAML2URI'] = attributes_parser.entries[new_dn]['gluuSAML2URI']
                 if  new_entry['gluuAttributeName'][0] in attribute_type_changes:
-                    new_entry['gluuAttributeType'] = attribute_type_changes[new_entry['gluuAttributeName'][0]]
+                    new_entry['gluuAttributeType'] = [attribute_type_changes[new_entry['gluuAttributeName'][0]]]
 
             #Write modified entry to ldif
             self.newDns.append(new_dn)
@@ -1150,6 +1151,8 @@ class GluuUpdater:
                 with open(fn,'w') as w:
                     w.write(''.join(f))
 
+        setupObject.jetty_dist = new_folder
+
         new_folder_tmp = os.path.join(new_folder,'temp')
         
         if not os.path.exists(new_folder_tmp):
@@ -1200,6 +1203,7 @@ if __name__ == '__main__':
     class MyLDIF(LDIFParser):
         def __init__(self, input_fd):
             LDIFParser.__init__(self, input_fd)
+            self.DNs = []
             fn = '/tmp/{}.sdb'.format(str(uuid.uuid4()))
             sdb_files.append(fn)
             self.entries = shelve.open(fn)
@@ -1208,9 +1212,11 @@ if __name__ == '__main__':
             self.inumApllience = None
             self.inumApllience_dn = None
             self.idp_client = None
+            
 
         def handle(self, dn, entry):
             if (dn != 'o=gluu') and (dn != 'ou=appliances,o=gluu'):
+                self.DNs.append(dn)
                 self.entries[str(dn)] = entry
                 
                 if not self.inumOrg and 'gluuOrganization' in entry['objectClass']:
@@ -1226,14 +1232,18 @@ if __name__ == '__main__':
                 if (not self.idp_client) and ('oxAuthClient' in entry['objectClass']) and (entry['displayName'][0] == 'IDP client'):
                     self.idp_client = dn
 
+                
+
     class pureLDIFParser(LDIFParser):
         def __init__(self, input_fd):
             LDIFParser.__init__(self, input_fd)
+            self.DNs = []
             fn = '/tmp/{}.sdb'.format(str(uuid.uuid4()))
             sdb_files.append(fn)
             self.entries = shelve.open(fn)
 
         def handle(self, dn, entry):
+            self.DNs.append(dn)
             self.entries[str(dn)] = entry
 
 
@@ -1251,19 +1261,20 @@ if __name__ == '__main__':
     
     updaterObj.update_apache_conf()
     
-    #setupObject.generate_oxtrust_api_configuration()
-    #updaterObj.update_default_settings()
-    #updaterObj.upgrade_jetty()
-    #updaterObj.update_war()
-    #updaterObj.update_passport()
+    setupObject.generate_oxtrust_api_configuration()
+    
+    updaterObj.upgrade_jetty()
+    updaterObj.update_war()
+    updaterObj.update_passport()
+    updaterObj.update_default_settings()
 
-    #updaterObj.dump_current_db()
-    #updaterObj.update_schema()
-    #updaterObj.parse_current_ldif()
-    #updaterObj.process_ldif()
-    #updaterObj.update_conf_files()
-    #updaterObj.import_ldif2ldap()
-    #updaterObj.update_shib()
+    updaterObj.dump_current_db()
+    updaterObj.update_schema()
+    updaterObj.parse_current_ldif()
+    updaterObj.process_ldif()
+    updaterObj.update_conf_files()
+    updaterObj.import_ldif2ldap()
+    updaterObj.update_shib()
 
     
 
