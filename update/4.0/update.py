@@ -11,6 +11,7 @@ import shutil
 import argparse
 import shelve
 import sys
+import glob
 
 cur_dir = os.path.dirname(os.path.realpath(__file__))
 
@@ -156,8 +157,8 @@ class GluuUpdater:
         os.system('wget -nv https://ox.gluu.org/maven/org/gluu/oxShibbolethStatic/{0}/oxShibbolethStatic-{0}.jar -O {1}/shibboleth-idp.jar'.format(self.current_version, self.app_dir))
         os.system('wget -nv https://ox.gluu.org/maven/org/gluu/oxShibbolethKeyGenerator/{0}/oxShibbolethKeyGenerator-{0}.jar -O {1}/idp3_cml_keygenerator.jar'.format(self.current_version, self.app_dir))
         os.system('wget -nv https://ox.gluu.org/npm/passport/passport-4.0.0.tgz -O {0}/passport.tgz'.format(self.app_dir))
-        os.system('wget -nv https://ox.gluu.org/npm/passport/passport-master-node_modules.tar.gz -O {0}/passport-node_modules.tar.gz'.format(self.app_dir))
-
+        os.system('wget -nv https://ox.gluu.org/npm/passport/passport-version_4.0.b1-node_modules.tar.gz -O {0}/passport-node_modules.tar.gz'.format(self.app_dir))
+        os.system('wget -nv https://fossies.org/linux/www/jetty-distribution-9.4.19.v20190610.tar.gz -O {0}/jetty-distribution-9.4.19.v20190610.tar.gz'.format(self.app_dir))
 
         #https://github.com/AdoptOpenJDK/openjdk11-binaries/releases/download/jdk-11.0.4%2B11/OpenJDK11U-jdk_x64_linux_hotspot_11.0.4_11.tar.gz
         #https://nodejs.org/dist/v12.6.0/node-v12.6.0-linux-x64.tar.xz
@@ -1075,6 +1076,64 @@ class GluuUpdater:
         os.system('rm -r -f '+ idp_tmp_dir)
 
 
+    def upgrade_jetty(self):
+
+        print "Upgrading jetty"
+        
+        jetty_re = re.compile('jetty-distribution-(\d+).(\d+).(\d+).(.+)')
+
+        cur_ver = glob.glob("/opt/jetty-*.*/jetty-distribution*")[0]
+
+        rss = jetty_re.search(os.path.basename(cur_ver)).groups()
+        cur_folder = '/opt/jetty-{0}.{1}'.format(rss[0], rss[1])
+
+        print "Removing current jetty version:", cur_ver
+        os.system('rm -r ' + cur_folder)
+        os.system('unlink /opt/jetty')
+
+        new_ver = max(glob.glob(os.path.join(self.update_dir, 'app/jetty-distribution*')))
+
+        rss = jetty_re.search(os.path.basename(new_ver)).groups()
+        new_folder = '/opt/jetty-{0}.{1}'.format(rss[0], rss[1])
+        jetty_base_name = os.path.basename(new_ver)
+
+        print "Installing current jetty:",jetty_base_name
+
+        if not os.path.exists(new_folder):
+            os.mkdir(new_folder)
+
+        os.system('tar -xf {0} -C {1}'.format(new_ver, new_folder))
+        os.system('ln -sf {0}/{1} /opt/jetty'.format(new_folder,jetty_base_name[:-7]))
+        os.system('chown -h jetty:jetty /opt/jetty')
+
+        cur_temp_s = 'TMPDIR={0}/temp'.format(cur_folder)
+        new_temp_s = 'TMPDIR={0}/temp'.format(new_folder)
+
+        for fn in glob.glob('/etc/default/*'):
+            f = open(fn).read()
+            if cur_temp_s in f:
+                f = f.replace(cur_temp_s, new_temp_s)
+                with open(fn,'w') as w:
+                    w.write(f)
+
+        for fn in glob.glob('/opt/gluu/jetty/*/start.ini'):
+            f = open(fn).readlines()
+            wf = False
+            for i in range(len(f)):
+                if f[i].startswith('--module=logging'):
+                    wf = True
+                    f[i] = '--module=console-capture\n'
+            if wf:
+                with open(fn,'w') as w:
+                    w.write(''.join(f))
+
+        new_folder_tmp = os.path.join(new_folder,'temp')
+        
+        if not os.path.exists(new_folder_tmp):
+            os.mkdir(new_folder_tmp)
+            
+        os.system('chown -R jetty:jetty ' + new_folder)
+
 
 
 if __name__ == '__main__':
@@ -1085,8 +1144,8 @@ if __name__ == '__main__':
 
     updaterObj = GluuUpdater()
     
-    #if argsp.online or not os.path.exists('setup'):
-    #    updaterObj.download_apps()
+    if argsp.online or not os.path.exists('setup'):
+        updaterObj.download_apps()
 
     from setup.pylib.ldif import LDIFParser, LDIFWriter
     from setup.setup import Setup
@@ -1136,7 +1195,7 @@ if __name__ == '__main__':
 
     setupObject = Setup(os.path.join(cur_dir,'setup'))
     setupObject.load_properties('/install/community-edition-setup/setup.properties.last')
-    #setupObject.load_properties('./setup.properties.last')
+    setupObject.load_properties('./setup.properties.last')
     setupObject.check_properties()
     setupObject.os_version = setupObject.detect_os_type()
     setupObject.calculate_selected_aplications_memory()
@@ -1154,6 +1213,8 @@ if __name__ == '__main__':
     updaterObj.import_ldif2ldap()
     setupObject.save_properties()
     updaterObj.update_shib()
+
+    updaterObj.upgrade_jetty()
 
     for sdbf in sdb_files:
         if os.path.exists(sdbf):
