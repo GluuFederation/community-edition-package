@@ -125,7 +125,7 @@ class GluuUpdater:
         self.backup_time = time.ctime().replace(' ','_')
         self.newDns = []
         self.enabled_scripts = []
-        self.current_version = '4.0.0-SNAPSHOT'
+        self.current_version = '4.0.b1'
 
         self.script_replacements = {
                 '2DAF-F995': '2DAF-F9A5'
