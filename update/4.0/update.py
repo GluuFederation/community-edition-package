@@ -167,6 +167,8 @@ class GluuUpdater:
 
     def update_war(self):
 
+        os.environ['PATH'] += ':/opt/jre/bin/java'
+
         for app in os.listdir(self.gluu_app_dir):
             war_app = app+'.war'
             new_war_app_file = os.path.join(self.war_dir, war_app)
@@ -180,6 +182,21 @@ class GluuUpdater:
                     resources_dir = os.path.join(self.gluu_app_dir, app, 'resources')
                     if not os.path.exists(resources_dir):
                         os.mkdir(resources_dir)
+                    
+                    start_ini = '/opt/gluu/jetty/{}/start.ini'.format(app)
+                    print "START INI", start_ini
+                    if os.path.exists(start_ini):
+                        os.remove(start_ini)
+                        
+
+                    setupObject.run([
+                        '/opt/jre/bin/java', '-jar', 
+                        '/opt/jetty/start.jar', 
+                        'jetty.home=/opt/jetty',
+                        'jetty.base=' + os.path.join(self.gluu_app_dir, app), 
+                        '--add-to-start=' + setupObject.jetty_app_configuration[app]['jetty']['modules']], 
+                        None, os.environ)
+
                     os.system('chown jetty:jetty ' + resources_dir)
                     
                 print "Updating", war_app
@@ -1049,9 +1066,6 @@ class GluuUpdater:
 
         shutil.copy(saml_meta_data, self.backup_folder)
 
-
-        
-
         os.chdir('/opt')
         os.system('/opt/jre/bin/jar xf {0}'.format(os.path.join(self.app_dir,'shibboleth-idp.jar')))
         os.system('rm -r /opt/META-INF')
@@ -1202,6 +1216,7 @@ if __name__ == '__main__':
             self.entries[str(dn)] = entry
 
 
+    
     setupObject = Setup(os.path.join(cur_dir,'setup'))
     setupObject.load_properties('/install/community-edition-setup/setup.properties.last')
     #setupObject.load_properties('./setup.properties.last')
@@ -1212,8 +1227,8 @@ if __name__ == '__main__':
     
     #setupObject.generate_oxtrust_api_configuration()
     #updaterObj.update_default_settings()
-
-    #updaterObj.update_war()
+    updaterObj.upgrade_jetty()
+    updaterObj.update_war()
     #updaterObj.update_passport()
 
     #updaterObj.dump_current_db()
@@ -1224,7 +1239,7 @@ if __name__ == '__main__':
     #updaterObj.import_ldif2ldap()
     updaterObj.update_shib()
 
-    updaterObj.upgrade_jetty()
+    
 
     for sdbf in sdb_files:
         if os.path.exists(sdbf):
