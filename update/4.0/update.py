@@ -164,7 +164,7 @@ class GluuUpdater:
         os.system('wget -nv https://ox.gluu.org/maven/org/gluu/oxShibbolethKeyGenerator/{0}/oxShibbolethKeyGenerator-{0}.jar -O {1}/idp3_cml_keygenerator.jar'.format(self.current_version, self.app_dir))
         os.system('wget -nv https://ox.gluu.org/npm/passport/passport-4.0.0.tgz -O {0}/passport.tgz'.format(self.app_dir))
         os.system('wget -nv https://ox.gluu.org/npm/passport/passport-version_4.0.b1-node_modules.tar.gz -O {0}/passport-node_modules.tar.gz'.format(self.app_dir))
-        os.system('wget -nv https://fossies.org/linux/www/jetty-distribution-9.4.19.v20190610.tar.gz -O {0}/jetty-distribution-9.4.19.v20190610.tar.gz'.format(self.app_dir))
+        os.system('wget -nv https://repo1.maven.org/maven2/org/eclipse/jetty/jetty-distribution/9.4.19.v20190610/jetty-distribution-9.4.19.v20190610.tar.gz -O {0}/jetty-distribution-9.4.19.v20190610.tar.gz'.format(self.app_dir))
 
         #https://github.com/AdoptOpenJDK/openjdk11-binaries/releases/download/jdk-11.0.4%2B11/OpenJDK11U-jdk_x64_linux_hotspot_11.0.4_11.tar.gz
         #https://nodejs.org/dist/v12.6.0/node-v12.6.0-linux-x64.tar.xz
@@ -1064,12 +1064,12 @@ class GluuUpdater:
 
     def import_ldif2ldap(self):
         print "Stopping OpenDj"
-        os.system('sudo -i -u ldap "/opt/opendj/bin/stop-ds"')
+        setupObject.run_service_command('opendj', 'stop')
         os.system('rm -f rejects.txt')
         print "Importing processed ldif"
         os.system('/opt/opendj/bin/import-ldif -b o=gluu -n userRoot -l gluu_noinum.ldif -R rejects.txt')
         print "Starting OpenDj"
-        os.system('sudo -i -u ldap "/opt/opendj/bin/start-ds"')
+        setupObject.run_service_command('opendj', 'start')
         
     def update_shib(self):
 
@@ -1130,7 +1130,7 @@ class GluuUpdater:
         installed_jetty_list = glob.glob("/opt/jetty-*.*/jetty-distribution*")
 
         if installed_jetty_list:
-            cur_ver = [0]
+            cur_ver = installed_jetty_list[0]
             rss = jetty_re.search(os.path.basename(cur_ver)).groups()
             cur_folder = '/opt/jetty-{0}.{1}'.format(rss[0], rss[1])
             print "Removing current jetty version:", cur_ver
@@ -1255,7 +1255,7 @@ if __name__ == '__main__':
     setupObject.load_properties('/install/community-edition-setup/setup.properties.last')
     #setupObject.load_properties('./setup.properties.last')
     setupObject.check_properties()
-    setupObject.os_version = setupObject.detect_os_type()
+    setupObject.os_type, setupObject.os_version = setupObject.detect_os_type()
     setupObject.calculate_selected_aplications_memory()
     setupObject.ldapCertFn = setupObject.opendj_cert_fn
     
