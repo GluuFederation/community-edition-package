@@ -1027,18 +1027,21 @@ class GluuUpdater:
 
         passport_config_fn = '/etc/gluu/conf/passport-config.json'
 
-        with open(passport_config_fn) as pcr:
-            cur_config = json.load(pcr)
-        
-        passport_rp_client_id = self.inum2uuid(cur_config['clientId'])
+        if os.path.exists(passport_config_fn):
 
-        setupObject.templateRenderingDict['passport_rp_client_id'] = passport_rp_client_id
-        setupObject.templateRenderingDict['passport_rp_client_cert_alias'] = cur_config['keyId']
+            with open(passport_config_fn) as pcr:
+                cur_config = json.load(pcr)
+            
+            passport_rp_client_id = self.inum2uuid(cur_config['clientId'])
 
-        passport_config = self.render_template(os.path.join(self.template_dir, 'passport-config.json'))
+            setupObject.templateRenderingDict['passport_rp_client_id'] = passport_rp_client_id
+            setupObject.templateRenderingDict['passport_rp_client_cert_alias'] = cur_config['keyId']
 
-        with open(passport_config_fn,'w') as pcw:
-            pcw.write(passport_config)
+            passport_config = self.render_template(os.path.join(self.template_dir, 'passport-config.json'))
+
+            with open(passport_config_fn,'w') as pcw:
+                pcw.write(passport_config)
+
 
         passport_central_config = self.render_template(os.path.join(self.template_dir, 'passport-central-config.json'))
         passport_central_config_js = json.loads(passport_central_config)
@@ -1180,7 +1183,7 @@ if __name__ == '__main__':
     updaterObj = GluuUpdater()
     
     if argsp.online or not os.path.exists('setup'):
-        print "Note, Upgrading Java JRE is not possible for online upgrade."
+        print "\033[93mNote, Upgrading Java JRE is not possible for online upgrade.\033[0m"
 
         updaterObj.download_apps()
 
