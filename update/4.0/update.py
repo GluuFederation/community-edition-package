@@ -26,7 +26,7 @@ elif os.path.exists('/etc/apt/sources.list'):
 missing_packages = []
 
 needs_restart = False
-dev_env = True if os.environ['update_dev'] else False
+dev_env = True if os.environ.get('update_dev') else False
 
 try:
     import ldap
