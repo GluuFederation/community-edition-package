@@ -164,7 +164,6 @@ class GluuUpdater:
         os.system('wget -nv https://ox.gluu.org/maven/org/gluu/oxShibbolethKeyGenerator/{0}/oxShibbolethKeyGenerator-{0}.jar -O {1}/idp3_cml_keygenerator.jar'.format(self.current_version, self.app_dir))
         os.system('wget -nv https://ox.gluu.org/npm/passport/passport-4.0.0.tgz -O {0}/passport.tgz'.format(self.app_dir))
         os.system('wget -nv https://ox.gluu.org/npm/passport/passport-version_4.0.b1-node_modules.tar.gz -O {0}/passport-node_modules.tar.gz'.format(self.app_dir))
-        os.system('wget -nv https://repo1.maven.org/maven2/org/eclipse/jetty/jetty-distribution/9.4.19.v20190610/jetty-distribution-9.4.19.v20190610.tar.gz -O {0}/jetty-distribution-9.4.19.v20190610.tar.gz'.format(self.app_dir))
         #https://github.com/AdoptOpenJDK/openjdk11-binaries/releases/download/jdk-11.0.4%2B11/OpenJDK11U-jdk_x64_linux_hotspot_11.0.4_11.tar.gz
 
 
@@ -1124,48 +1123,23 @@ class GluuUpdater:
 
     def upgrade_jetty(self):
 
-        print "Upgrading jetty"
+        print "Upgrading Jetty"
+
+        os.system('wget -nv https://repo1.maven.org/maven2/org/eclipse/jetty/jetty-distribution/{0}/jetty-distribution-{0}.tar.gz -O {1}/jetty-distribution-{0}.tar.gz'.format(setupObject.jetty_version, setupObject.distAppFolder))
+
+        for cur_version in glob.glob('/opt/jetty-*'):
+            print "Removing current jetty version:", cur_version
+            os.system('rm -r ' + cur_version)
         
-        jetty_re = re.compile('jetty-distribution-(\d+).(\d+).(\d+).(.+)')
+        if os.path.islink('/opt/jetty'):
+            os.system('unlink /opt/jetty')
 
-        installed_jetty_list = glob.glob("/opt/jetty-*.*/jetty-distribution*")
-
-        if installed_jetty_list:
-            cur_ver = installed_jetty_list[0]
-            rss = jetty_re.search(os.path.basename(cur_ver)).groups()
-            cur_folder = '/opt/jetty-{0}.{1}'.format(rss[0], rss[1])
-            print "Removing current jetty version:", cur_ver
-            os.system('rm -r ' + cur_folder)
-            if os.path.islink('/opt/jetty'):
-                os.system('unlink /opt/jetty')
-
-        new_ver = max(glob.glob(os.path.join(self.update_dir, 'app/jetty-distribution*')))
-
-        rss = jetty_re.search(os.path.basename(new_ver)).groups()
-        new_folder = '/opt/jetty-{0}.{1}'.format(rss[0], rss[1])
-        jetty_base_name = os.path.basename(new_ver)
-
-        print "Installing current jetty:",jetty_base_name
-
-        if not os.path.exists(new_folder):
-            os.mkdir(new_folder)
-
-        os.system('tar -xf {0} -C {1}'.format(new_ver, new_folder))
-        os.system('ln -sf {0}/{1} /opt/jetty'.format(new_folder,jetty_base_name[:-7]))
-        os.system('chown -h jetty:jetty /opt/jetty')
-
-        setupObject.jetty_dist = new_folder
-
-        new_folder_tmp = os.path.join(new_folder,'temp')
-        
-        if not os.path.exists(new_folder_tmp):
-            os.mkdir(new_folder_tmp)
-            
-        os.system('chown -R jetty:jetty ' + new_folder)
+        setupObject.installJetty()
 
 
     def update_node(self):
         
+        print "Upgrading Node"
         os.system('wget -nv https://nodejs.org/dist/v{0}/node-v{0}-linux-x64.tar.xz -O {1}/node-v{0}-linux-x64.tar.xz'.format(setupObject.node_version, setupObject.distAppFolder))
 
         for cur_version in glob.glob('/opt/node-v*'):
@@ -1261,11 +1235,12 @@ if __name__ == '__main__':
             self.DNs.append(dn)
             self.entries[str(dn)] = entry
 
-
     setup_install_dir = os.path.join(cur_dir,'setup')
 
     setupObject = Setup(setup_install_dir)
     node_version = setupObject.node_version
+    jetty_version = setupObject.jetty_version
+    jetty_dist = setupObject.jetty_dist
     setupObject.load_properties('/install/community-edition-setup/setup.properties.last')
     #setupObject.load_properties('./setup.properties.last')
     setupObject.check_properties()
@@ -1273,6 +1248,8 @@ if __name__ == '__main__':
     setupObject.calculate_selected_aplications_memory()
     setupObject.ldapCertFn = setupObject.opendj_cert_fn
     setupObject.node_version = node_version
+    setupObject.jetty_version = jetty_version
+    setupObject.jetty_dist = jetty_dist
     updaterObj.update_node()
     updaterObj.update_apache_conf()    
     setupObject.generate_oxtrust_api_configuration()
