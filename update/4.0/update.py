@@ -16,6 +16,7 @@ import glob
 cur_dir = os.path.dirname(os.path.realpath(__file__))
 
 package_type = None
+setup_properties_fn = '/install/community-edition-setup/setup.properties.last'
 
 if os.path.exists('/etc/yum.repos.d/'):
     package_type = 'rpm'
@@ -1248,7 +1249,7 @@ if __name__ == '__main__':
 
     setupObject = Setup(setup_install_dir)
 
-    setupObject.load_properties('/install/community-edition-setup/setup.properties.last',
+    setupObject.load_properties(setup_properties_fn,
                                 no_update = [
                                         'node_version',
                                         'jetty_version',
@@ -1283,7 +1284,7 @@ if __name__ == '__main__':
         if os.path.exists(sdbf):
             os.remove(sdbf)
 
-    setupObject.save_properties()
+    setupObject.save_properties(setup_properties_fn)
 
     print "Please logout from container and restart Gluu Server"
     print "Notes:"
