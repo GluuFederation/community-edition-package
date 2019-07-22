@@ -286,7 +286,6 @@ class GluuUpdater:
             self.write2ldif(scr_dn, parser.entries[scr_dn])
         
     def add_new_entries(self):
-        
         self.add_template(self.oxtrust_api_ldif)
 
 
@@ -1181,6 +1180,8 @@ if __name__ == '__main__':
     updaterObj = GluuUpdater()
     
     if argsp.online or not os.path.exists('setup'):
+        print "Note, Upgrading Java JRE is not possible for online upgrade."
+
         updaterObj.download_apps()
 
     from setup.pylib.ldif import LDIFParser, LDIFWriter
@@ -1244,7 +1245,7 @@ if __name__ == '__main__':
                                         'node_version',
                                         'jetty_version',
                                         'jetty_dist',
-                                        ]    
+                                        ]
                                 )
 
     setupObject.check_properties()
@@ -1280,5 +1281,3 @@ if __name__ == '__main__':
     print "Notes:"
     print " * Default authentication mode was set to auth_ldap_server"
     print " * Cache provider configuration was set to 4.0 defaults"
-
-
