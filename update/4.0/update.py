@@ -25,11 +25,13 @@ elif os.path.exists('/etc/apt/sources.list'):
 
 missing_packages = []
 
+needs_restart = False
+dev_env = True if os.environ['update_dev'] else False
+
 try:
     import ldap
 except:
     missing_packages.append('python-ldap')
-
 
 try:
     import jsonschema
@@ -38,6 +40,7 @@ except:
 
 
 if missing_packages:
+    needs_restart = True
     packages_str = ' '.join(missing_packages)
     result = raw_input("Missing package(s): {0}. Install now? (Y|n): ".format(packages_str))
     if result.strip() and result.strip().lower()[0] == 'n':
@@ -70,8 +73,12 @@ if not os.path.exists(os.path.join(cur_dir, 'setup')):
     os.system('touch setup/__init__.py')
 
 
-import jsonmerge
+if needs_restart:
+    print "Restart is needed"
+    python_ = sys.executable
+    os.execl(python_, python_, * sys.argv)
 
+import jsonmerge
 
 def checkIfAsimbaEntry(dn, new_entry):
     if 'ou=oxasimba' in dn:
@@ -132,11 +139,10 @@ class GluuUpdater:
             }
 
 
-
     def dump_current_db(self):
         print "Dumping ldap to gluu.ldif"
         os.system('cp -r -f /opt/opendj /opt/opendj.bak_'+self.backup_time)
-        os.system('/opt/opendj/bin/ldapsearch -X -Z -D "cn=directory manager" -w {} -h localhost -p 1636 -b "o=gluu" "Objectclass=*" > ./gluu.ldif'.format(setupObject.ldapPass))
+        os.system('/opt/opendj/bin/ldapsearch -X -Z -D "cn=directory manager" -w {} -h localhost -p 1636 -b "o=gluu" "Objectclass=*" > {}/gluu.ldif'.format(setupObject.ldapPass, cur_dir))
 
     def update_schema(self):
         print "Updating schema"
@@ -286,7 +292,13 @@ class GluuUpdater:
 
     def inum2uuid(self, s):
 
-        tmps = s.replace(self.ldif_parser.inumApllience,'').replace(self.ldif_parser.inumOrg,'')
+        tmps = s
+
+        if self.ldif_parser.inumApllience:
+            tmps = tmps.replace(self.ldif_parser.inumApllience,'')
+
+        if self.ldif_parser.inumOrg:
+            tmps = tmps.replace(self.ldif_parser.inumOrg,'')
 
         for x in re.findall('(!00[0-9a-fA-F][0-9a-fA-F]!)', tmps):
             tmps = tmps.replace(x, '')
@@ -401,7 +413,7 @@ class GluuUpdater:
 
             # we don't need existing scripts won't work in 4.0, passing
             if 'oxCustomScript' in new_entry['objectClass']:
-                if 'true' in new_entry['gluuStatus']:
+                if 'gluuStatus' in new_entry and 'true' in new_entry['gluuStatus']:
                     scr_inum = self.inum2uuid(new_entry['inum'][0])
                     self.enabled_scripts.append(self.script_replacements.get(scr_inum, scr_inum))
                 continue
@@ -679,8 +691,6 @@ class GluuUpdater:
                     ('passwordResetRequestExpirationTime', 'add', 'entry', 600),
                     ('oxTrustApiTestMode', 'add', 'entry', False),
                     
-                    ('applicationUrl', 'add', 'entry', oxTrustConfApplication.pop('applianceUrl')),
-                    ('updateStatus', 'add', 'entry', oxTrustConfApplication.pop('updateApplianceStatus')),
                     
                     ('loginRedirectUrl', 'add', 'entry', 'https://%(hostname)s/identity/authcode.htm' % setupObject.__dict__),
                     ('logoutRedirectUrl', 'add', 'entry','https://%(hostname)s/identity/finishlogout.htm' % setupObject.__dict__),
@@ -692,6 +702,13 @@ class GluuUpdater:
                     ('apiUmaClientKeyStorePassword', 'add', 'entry', '%(api_rs_client_jks_pass_encoded)s' % setupObject.__dict__),
                     
                     ]
+
+                if 'applianceUrl' in oxTrustConfApplication:
+                    oxTrustConfApplication_config_changes.append(('applicationUrl', 'add', 'entry', oxTrustConfApplication.pop('applianceUrl')))
+                    
+                if 'updateApplianceStatus' in oxTrustConfApplication:
+                    oxTrustConfApplication_config_changes.append(('updateStatus', 'add', 'entry', oxTrustConfApplication.pop('updateApplianceStatus')))
+
 
                 self.do_config_changes(oxTrustConfApplication, oxTrustConfApplication_config_changes)
 
@@ -705,7 +722,8 @@ class GluuUpdater:
                 if 'oxTrustConfAttributeResolver' in new_entry:
                     oxTrustConfAttributeResolver = json.loads(new_entry['oxTrustConfAttributeResolver'][0])
                     for name_id in oxTrustConfAttributeResolver['nameIdConfigs']:
-                        name_id.pop('name')
+                        if 'name' in name_id:
+                            name_id.pop('name')
                         if 'persistent' in name_id['nameIdType']:
                             name_id['nameIdType'] = 'urn:oasis:names:tc:SAML:2.0:nameid-format:persistent'
                         elif 'emailAddress' in name_id['nameIdType']:
@@ -740,7 +758,9 @@ class GluuUpdater:
 
             elif 'oxIDPAuthentication' in new_entry:
                 oxIDPAuthentication = json.loads(new_entry['oxIDPAuthentication'][0])
-                oxIDPAuthentication['config'] = json.loads(oxIDPAuthentication['config'])                
+                if isinstance(oxIDPAuthentication['config'], basestring):
+                    oxIDPAuthentication['config'] = json.loads(oxIDPAuthentication['config'])
+
                 new_entry['oxIDPAuthentication'][0] = json.dumps(oxIDPAuthentication, indent=2)
 
 
@@ -791,7 +811,7 @@ class GluuUpdater:
                 
                     new_entry['oxScopeType'] = ['uma']
 
-                elif new_entry['inum'][0] == 'DF6B-4902' or new_entry['displayName'][0] == 'oxTrust Admin GUI':
+                elif new_entry['inum'][0] == 'DF6B-4902' or ('displayName' in new_entry and new_entry['displayName'][0] == 'oxTrust Admin GUI'):
                     new_entry['oxAuthLogoutURI'] = [ 'https://%(hostname)s/identity/ssologout.htm' % setupObject.__dict__ ]
                     new_entry['oxAuthRedirectURI'] = [ 'https://%(hostname)s/identity/scim/auth' % setupObject.__dict__ ,
                                                     'https://%(hostname)s/identity/authcode.htm' % setupObject.__dict__ ,
@@ -851,8 +871,9 @@ class GluuUpdater:
             
             # check for objectClass
             if 'oxAuthCustomScope' in new_entry['objectClass']:
-                new_entry['oxId']  = new_entry['displayName']
-                new_entry.pop('displayName')
+                if 'displayName' in new_entry:
+                    new_entry['oxId']  = new_entry['displayName']
+                    new_entry.pop('displayName')
 
             elif 'oxAuthUmaScopeDescription' in new_entry['objectClass']:
                 new_entry['objectClass'].remove('oxAuthUmaScopeDescription')
@@ -976,33 +997,34 @@ class GluuUpdater:
 
             gluuPassportConfiguration = json.loads(passport_configuration)
             
-            strategy = gluuPassportConfiguration['strategy']
+            if 'strategy' in gluuPassportConfiguration:
+                strategy = gluuPassportConfiguration['strategy']
 
 
-            (key, val) = ('value1', 'value2') if 'value1' in gluuPassportConfiguration['fieldset'][0] else ('key','value')
+                (key, val) = ('value1', 'value2') if 'value1' in gluuPassportConfiguration['fieldset'][0] else ('key','value')
 
-            field_key = { field[key]: field[val] for field in  gluuPassportConfiguration['fieldset'] }
+                field_key = { field[key]: field[val] for field in  gluuPassportConfiguration['fieldset'] }
 
 
-            provider =  {
-                  'displayName': strategy, 
-                  'passportStrategyId': passportStrategyId_mapping[strategy],
-                  'requestForEmail': False, 
-                  'enabled': True, 
-                  'mapping': strategy if strategy in ('dropbox', 'facebook', 'github', 'google', 'linkedin', 'openidconnect', 'tumblr', 'twitter', 'windowslive', 'yahoo') else 'openidconnect-default',
-                  'emailLinkingSafe': False, 
-                  'options': {
-                    'clientSecret': field_key['clientSecret'], 
-                    'clientID': field_key['clientID'],
-                  }, 
-                  'type': 'oauth' if strategy in ('dropbox', 'facebook', 'github', 'google', 'linkedin', 'tumblr', 'twitter', 'windowslive', 'yahoo') else 'openidconnect',
-                  'id': strategy
-                }
+                provider =  {
+                      'displayName': strategy, 
+                      'passportStrategyId': passportStrategyId_mapping[strategy],
+                      'requestForEmail': False, 
+                      'enabled': True, 
+                      'mapping': strategy if strategy in ('dropbox', 'facebook', 'github', 'google', 'linkedin', 'openidconnect', 'tumblr', 'twitter', 'windowslive', 'yahoo') else 'openidconnect-default',
+                      'emailLinkingSafe': False, 
+                      'options': {
+                        'clientSecret': field_key['clientSecret'], 
+                        'clientID': field_key['clientID'],
+                      }, 
+                      'type': 'oauth' if strategy in ('dropbox', 'facebook', 'github', 'google', 'linkedin', 'tumblr', 'twitter', 'windowslive', 'yahoo') else 'openidconnect',
+                      'id': strategy
+                    }
 
-            if 'logo_img' in field_key:
-                provider_tmp = field_key['logo_img']
+                if 'logo_img' in field_key:
+                    provider_tmp = field_key['logo_img']
 
-            providers.append(provider)
+                providers.append(provider)
 
         passport_config_fn = '/etc/gluu/conf/passport-config.json'
 
@@ -1028,8 +1050,9 @@ class GluuUpdater:
 
         self.write2ldif(new_dn, new_entry)
 
-        os.system('chown -R node:node /opt/gluu/node/')
-        setupObject.run_service_command('passport', 'start')
+        if not dev_env:
+            os.system('chown -R node:node /opt/gluu/node/')
+            setupObject.run_service_command('passport', 'start')
 
     def update_conf_files(self):
 
