@@ -165,10 +165,7 @@ class GluuUpdater:
         os.system('wget -nv https://ox.gluu.org/npm/passport/passport-4.0.0.tgz -O {0}/passport.tgz'.format(self.app_dir))
         os.system('wget -nv https://ox.gluu.org/npm/passport/passport-version_4.0.b1-node_modules.tar.gz -O {0}/passport-node_modules.tar.gz'.format(self.app_dir))
         os.system('wget -nv https://repo1.maven.org/maven2/org/eclipse/jetty/jetty-distribution/9.4.19.v20190610/jetty-distribution-9.4.19.v20190610.tar.gz -O {0}/jetty-distribution-9.4.19.v20190610.tar.gz'.format(self.app_dir))
-
         #https://github.com/AdoptOpenJDK/openjdk11-binaries/releases/download/jdk-11.0.4%2B11/OpenJDK11U-jdk_x64_linux_hotspot_11.0.4_11.tar.gz
-        #https://nodejs.org/dist/v12.6.0/node-v12.6.0-linux-x64.tar.xz
-        #https://fossies.org/linux/www/jetty-distribution-9.4.19.v20190610.tar.gz
 
 
     def update_war(self):
@@ -419,7 +416,6 @@ class GluuUpdater:
             if 'oxCustomScript' in new_entry['objectClass']:
                 if new_entry.get('gluuStatus',[None])[0]=='true' or new_entry.get('oxEnabled',[None])[0]=='true':
                     scr_inum = self.inum2uuid(new_entry['inum'][0])
-                    print scr_inum
                     self.enabled_scripts.append(self.script_replacements.get(scr_inum, scr_inum))
                 continue
 
@@ -1168,6 +1164,18 @@ class GluuUpdater:
         os.system('chown -R jetty:jetty ' + new_folder)
 
 
+    def update_node(self):
+        
+        os.system('wget -nv https://nodejs.org/dist/v{0}/node-v{0}-linux-x64.tar.xz -O {1}/node-v{0}-linux-x64.tar.xz'.format(setupObject.node_version, setupObject.distAppFolder))
+
+        for cur_version in glob.glob('/opt/node-v*'):
+            os.system('rm -r ' + cur_version)
+        if os.path.islink('/opt/node'):
+            os.unlink('/opt/node')
+
+        setupObject.installNode()
+
+
     def update_apache_conf(self):
         
         setupObject.install_dir = setup_install_dir
@@ -1257,19 +1265,21 @@ if __name__ == '__main__':
     setup_install_dir = os.path.join(cur_dir,'setup')
 
     setupObject = Setup(setup_install_dir)
+    node_version = setupObject.node_version
     setupObject.load_properties('/install/community-edition-setup/setup.properties.last')
     #setupObject.load_properties('./setup.properties.last')
     setupObject.check_properties()
     setupObject.os_type, setupObject.os_version = setupObject.detect_os_type()
     setupObject.calculate_selected_aplications_memory()
     setupObject.ldapCertFn = setupObject.opendj_cert_fn
-    
-    updaterObj.update_apache_conf()
-    
+    setupObject.node_version = node_version
+    updaterObj.update_node()
+    updaterObj.update_apache_conf()    
     setupObject.generate_oxtrust_api_configuration()
     
     updaterObj.upgrade_jetty()
     updaterObj.update_war()
+    
     updaterObj.update_passport()
     updaterObj.update_default_settings()
 
