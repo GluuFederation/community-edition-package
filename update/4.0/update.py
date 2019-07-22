@@ -1116,7 +1116,9 @@ class GluuUpdater:
             with open(os.path.join('/opt/shibboleth-idp/conf', prop_fn),'w') as w:
                 w.write(properties)
 
-        os.system('wget https://raw.githubusercontent.com/GluuFederation/oxTrust/master/configuration/template/shibboleth3/idp/saml-nameid.properties.vm -O /opt/gluu/jetty/identity/conf/shibboleth3/idp/saml-nameid.properties.vm')
+        if argsp.online:
+            os.system('wget https://raw.githubusercontent.com/GluuFederation/oxTrust/master/configuration/template/shibboleth3/idp/saml-nameid.properties.vm -O /opt/gluu/jetty/identity/conf/shibboleth3/idp/saml-nameid.properties.vm')
+
         os.system('chown -R jetty:jetty /opt/shibboleth-idp')
 
         os.system('rm -r -f '+ idp_tmp_dir)
@@ -1127,7 +1129,8 @@ class GluuUpdater:
 
         print "Upgrading Jetty"
 
-        os.system('wget -nv https://repo1.maven.org/maven2/org/eclipse/jetty/jetty-distribution/{0}/jetty-distribution-{0}.tar.gz -O {1}/jetty-distribution-{0}.tar.gz'.format(setupObject.jetty_version, setupObject.distAppFolder))
+        if argsp.online:
+            os.system('wget -nv https://repo1.maven.org/maven2/org/eclipse/jetty/jetty-distribution/{0}/jetty-distribution-{0}.tar.gz -O {1}/jetty-distribution-{0}.tar.gz'.format(setupObject.jetty_version, setupObject.distAppFolder))
 
         for cur_version in glob.glob('/opt/jetty-*'):
             print "Removing current jetty version:", cur_version
@@ -1142,7 +1145,9 @@ class GluuUpdater:
     def update_node(self):
         
         print "Upgrading Node"
-        os.system('wget -nv https://nodejs.org/dist/v{0}/node-v{0}-linux-x64.tar.xz -O {1}/node-v{0}-linux-x64.tar.xz'.format(setupObject.node_version, setupObject.distAppFolder))
+
+        if argsp.online:
+            os.system('wget -nv https://nodejs.org/dist/v{0}/node-v{0}-linux-x64.tar.xz -O {1}/node-v{0}-linux-x64.tar.xz'.format(setupObject.node_version, setupObject.distAppFolder))
 
         for cur_version in glob.glob('/opt/node-v*'):
             os.system('rm -r ' + cur_version)
