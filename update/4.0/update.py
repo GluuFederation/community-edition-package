@@ -1127,14 +1127,16 @@ class GluuUpdater:
         
         jetty_re = re.compile('jetty-distribution-(\d+).(\d+).(\d+).(.+)')
 
-        cur_ver = glob.glob("/opt/jetty-*.*/jetty-distribution*")[0]
+        installed_jetty_list = glob.glob("/opt/jetty-*.*/jetty-distribution*")
 
-        rss = jetty_re.search(os.path.basename(cur_ver)).groups()
-        cur_folder = '/opt/jetty-{0}.{1}'.format(rss[0], rss[1])
-
-        print "Removing current jetty version:", cur_ver
-        os.system('rm -r ' + cur_folder)
-        os.system('unlink /opt/jetty')
+        if installed_jetty_list:
+            cur_ver = [0]
+            rss = jetty_re.search(os.path.basename(cur_ver)).groups()
+            cur_folder = '/opt/jetty-{0}.{1}'.format(rss[0], rss[1])
+            print "Removing current jetty version:", cur_ver
+            os.system('rm -r ' + cur_folder)
+            if os.path.islink('/opt/jetty'):
+                os.system('unlink /opt/jetty')
 
         new_ver = max(glob.glob(os.path.join(self.update_dir, 'app/jetty-distribution*')))
 
@@ -1248,9 +1250,7 @@ if __name__ == '__main__':
 
 
     setup_install_dir = os.path.join(cur_dir,'setup')
-    
-    print "setup_install_dir", setup_install_dir
-    
+
     setupObject = Setup(setup_install_dir)
     setupObject.load_properties('/install/community-edition-setup/setup.properties.last')
     #setupObject.load_properties('./setup.properties.last')
@@ -1276,13 +1276,11 @@ if __name__ == '__main__':
     updaterObj.import_ldif2ldap()
     updaterObj.update_shib()
 
-    
-
     for sdbf in sdb_files:
         if os.path.exists(sdbf):
             os.remove(sdbf)
 
-    #setupObject.save_properties()
+    setupObject.save_properties()
 
     print "Please logout from container and restart Gluu Server"
     print "Notes:"
