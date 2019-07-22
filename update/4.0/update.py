@@ -1238,18 +1238,20 @@ if __name__ == '__main__':
     setup_install_dir = os.path.join(cur_dir,'setup')
 
     setupObject = Setup(setup_install_dir)
-    node_version = setupObject.node_version
-    jetty_version = setupObject.jetty_version
-    jetty_dist = setupObject.jetty_dist
-    setupObject.load_properties('/install/community-edition-setup/setup.properties.last')
-    #setupObject.load_properties('./setup.properties.last')
+
+    setupObject.load_properties('/install/community-edition-setup/setup.properties.last',
+                                no_update = [
+                                        'node_version',
+                                        'jetty_version',
+                                        'jetty_dist',
+                                        ]    
+                                )
+
     setupObject.check_properties()
     setupObject.os_type, setupObject.os_version = setupObject.detect_os_type()
     setupObject.calculate_selected_aplications_memory()
     setupObject.ldapCertFn = setupObject.opendj_cert_fn
-    setupObject.node_version = node_version
-    setupObject.jetty_version = jetty_version
-    setupObject.jetty_dist = jetty_dist
+
     updaterObj.update_node()
     updaterObj.update_apache_conf()    
     setupObject.generate_oxtrust_api_configuration()
