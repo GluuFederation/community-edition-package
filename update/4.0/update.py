@@ -275,13 +275,17 @@ class GluuUpdater:
             if 'inum' in parser.entries[scr_dn]:
                 if parser.entries[scr_dn]['inum'][0] in ('2DAF-F995', '2DAF-F9A5'):
                     oxConfigurationProperty = json.loads(parser.entries[scr_dn]['oxConfigurationProperty'][0])
-                    
                     tmp_ = [self.inum2uuid(v.strip()) for v in oxConfigurationProperty['value2'].split(',')]
                     oxConfigurationProperty['value2'] = ', '.join(tmp_)
-                    parser.entries[scr_dn]['oxConfigurationProperty'] = [ json.dumps(oxConfigurationProperty) ]
+                    new_entry = parser.entries[scr_dn]
+                    new_entry['oxConfigurationProperty'] = [ json.dumps(oxConfigurationProperty) ]
+                    parser.entries[scr_dn] = new_entry
+
                 if parser.entries[scr_dn]['inum'][0] in self.enabled_scripts:
-                    parser.entries[scr_dn]['oxEnabled'] = ['true']
-            
+                    new_entry = parser.entries[scr_dn]
+                    new_entry['oxEnabled'] = ['true']
+                    parser.entries[scr_dn] = new_entry
+
             self.newDns.append(scr_dn)
             self.write2ldif(scr_dn, parser.entries[scr_dn])
         
@@ -413,8 +417,9 @@ class GluuUpdater:
 
             # we don't need existing scripts won't work in 4.0, passing
             if 'oxCustomScript' in new_entry['objectClass']:
-                if 'gluuStatus' in new_entry and 'true' in new_entry['gluuStatus']:
+                if new_entry.get('gluuStatus',[None])[0]=='true' or new_entry.get('oxEnabled',[None])[0]=='true':
                     scr_inum = self.inum2uuid(new_entry['inum'][0])
+                    print scr_inum
                     self.enabled_scripts.append(self.script_replacements.get(scr_inum, scr_inum))
                 continue
 
