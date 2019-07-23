@@ -13,6 +13,7 @@ import shelve
 import sys
 import glob
 
+
 cur_dir = os.path.dirname(os.path.realpath(__file__))
 
 package_type = None
@@ -120,7 +121,7 @@ class GluuUpdater:
         self.backup_folder = os.path.join(cur_dir, 'backup_{}'.format(self.backup_time))
         
         
-        if not os.path.exists(self.backup_folder):
+        if not os.path.exists(self.backup_folder) and not dev_env:
             os.mkdir(self.backup_folder)
 
         self.setup_dir = os.path.join(cur_dir, 'setup')
@@ -134,16 +135,94 @@ class GluuUpdater:
         self.newDns = []
         self.enabled_scripts = []
         self.current_version = '4.0.b1'
-
+        self.ldap_type = 'opendj'
+        self.bindDN = 'cn=directory manager'
         self.script_replacements = {
                 '2DAF-F995': '2DAF-F9A5'
             }
 
 
+    def determine_ldap_type(self):
+        
+        ox_ldap_prop_fn = '/etc/gluu/conf/ox-ldap.properties'
+
+        p = Properties.Properties()
+        p.load(open(ox_ldap_prop_fn))
+
+        if p['bindDN'].lower() == 'cn=directory manager,o=gluu':
+            self.ldap_type = 'openldap'
+            self.bindDN = p['bindDN']
+
+        print "LDAP type was determined as", self.ldap_type
+
+    def backup_(self, f):
+        if os.path.exists(f):
+            setupObject.run(['mv', f, f+'.back_'+f])
+
+    def install_opendj(self):
+        
+        setupObject.opendj_type = 'opendj'
+        setupObject.ldap_binddn = 'cn=directory manager'
+        setupObject.ldap_site_binddn = setupObject.ldap_binddn
+        setupObject.ldapCertFn = setupObject.opendj_cert_fn
+        setupObject.ldapTrustStoreFn = setupObject.opendj_p12_fn
+        setupObject.encoded_ldapTrustStorePass = setupObject.encoded_opendj_p12_pass
+
+        for f in (setupObject.opendj_cert_fn, setupObject.opendj_p12_fn):
+            self.backup_(f)
+
+
+        setupObject.logIt("Stopping OpenLdap Server")
+        setupObject.run(['/etc/init.d/solserver', 'stop'])
+        
+        setupObject.enable_service_at_start('solserver', action='disable')
+        
+        #Ensure opendj is not running
+        setupObject.run(['/opt/opendj/bin/stop-ds'])
+
+        setupObject.logIt("Backing up previous version of opendj server installation")
+        
+        self.backup_('/opt/opendj')
+
+        if argsp.online:
+            setupObject.logIt("Downloading opendj Server")
+            setupObject.run([
+                                'wget', 
+                                'https://ox.gluu.org/maven/org/forgerock/opendj/opendj-server-legacy/{0}/opendj-server-legacy-{0}.zip'.format(setupObject.opendj_version_number),
+                                '-O', os.path.join(setupObject.distAppFolder, 'opendj-server-{}.zip'.format(setupObject.opendj_version_number)),
+                                ])
+
+        setupObject.render_templates({setupObject.ldap_setup_properties: False})
+        setupObject.listenAllInterfaces = False
+        setupObject.createLdapPw()
+        setupObject.extractOpenDJ()
+        setupObject.opendj_version = setupObject.determineOpenDJVersion()
+        
+        print "Installing OpenDJ"
+        setupObject.install_opendj()
+        setupObject.prepare_opendj_schema()
+        print "Setting Up OpenDJ Service"
+        setupObject.setup_opendj_service()
+        print "Configuring OpenDJ"
+        setupObject.configure_opendj()
+        print "Exporting OpenDJ certificate"
+        setupObject.export_opendj_public_cert()
+        print "Setting Up OpenDJ Indexes"
+        setupObject.index_opendj()
+        setupObject.post_install_opendj()
+
+
     def dump_current_db(self):
         print "Dumping ldap to gluu.ldif"
+        if os.path.exists(self.current_ldif_fn):
+            setupObject.run(['mv', self.current_ldif_fn, self.current_ldif_fn+'_back_' + self.backup_time])
+            
         os.system('cp -r -f /opt/opendj /opt/opendj.bak_'+self.backup_time)
-        os.system('/opt/opendj/bin/ldapsearch -X -Z -D "cn=directory manager" -w {} -h localhost -p 1636 -b "o=gluu" "Objectclass=*" > {}/gluu.ldif'.format(setupObject.ldapPass, cur_dir))
+        os.system('/opt/opendj/bin/ldapsearch -X -Z -D "{}" -w {} -h localhost -p 1636 -b "o=gluu" "Objectclass=*" > {}'.format(self.bindDN, setupObject.ldapPass, self.current_ldif_fn))
+        fs = os.stat(self.current_ldif_fn)
+
+        if fs.st_size < 500000:
+            sys.exit("Dumped ldif size is unexpectedly small. Please examine log files. Giving up ...")
 
     def update_schema(self):
         print "Updating schema"
@@ -467,6 +546,11 @@ class GluuUpdater:
                 oxIDPAuthentication = json.loads(new_entry['oxIDPAuthentication'][0])
                 oxIDPAuthentication_config = json.loads(oxIDPAuthentication['config'])
                 oxIDPAuthentication_config['baseDNs'][0] = 'ou=people,o=gluu'
+
+                if self.ldap_type == 'openldap':
+                    if oxIDPAuthentication_config['servers'][0]=='localhost:1636' and oxIDPAuthentication_config['bindDN'].lower()=='cn=directory manager,o=gluu':
+                        oxIDPAuthentication_config['bindDN'] = 'cn=Directory Manager'
+
                 oxIDPAuthentication['config'] = json.dumps(oxIDPAuthentication_config)
                 new_entry['oxIDPAuthentication'][0] = json.dumps(oxIDPAuthentication, indent=2)
 
@@ -1124,7 +1208,19 @@ class GluuUpdater:
 
         os.system('rm -r -f '+ idp_tmp_dir)
 
+
+        if self.ldap_type == 'openldap':
+
+            shib_ldap_prop_fn = '/opt/shibboleth-idp/conf/ldap.properties'
+            
+            if os.path.exists(shib_ldap_prop_fn):
+                shib_ldap_prop = setupObject.readFile(shib_ldap_prop_fn)
+                shib_ldap_prop = shib_ldap_prop.replace('cn=directory manager,o=gluu', 'cn=Directory Manager')
+                setupObject.writeFile(shib_ldap_prop_fn, shib_ldap_prop)
+
         os.chdir(cur_dir)
+
+
 
     def upgrade_jetty(self):
 
@@ -1186,16 +1282,18 @@ if __name__ == '__main__':
     parser.add_argument('-o', '--online', help="online installation", action='store_true')
     argsp = parser.parse_args()
 
+    from setup.pylib.ldif import LDIFParser, LDIFWriter
+    from setup.setup import Setup
+    from ldap.dn import explode_dn, str2dn
+    from setup.pylib import Properties
+
     updaterObj = GluuUpdater()
-    
+    updaterObj.determine_ldap_type()
+
     if argsp.online or not os.path.exists('setup'):
         print "\033[93mNote, Upgrading Java JRE is not possible for online upgrade.\033[0m"
 
         updaterObj.download_apps()
-
-    from setup.pylib.ldif import LDIFParser, LDIFWriter
-    from setup.setup import Setup
-    from ldap.dn import explode_dn, str2dn
 
     sdb_files = []
 
@@ -1251,20 +1349,42 @@ if __name__ == '__main__':
 
     setupObject.load_properties(setup_properties_fn,
                                 no_update = [
+                                        'install_dir',
                                         'node_version',
                                         'jetty_version',
                                         'jetty_dist',
+                                        'outputFolder',
+                                        'templateFolder',
+                                        'staticFolder',
+                                        'openDjIndexJson',
+                                        'openDjSchemaFolder',
+                                        'openDjschemaFiles',
+                                        'opendj_init_file',
+                                        'opendj_service_centos7',
+                                        'opendj_version_number',
+                                        'log',
+                                        'logError',
+                                        'passport_initd_script',
+                                        'node_initd_script',
                                         ]
                                 )
-
+    
     setupObject.check_properties()
     setupObject.os_type, setupObject.os_version = setupObject.detect_os_type()
     setupObject.calculate_selected_aplications_memory()
     setupObject.ldapCertFn = setupObject.opendj_cert_fn
+    setupObject.generate_oxtrust_api_configuration()
+    setupObject.encode_passwords()
+
+    updaterObj.dump_current_db()
+
+    if updaterObj.ldap_type == 'openldap':
+        updaterObj.install_opendj()
+
 
     updaterObj.update_node()
     updaterObj.update_apache_conf()    
-    setupObject.generate_oxtrust_api_configuration()
+    
     
     updaterObj.upgrade_jetty()
     updaterObj.update_war()
@@ -1272,10 +1392,12 @@ if __name__ == '__main__':
     updaterObj.update_passport()
     updaterObj.update_default_settings()
 
-    updaterObj.dump_current_db()
     updaterObj.update_schema()
+    
     updaterObj.parse_current_ldif()
     updaterObj.process_ldif()
+    
+    
     updaterObj.update_conf_files()
     updaterObj.import_ldif2ldap()
     updaterObj.update_shib()
