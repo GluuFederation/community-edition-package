@@ -124,6 +124,7 @@ class GluuUpdater:
         if not os.path.exists(self.backup_folder) and not dev_env:
             os.mkdir(self.backup_folder)
 
+        self.wrends_version_number = '4.0.0-M3'
         self.setup_dir = os.path.join(cur_dir, 'setup')
         self.template_dir = os.path.join(self.setup_dir, 'templates')
         self.scripts_ldif = os.path.join(self.template_dir, 'scripts.ldif')
@@ -155,9 +156,12 @@ class GluuUpdater:
 
         print "LDAP type was determined as", self.ldap_type
 
-    def backup_(self, f):
+    def backup_(self, f, keep=False):
         if os.path.exists(f):
-            setupObject.run(['mv', f, f+'.back_'+f])
+            if keep:
+                setupObject.run(['cp','-r', '-f', f, f+'.back_'+self.backup_time])
+            else:
+                setupObject.run(['mv', f, f+'.back_'+self.backup_time])
 
     def install_opendj(self):
         
@@ -186,15 +190,19 @@ class GluuUpdater:
 
         if argsp.online:
             setupObject.logIt("Downloading opendj Server")
+            
+            wrends_download_link = 'https://ox.gluu.org/maven/org/forgerock/opendj/opendj-server-legacy/{0}/opendj-server-legacy-{0}.zip'.format(self.wrends_version_number)
+            wrends_archieve = os.path.basename(wrends_download_link)
+
             setupObject.run([
-                                'wget', 
-                                'https://ox.gluu.org/maven/org/forgerock/opendj/opendj-server-legacy/{0}/opendj-server-legacy-{0}.zip'.format(setupObject.opendj_version_number),
-                                '-O', os.path.join(setupObject.distAppFolder, 'opendj-server-{}.zip'.format(setupObject.opendj_version_number)),
+                                'wget', '-nv',
+                                wrends_download_link,
+                                '-O', os.path.join(setupObject.distAppFolder, wrends_archieve),
                                 ])
 
         setupObject.render_templates({setupObject.ldap_setup_properties: False})
         setupObject.listenAllInterfaces = False
-        setupObject.createLdapPw()
+        setupObject.opendj_type = 'wrends'
         setupObject.extractOpenDJ()
         setupObject.opendj_version = setupObject.determineOpenDJVersion()
         
@@ -215,10 +223,24 @@ class GluuUpdater:
     def dump_current_db(self):
         print "Dumping ldap to gluu.ldif"
         if os.path.exists(self.current_ldif_fn):
-            setupObject.run(['mv', self.current_ldif_fn, self.current_ldif_fn+'_back_' + self.backup_time])
-            
-        os.system('cp -r -f /opt/opendj /opt/opendj.bak_'+self.backup_time)
-        os.system('/opt/opendj/bin/ldapsearch -X -Z -D "{}" -w {} -h localhost -p 1636 -b "o=gluu" "Objectclass=*" > {}'.format(self.bindDN, setupObject.ldapPass, self.current_ldif_fn))
+            self.backup_(self.current_ldif_fn)
+        
+        setupObject.run(' '.join([
+                        '/opt/opendj/bin/ldapsearch',
+                        '-X', '-Z', '-D',
+                        '"{}"'.format(self.bindDN),
+                        '-j',
+                        setupObject.ldapPassFn,
+                        '-h',
+                        setupObject.ldap_hostname,
+                        '-p',
+                        '1636',
+                        '-b',
+                        'o=gluu',
+                        'ObjectClass=*',
+                        '>',
+                        '/root/update/gluu.ldif']), shell=True)
+
         fs = os.stat(self.current_ldif_fn)
 
         if fs.st_size < 500000:
@@ -228,23 +250,22 @@ class GluuUpdater:
         print "Updating schema"
         new_schema = os.path.join(self.setup_dir, 'static/opendj/101-ox.ldif')
         target_schema = os.path.join(setupObject.ldapBaseFolder, 'config/schema/101-ox.ldif')
-        shutil.copy(new_schema, target_schema)
-        os.system('chown ldap:ldap ' + target_schema)
+        setupObject.run(['cp', '-f', new_schema, target_schema])
+        setupObject.run(['chown', 'ldap:ldap', target_schema])
 
 
     def download_apps(self):
         for d in (self.app_dir, self.war_dir):
             if not os.path.exists(d):
-                os.mkdir(d)
+                setupObject.run(['mkdir',d])
 
-        os.system('wget -nv https://ox.gluu.org/maven/org/gluu/oxshibbolethIdp/{0}/oxshibbolethIdp-{0}.war -O {1}/idp.war'.format(self.current_version, self.war_dir))
-        os.system('wget -nv https://ox.gluu.org/maven/org/gluu/oxtrust-server/{0}/oxtrust-server-{0}.war -O {1}/identity.war'.format(self.current_version, self.war_dir))
-        os.system('wget -nv https://ox.gluu.org/maven/org/gluu/oxauth-server/{0}/oxauth-server-{0}.war -O {1}/oxauth.war'.format(self.current_version, self.war_dir))
-        os.system('wget -nv https://ox.gluu.org/maven/org/gluu/oxShibbolethStatic/{0}/oxShibbolethStatic-{0}.jar -O {1}/shibboleth-idp.jar'.format(self.current_version, self.app_dir))
-        os.system('wget -nv https://ox.gluu.org/maven/org/gluu/oxShibbolethKeyGenerator/{0}/oxShibbolethKeyGenerator-{0}.jar -O {1}/idp3_cml_keygenerator.jar'.format(self.current_version, self.app_dir))
-        os.system('wget -nv https://ox.gluu.org/npm/passport/passport-4.0.0.tgz -O {0}/passport.tgz'.format(self.app_dir))
-        os.system('wget -nv https://ox.gluu.org/npm/passport/passport-version_4.0.b1-node_modules.tar.gz -O {0}/passport-node_modules.tar.gz'.format(self.app_dir))
-        #https://github.com/AdoptOpenJDK/openjdk11-binaries/releases/download/jdk-11.0.4%2B11/OpenJDK11U-jdk_x64_linux_hotspot_11.0.4_11.tar.gz
+        setupObject.run(['wget', '-nv', 'https://ox.gluu.org/maven/org/gluu/oxshibbolethIdp/{0}/oxshibbolethIdp-{0}.war'.format(self.current_version), '-O', os.path.join(self.war_dir, 'idp.war')])
+        setupObject.run(['wget', '-nv', 'https://ox.gluu.org/maven/org/gluu/oxtrust-server/{0}/oxtrust-server-{0}.war'.format(self.current_version), '-O', os.path.join(self.war_dir, 'identity.war')])
+        setupObject.run(['wget', '-nv', 'https://ox.gluu.org/maven/org/gluu/oxauth-server/{0}/oxauth-server-{0}.war'.format(self.current_version), '-O', os.path.join(self.war_dir, 'oxauth.war')])
+        setupObject.run(['wget', '-nv', 'https://ox.gluu.org/maven/org/gluu/oxShibbolethStatic/{0}/oxShibbolethStatic-{0}.jar'.format(self.current_version), '-O', os.path.join(self.war_dir, 'shibboleth-idp.jar')])
+        setupObject.run(['wget', '-nv', 'https://ox.gluu.org/maven/org/gluu/oxShibbolethKeyGenerator/{0}/oxShibbolethKeyGenerator-{0}.jar'.format(self.current_version), '-O', os.path.join(setupObject.distGluuFolder, 'idp3_cml_keygenerator.jar')])
+        setupObject.run(['wget', '-nv', 'https://ox.gluu.org/npm/passport/passport-4.0.0.tgz', '-O', os.path.join(setupObject.distAppFolder, 'passport.tgz')])
+        setupObject.run(['wget', '-nv', 'https://ox.gluu.org/npm/passport/passport-version_4.0.b1-node_modules.tar.gz', '-O', os.path.join(setupObject.distAppFolder, 'passport-node_modules.tar.gz')])
 
 
     def update_war(self):
@@ -259,15 +280,15 @@ class GluuUpdater:
                 cur_war = os.path.join(app_dir, war_app)
                 if os.path.exists(cur_war):
                     print "Backing up", war_app, "to", self.backup_folder
-                    shutil.copy(cur_war, self.backup_folder)
+                    setupObject.run(['cp', '-f', cur_war, self.backup_folder])
                     
                     resources_dir = os.path.join(self.gluu_app_dir, app, 'resources')
                     if not os.path.exists(resources_dir):
-                        os.mkdir(resources_dir)
+                        setupObject.run(['mkdir', '-p', resources_dir])
                     
                     start_ini = '/opt/gluu/jetty/{}/start.ini'.format(app)
                     if os.path.exists(start_ini):
-                        os.remove(start_ini)
+                        setupObject.run(['rm', '-f', start_ini])
 
                     setupObject.run([
                         '/opt/jre/bin/java', '-jar', 
@@ -277,13 +298,10 @@ class GluuUpdater:
                         '--add-to-start=' + setupObject.jetty_app_configuration[app]['jetty']['modules']], 
                         None, os.environ)
 
-                    os.system('chown jetty:jetty ' + resources_dir)
+                    setupObject.run(['chown', 'jetty:jetty', resources_dir])
                     
                 print "Updating", war_app
-                shutil.copy(new_war_app_file, app_dir)
-
-        shutil.copy('/opt/dist/gluu/idp3_cml_keygenerator.jar', self.backup_folder)
-        shutil.copy(os.path.join(self.app_dir, 'idp3_cml_keygenerator.jar'), '/opt/dist/gluu/')
+                setupObject.run(['cp', '-f', new_war_app_file, app_dir])
 
     def update_default_settings(self):
         for service in ('casa', 'identity', 'idp', 'oxauth', 'oxauth-rp'):
@@ -291,8 +309,8 @@ class GluuUpdater:
             if os.path.exists(target_fn):
                 tmp_config_fn = os.path.join(self.setup_dir, 'templates/jetty', service)
                 tmp_config = self.render_template(tmp_config_fn)
-                with open(target_fn,'w') as w:
-                    w.write(tmp_config)
+                setupObject.writeFile(target_fn, tmp_config)
+                
 
     def parse_current_ldif(self):
         
@@ -362,7 +380,6 @@ class GluuUpdater:
                     new_entry['oxEnabled'] = ['true']
                     parser.entries[scr_dn] = new_entry
 
-            self.newDns.append(scr_dn)
             self.write2ldif(scr_dn, parser.entries[scr_dn])
         
     def add_new_entries(self):
@@ -406,14 +423,13 @@ class GluuUpdater:
             
             for attr_dn in attributes_parser.DNs:
                 attr_dn = str(attr_dn)
-                if not attr_dn in self.newDns:
-                    self.write2ldif(attr_dn, attributes_parser.entries[attr_dn])
+                self.write2ldif(attr_dn, attributes_parser.entries[attr_dn])
 
 
     def write2ldif(self, new_dn, new_entry):
-        self.newDns.append(new_dn)
-        self.ldif_writer.unparse(new_dn, new_entry)
-
+        if not new_dn in self.newDns:
+            self.newDns.append(new_dn)
+            self.ldif_writer.unparse(new_dn, new_entry)
 
 
     def do_config_changes(self, js_conf, changes):
@@ -1001,7 +1017,6 @@ class GluuUpdater:
                     new_entry['gluuAttributeType'] = [attribute_type_changes[new_entry['gluuAttributeName'][0]]]
 
             #Write modified entry to ldif
-            self.newDns.append(new_dn)
             self.write2ldif(new_dn, new_entry)
 
         
@@ -1037,25 +1052,27 @@ class GluuUpdater:
 
 
         print "Removing existing passport server and node libraries"
-        os.system('rm -r -f /opt/gluu/node/passport/server/mappings')
-        os.system('rm -r -f /opt/gluu/node/passport/server/utils')
-        os.system('rm -r -f /opt/gluu/node/passport/node_modules')
+        setupObject.run(['rm', '-r', '-f', '/opt/gluu/node/passport/server/mappings'])
+        setupObject.run(['rm', '-r', '-f', '/opt/gluu/node/passport/server/utils'])
+        setupObject.run(['rm', '-r', '-f', '/opt/gluu/node/passport/node_modules'])
 
         print "Extracting passport.tgz into /opt/gluu/node/passport"
-        os.system('tar --strip 1 -xzf {0}/passport.tgz -C /opt/gluu/node/passport --no-xattrs --no-same-owner --no-same-permissions'.format(self.app_dir))
- 
+        setupObject.run(['tar', '--strip', '1', '-xzf', os.path.join(setupObject.distAppFolder, 'passport.tgz'),
+                         '-C', '/opt/gluu/node/passport', '--no-xattrs', '--no-same-owner', '--no-same-permissions'])
+    
         print "Extracting passport node modules"
         modules_dir = '/opt/gluu/node/passport/node_modules'
         if not os.path.exists(modules_dir):
-            os.mkdir(modules_dir)
-        os.system('tar --strip 1 -xzf {0}/passport-node_modules.tar.gz -C {1} --no-xattrs --no-same-owner --no-same-permissions'.format(self.app_dir,modules_dir))
+            setupObject.run(['mkdir', '-p', modules_dir])
+        setupObject.run(['tar', '--strip', '1', '-xzf', os.path.join(setupObject.distAppFolder, 'passport-node_modules.tar.gz'),
+                         '-C', modules_dir, '--no-xattrs', '--no-same-owner', '--no-same-permissions'])
 
         log_dir = '/opt/gluu/node/passport/server/logs'
 
         if not os.path.exists(log_dir): 
-            os.mkdir(log_dir)
+            setupObject.run(['mkdir',log_dir])
 
-        os.system('chown -R node:node /opt/gluu/node/passport/')
+        setupObject.run(['chown', '-R', 'node:node', '/opt/gluu/node/passport/'])
 
     def fix_passport_config(self, new_dn, new_entry):
         
@@ -1138,75 +1155,72 @@ class GluuUpdater:
         self.write2ldif(new_dn, new_entry)
 
         if not dev_env:
-            os.system('chown -R node:node /opt/gluu/node/')
+            setupObject.run(['chown', '-R', 'node:node', '/opt/gluu/node/'])
             setupObject.run_service_command('passport', 'start')
 
     def update_conf_files(self):
 
         for prop_file in ('gluu.properties', 'gluu-ldap.properties'):
             properties =  self.render_template(os.path.join(self.template_dir, prop_file))
-            with open( os.path.join(setupObject.configFolder, prop_file), 'w') as w:
-                w.write(properties)
+            fn = os.path.join(setupObject.configFolder, prop_file)
+            setupObject.writeFile(fn, properties)
 
 
     def import_ldif2ldap(self):
         print "Stopping OpenDj"
         setupObject.run_service_command('opendj', 'stop')
-        os.system('rm -f rejects.txt')
+        setupObject.run(['rm', '-f', 'rejects.txt'])
         print "Importing processed ldif"
-        os.system('/opt/opendj/bin/import-ldif -b o=gluu -n userRoot -l gluu_noinum.ldif -R rejects.txt')
+        setupObject.run(['/opt/opendj/bin/import-ldif', '--offline', '-b', 'o=gluu', '-n', 'userRoot', '-l', 'gluu_noinum.ldif', '-R', 'rejects.txt'])
         print "Starting OpenDj"
         setupObject.run_service_command('opendj', 'start')
         
     def update_shib(self):
 
-        saml_meta_data = '/opt/shibboleth-idp/metadata/idp-metadata.xml'
+        saml_meta_data_fn = '/opt/shibboleth-idp/metadata/idp-metadata.xml'
 
-        if not os.path.exists(saml_meta_data):
+        if not os.path.exists(saml_meta_data_fn):
             return
 
         print "Updadting shibboleth-idp"
 
         print "Backing up /opt/shibboleth-idp to", self.backup_folder
-        os.system('cp -r /opt/shibboleth-idp '+self.backup_folder)
+        setupObject.run(['cp', '-r', '/opt/shibboleth-idp', self.backup_folder])
         print "Updating idp-metadata.xml"
         setupObject.templateRenderingDict['idp3SigningCertificateText'] = open('/etc/certs/idp-signing.crt').read().replace('-----BEGIN CERTIFICATE-----','').replace('-----END CERTIFICATE-----','')
         setupObject.templateRenderingDict['idp3EncryptionCertificateText'] = open('/etc/certs/idp-encryption.crt').read().replace('-----BEGIN CERTIFICATE-----','').replace('-----END CERTIFICATE-----','')
 
-        shutil.copy(saml_meta_data, self.backup_folder)
+        self.backup_(saml_meta_data_fn)
 
         os.chdir('/opt')
-        os.system('/opt/jre/bin/jar xf {0}'.format(os.path.join(self.app_dir,'shibboleth-idp.jar')))
-        os.system('rm -r /opt/META-INF')
+        setupObject.run(['/opt/jre/bin/jar', 'xf', os.path.join(self.war_dir,'shibboleth-idp.jar')])
+        setupObject.run(['rm', '-r', '/opt/META-INF'])
         
         idp_tmp_dir = '/tmp/{0}'.format(str(int(time.time()*1000)))
-        os.system('mkdir '+idp_tmp_dir)
+        setupObject.run(['mkdir','-p', idp_tmp_dir])
         
         os.chdir(idp_tmp_dir)
 
-        os.system('/opt/jre/bin/jar xf {0}'.format(os.path.join(self.update_dir, 'war/idp.war')))
-        os.system('rm -f /opt/shibboleth-idp/webapp/WEB-INF/lib/*')
-        os.system('cp -r {0}/WEB-INF/ /opt/shibboleth-idp/webapp'.format(idp_tmp_dir))
+        setupObject.run(['/opt/jre/bin/jar', 'xf', os.path.join(self.war_dir, 'idp.war')])
+        setupObject.run(['rm', '-f', '/opt/shibboleth-idp/webapp/WEB-INF/lib/*'])
+        setupObject.run(['cp', '-r', os.path.join(idp_tmp_dir, 'WEB-INF/'), '/opt/shibboleth-idp/webapp'])
 
         #Recreate idp-metadata.xml with new format
         temp_fn = os.path.join(self.setup_dir, 'static/idp3/metadata/idp-metadata.xml')
         new_saml_meta_data = self.render_template(temp_fn)
-        with open(saml_meta_data,'w') as f:
-            f.write(new_saml_meta_data)
-
+        setupObject.writeFile(saml_meta_data_fn, new_saml_meta_data)
 
         for prop_fn in ('idp.properties', 'ldap.properties', 'services.properties','saml-nameid.properties'):
             print "Updating", prop_fn
             properties = self.render_template(os.path.join(self.setup_dir, 'static/idp3/conf', prop_fn))
-            with open(os.path.join('/opt/shibboleth-idp/conf', prop_fn),'w') as w:
-                w.write(properties)
+            setupObject.writeFile(os.path.join('/opt/shibboleth-idp/conf', prop_fn), properties)
 
         if argsp.online:
-            os.system('wget https://raw.githubusercontent.com/GluuFederation/oxTrust/master/configuration/template/shibboleth3/idp/saml-nameid.properties.vm -O /opt/gluu/jetty/identity/conf/shibboleth3/idp/saml-nameid.properties.vm')
+            setupObject.run(['wget', 'https://raw.githubusercontent.com/GluuFederation/oxTrust/master/configuration/template/shibboleth3/idp/saml-nameid.properties.vm', '-O', '/opt/gluu/jetty/identity/conf/shibboleth3/idp/saml-nameid.properties.vm'])
 
-        os.system('chown -R jetty:jetty /opt/shibboleth-idp')
+        setupObject.run(['chown', '-R', 'jetty:jetty', '/opt/shibboleth-idp'])
 
-        os.system('rm -r -f '+ idp_tmp_dir)
+        setupObject.run(['rm', '-r', '-f', idp_tmp_dir])
 
 
         if self.ldap_type == 'openldap':
@@ -1227,14 +1241,17 @@ class GluuUpdater:
         print "Upgrading Jetty"
 
         if argsp.online:
-            os.system('wget -nv https://repo1.maven.org/maven2/org/eclipse/jetty/jetty-distribution/{0}/jetty-distribution-{0}.tar.gz -O {1}/jetty-distribution-{0}.tar.gz'.format(setupObject.jetty_version, setupObject.distAppFolder))
+            print "Downloading Jetty"
+            setupObject.run(['wget', '-nv', 
+                             'https://repo1.maven.org/maven2/org/eclipse/jetty/jetty-distribution/{0}/jetty-distribution-{0}.tar.gz'.format(setupObject.jetty_version),
+                             '-O', '{0}/jetty-distribution-{1}.tar.gz'.format(setupObject.distAppFolder, setupObject.jetty_version)])
 
         for cur_version in glob.glob('/opt/jetty-*'):
             print "Removing current jetty version:", cur_version
-            os.system('rm -r ' + cur_version)
+            setupObject.run(['rm', '-r', cur_version])
         
         if os.path.islink('/opt/jetty'):
-            os.system('unlink /opt/jetty')
+            setupObject.run(['unlink', '/opt/jetty'])
 
         setupObject.installJetty()
 
@@ -1244,14 +1261,52 @@ class GluuUpdater:
         print "Upgrading Node"
 
         if argsp.online:
-            os.system('wget -nv https://nodejs.org/dist/v{0}/node-v{0}-linux-x64.tar.xz -O {1}/node-v{0}-linux-x64.tar.xz'.format(setupObject.node_version, setupObject.distAppFolder))
-
+            print "Downloading Node"
+            setupObject.run(['wget', '-nv', 'https://nodejs.org/dist/v{0}/node-v{0}-linux-x64.tar.xz'.format(setupObject.node_version), '-O', '{0}/node-v{1}-linux-x64.tar.xz'.format(setupObject.distAppFolder, setupObject.node_version)])
+ 
         for cur_version in glob.glob('/opt/node-v*'):
-            os.system('rm -r ' + cur_version)
+            setupObject.run(['rm', '-r', cur_version])
         if os.path.islink('/opt/node'):
-            os.unlink('/opt/node')
+            setupObject.run(['unlink', '/opt/node'])
 
         setupObject.installNode()
+
+
+    def update_java(self):
+        print "Upgrading Java"
+
+        cacerts = []
+
+        #get host specific certs in current cacerts
+        cmd =['/opt/jre/bin/keytool', '-list', '-keystore', '/opt/jre/jre/lib/security/cacerts', '-storepass', 'changeit']
+        result = setupObject.run(cmd)
+        for l in result.split('\n'):
+            if setupObject.hostname in l:
+                ls=l.split(', ')
+                if ls and setupObject.hostname in ls[0]:
+                    alias = ls[0]
+                    crt_file = os.path.join(cur_dir, ls[0]+'.crt')
+                    setupObject.run(['/opt/jre/bin/keytool', '-export', '-alias', alias, '-file', crt_file, '-keystore', '/opt/jre/jre/lib/security/cacerts', '-storepass', 'changeit'])
+                    
+                    cacerts.append((alias, crt_file))
+                    
+                    #setupObject.run(['/opt/jre/bin/keytool', '-import', '-alias', ls[0], '-file', crt_file, '-keystore', /opt/jre/jre/lib/security/cacerts -storepass changeit -noprompt -trustcacerts'.format(ls[0]))
+        
+
+        if argsp.online:
+            print "Downloading Java", setupObject.jre_version
+            setupObject.run(['wget', '-nv', 'https://d3pxv6yz143wms.cloudfront.net/{0}/amazon-corretto-{0}-linux-x64.tar.gz'.format(setupObject.jre_version), '-O', '{1}/amazon-corretto-{0}-linux-x64.tar.gz'.format(setupObject.jre_version, setupObject.distAppFolder)])
+ 
+        for cur_version in glob.glob('/opt/jdk*'):
+            setupObject.run(['rm', '-r', cur_version])
+        if os.path.islink('/opt/jre'):
+            setupObject.run(['unlink', '/opt/jre'])
+
+        setupObject.installJRE()
+
+        #import certs        
+        for alias, crt_file in cacerts:
+            setupObject.run(['/opt/jre/bin/keytool', '-import', '-alias', alias, '-file', crt_file, '-keystore', '/opt/jre/jre/lib/security/cacerts', '-storepass', 'changeit', '-noprompt', '-trustcacerts'])
 
 
     def update_apache_conf(self):
@@ -1290,9 +1345,36 @@ if __name__ == '__main__':
     updaterObj = GluuUpdater()
     updaterObj.determine_ldap_type()
 
-    if argsp.online or not os.path.exists('setup'):
-        print "\033[93mNote, Upgrading Java JRE is not possible for online upgrade.\033[0m"
+    setup_install_dir = os.path.join(cur_dir,'setup')
 
+    setupObject = Setup(setup_install_dir)
+
+    setupObject.load_properties(setup_properties_fn,
+                                no_update = [
+                                        'install_dir',
+                                        'node_version',
+                                        'jetty_version',
+                                        'jetty_dist',
+                                        'outputFolder',
+                                        'templateFolder',
+                                        'staticFolder',
+                                        'openDjIndexJson',
+                                        'openDjSchemaFolder',
+                                        'openDjschemaFiles',
+                                        'opendj_init_file',
+                                        'opendj_service_centos7',
+                                        'log',
+                                        'logError',
+                                        'passport_initd_script',
+                                        'node_initd_script',
+                                        'jre_version',
+                                        'java_type',
+                                        'jreDestinationPath',
+                                        ]
+                                )
+
+
+    if argsp.online or not os.path.exists('setup'):
         updaterObj.download_apps()
 
     sdb_files = []
@@ -1329,8 +1411,6 @@ if __name__ == '__main__':
                 if (not self.idp_client) and ('oxAuthClient' in entry['objectClass']) and (entry['displayName'][0] == 'IDP client'):
                     self.idp_client = dn
 
-                
-
     class pureLDIFParser(LDIFParser):
         def __init__(self, input_fd):
             LDIFParser.__init__(self, input_fd)
@@ -1343,31 +1423,7 @@ if __name__ == '__main__':
             self.DNs.append(dn)
             self.entries[str(dn)] = entry
 
-    setup_install_dir = os.path.join(cur_dir,'setup')
 
-    setupObject = Setup(setup_install_dir)
-
-    setupObject.load_properties(setup_properties_fn,
-                                no_update = [
-                                        'install_dir',
-                                        'node_version',
-                                        'jetty_version',
-                                        'jetty_dist',
-                                        'outputFolder',
-                                        'templateFolder',
-                                        'staticFolder',
-                                        'openDjIndexJson',
-                                        'openDjSchemaFolder',
-                                        'openDjschemaFiles',
-                                        'opendj_init_file',
-                                        'opendj_service_centos7',
-                                        'opendj_version_number',
-                                        'log',
-                                        'logError',
-                                        'passport_initd_script',
-                                        'node_initd_script',
-                                        ]
-                                )
     
     setupObject.check_properties()
     setupObject.os_type, setupObject.os_version = setupObject.detect_os_type()
@@ -1375,16 +1431,19 @@ if __name__ == '__main__':
     setupObject.ldapCertFn = setupObject.opendj_cert_fn
     setupObject.generate_oxtrust_api_configuration()
     setupObject.encode_passwords()
+    setupObject.createLdapPw()
+
 
     updaterObj.dump_current_db()
+
+    updaterObj.update_java()
 
     if updaterObj.ldap_type == 'openldap':
         updaterObj.install_opendj()
 
-
     updaterObj.update_node()
+
     updaterObj.update_apache_conf()    
-    
     
     updaterObj.upgrade_jetty()
     updaterObj.update_war()
@@ -1393,7 +1452,6 @@ if __name__ == '__main__':
     updaterObj.update_default_settings()
 
     updaterObj.update_schema()
-    
     updaterObj.parse_current_ldif()
     updaterObj.process_ldif()
     
