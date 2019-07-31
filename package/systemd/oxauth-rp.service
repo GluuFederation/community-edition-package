@@ -1,6 +1,5 @@
 [Unit]
 Description=Identity service
-Requires=identity.service
 After=identity.service
 
 
