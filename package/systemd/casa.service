@@ -1,6 +1,5 @@
 [Unit]
 Description=Casa service
-Requires=oxauth.service
 After=oxauth.service
 
 [Service]
