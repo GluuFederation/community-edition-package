@@ -1,6 +1,5 @@
 [Unit]
 Description=Identity service
-Requires=oxauth.service
 After=oxauth.service
 
 [Service]
