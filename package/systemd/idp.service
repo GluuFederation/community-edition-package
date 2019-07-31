@@ -1,6 +1,5 @@
 [Unit]
 Description=Idp service
-Requires=oxauth.service
 After=oxauth.service
 
 [Service]
