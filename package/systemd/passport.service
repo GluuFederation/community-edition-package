@@ -1,6 +1,5 @@
 [Unit]
 Description=Passport service
-Requires=identity.service
 After=identity.service
 
 [Service]
