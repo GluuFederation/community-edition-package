@@ -163,23 +163,25 @@ class GluuUpdater:
             else:
                 setupObject.run(['mv', f, f+'.back_'+self.backup_time])
 
-    def install_opendj(self):
-        
-        setupObject.opendj_type = 'opendj'
+    def set_to_opendj(self):
+        setupObject.opendj_type = 'wrends'
         setupObject.ldap_binddn = 'cn=directory manager'
         setupObject.ldap_site_binddn = setupObject.ldap_binddn
         setupObject.ldapCertFn = setupObject.opendj_cert_fn
         setupObject.ldapTrustStoreFn = setupObject.opendj_p12_fn
         setupObject.encoded_ldapTrustStorePass = setupObject.encoded_opendj_p12_pass
 
+
+    def install_opendj(self):
+        self.set_to_opendj()
+
         for f in (setupObject.opendj_cert_fn, setupObject.opendj_p12_fn):
             self.backup_(f)
 
-
-        setupObject.logIt("Stopping OpenLdap Server")
-        setupObject.run(['/etc/init.d/solserver', 'stop'])
-        
-        setupObject.enable_service_at_start('solserver', action='disable')
+        if updaterObj.ldap_type == 'openldap':
+            setupObject.logIt("Stopping OpenLdap Server")
+            setupObject.run(['/etc/init.d/solserver', 'stop'])
+            setupObject.enable_service_at_start('solserver', action='disable')
         
         #Ensure opendj is not running
         setupObject.run(['/opt/opendj/bin/stop-ds'])
@@ -206,16 +208,16 @@ class GluuUpdater:
         setupObject.extractOpenDJ()
         setupObject.opendj_version = setupObject.determineOpenDJVersion()
         
-        print "Installing OpenDJ"
+        print "Installing WrenDS"
         setupObject.install_opendj()
         setupObject.prepare_opendj_schema()
-        print "Setting Up OpenDJ Service"
+        print "Setting Up WrenDS Service"
         setupObject.setup_opendj_service()
-        print "Configuring OpenDJ"
+        print "Configuring WrenDS"
         setupObject.configure_opendj()
-        print "Exporting OpenDJ certificate"
+        print "Exporting WrenDS certificate"
         setupObject.export_opendj_public_cert()
-        print "Setting Up OpenDJ Indexes"
+        print "Setting Up WrenDS Indexes"
         setupObject.index_opendj()
         setupObject.post_install_opendj()
 
@@ -239,7 +241,7 @@ class GluuUpdater:
                         'o=gluu',
                         'ObjectClass=*',
                         '>',
-                        '/root/update/gluu.ldif']), shell=True)
+                        os.path.join(cur_dir, 'gluu.ldif')]), shell=True)
 
         fs = os.stat(self.current_ldif_fn)
 
@@ -304,7 +306,7 @@ class GluuUpdater:
                 setupObject.run(['cp', '-f', new_war_app_file, app_dir])
 
     def update_default_settings(self):
-        for service in ('casa', 'identity', 'idp', 'oxauth', 'oxauth-rp'):
+        for service in ('identity', 'idp', 'oxauth', 'oxauth-rp'):
             target_fn = os.path.join('/etc/default', service)
             if os.path.exists(target_fn):
                 tmp_config_fn = os.path.join(self.setup_dir, 'templates/jetty', service)
@@ -821,16 +823,29 @@ class GluuUpdater:
                 
                 if 'oxTrustConfAttributeResolver' in new_entry:
                     oxTrustConfAttributeResolver = json.loads(new_entry['oxTrustConfAttributeResolver'][0])
-                    for name_id in oxTrustConfAttributeResolver['nameIdConfigs']:
-                        if 'name' in name_id:
-                            name_id.pop('name')
-                        if 'persistent' in name_id['nameIdType']:
-                            name_id['nameIdType'] = 'urn:oasis:names:tc:SAML:2.0:nameid-format:persistent'
-                        elif 'emailAddress' in name_id['nameIdType']:
-                            name_id['nameIdType'] = 'urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress'
+                    
+                    if 'nameIdConfigs' in oxTrustConfAttributeResolver:
+                        for name_id in oxTrustConfAttributeResolver['nameIdConfigs']:
+                            if 'name' in name_id:
+                                name_id.pop('name')
+                            if 'persistent' in name_id['nameIdType']:
+                                name_id['nameIdType'] = 'urn:oasis:names:tc:SAML:2.0:nameid-format:persistent'
+                            elif 'emailAddress' in name_id['nameIdType']:
+                                name_id['nameIdType'] = 'urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress'
+                            else:
+                                name_id['nameIdType'] = 'urn:oasis:names:tc:SAML:1.1:nameid-format:X509SubjectName'
+
+                    elif 'nameIdType' in oxTrustConfAttributeResolver:
+                        if oxTrustConfAttributeResolver['attributeBase'] == 'mail':
+                            nameIdType = 'urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress'
+                        elif oxTrustConfAttributeResolver['attributeBase'] == 'persistent':
+                            nameIdType = 'urn:oasis:names:tc:SAML:2.0:nameid-format:persistent'
                         else:
-                            name_id['nameIdType'] = 'urn:oasis:names:tc:SAML:1.1:nameid-format:X509SubjectName'
-                
+                            nameIdType = 'urn:oasis:names:tc:SAML:1.1:nameid-format:X509SubjectName'
+                        
+                        oxTrustConfAttributeResolver={'nameIdConfigs': [{'sourceAttribute': oxTrustConfAttributeResolver['attributeBase'], 'nameIdType': nameIdType, 'enabled': oxTrustConfAttributeResolver['enabled']}]}
+                        
+                        
                     new_entry['oxTrustConfAttributeResolver'][0] = json.dumps(oxTrustConfAttributeResolver)
                 
 
@@ -989,8 +1004,9 @@ class GluuUpdater:
                 new_dn = ','.join(new_dn_e)
 
             elif 'oxPassportConfiguration' in  new_entry['objectClass']:
-                self.fix_passport_config(new_dn, new_entry)
-                continue
+                if 'gluuPassportConfiguration' in new_entry:
+                    self.fix_passport_config(new_dn, new_entry)
+                    continue
             
             elif 'gluuSAMLconfig' in  new_entry['objectClass']:
                 new_entry['o'] = ['o=gluu']
@@ -1159,10 +1175,12 @@ class GluuUpdater:
             setupObject.run_service_command('passport', 'start')
 
     def update_conf_files(self):
+        self.set_to_opendj()
 
         for prop_file in ('gluu.properties', 'gluu-ldap.properties'):
             properties =  self.render_template(os.path.join(self.template_dir, prop_file))
             fn = os.path.join(setupObject.configFolder, prop_file)
+
             setupObject.writeFile(fn, properties)
 
 
@@ -1171,7 +1189,7 @@ class GluuUpdater:
         setupObject.run_service_command('opendj', 'stop')
         setupObject.run(['rm', '-f', 'rejects.txt'])
         print "Importing processed ldif"
-        setupObject.run(['/opt/opendj/bin/import-ldif', '--offline', '-b', 'o=gluu', '-n', 'userRoot', '-l', 'gluu_noinum.ldif', '-R', 'rejects.txt'])
+        setupObject.run(['/opt/opendj/bin/import-ldif', '--offline', '-b', 'o=gluu', '-n', 'userRoot', '-l', 'gluu_noinum.ldif', '-R', 'rejects.txt'], env={'OPENDJ_JAVA_HOME': setupObject.jre_home})
         print "Starting OpenDj"
         setupObject.run_service_command('opendj', 'start')
         
@@ -1283,15 +1301,11 @@ class GluuUpdater:
         for l in result.split('\n'):
             if setupObject.hostname in l:
                 ls=l.split(', ')
-                if ls and setupObject.hostname in ls[0]:
+                if ls and (setupObject.hostname in ls[0]) and (not 'opendj' in l):
                     alias = ls[0]
                     crt_file = os.path.join(cur_dir, ls[0]+'.crt')
                     setupObject.run(['/opt/jre/bin/keytool', '-export', '-alias', alias, '-file', crt_file, '-keystore', '/opt/jre/jre/lib/security/cacerts', '-storepass', 'changeit'])
-                    
                     cacerts.append((alias, crt_file))
-                    
-                    #setupObject.run(['/opt/jre/bin/keytool', '-import', '-alias', ls[0], '-file', crt_file, '-keystore', /opt/jre/jre/lib/security/cacerts -storepass changeit -noprompt -trustcacerts'.format(ls[0]))
-        
 
         if argsp.online:
             print "Downloading Java", setupObject.jre_version
@@ -1307,6 +1321,46 @@ class GluuUpdater:
         #import certs        
         for alias, crt_file in cacerts:
             setupObject.run(['/opt/jre/bin/keytool', '-import', '-alias', alias, '-file', crt_file, '-keystore', '/opt/jre/jre/lib/security/cacerts', '-storepass', 'changeit', '-noprompt', '-trustcacerts'])
+
+
+    def update_casa(self):
+        #upgrade of casa is delayed. I keep these code for future use.
+        return
+        
+        print "Upgrading Casa"
+
+        if argsp.online:
+            print "Online upgrade for casa is not available"
+            return
+            #print "Downloading Casa"
+            #setupObject.run(['wget', '-nv', 'https://ox.gluu.org/maven/org/gluu/casa/{0}/casa-{0}.war'.format(self.current_version), '-O', os.path.join(setupObject.distGluuFolder, 'casa.war')])
+            #setupObject.run(['wget', '-nv', 'http://central.maven.org/maven2/com/twilio/sdk/twilio/7.17.0/twilio-7.17.0.jar', '-O', os.path.join(setupObject.distGluuFolder, 'twilio-7.17.0.jar')])
+
+        casa_conf_fn = '/etc/gluu/conf/casa.json'
+
+        if os.path.exists(casa_conf_fn):
+            casa_conf = setupObject.readFile(casa_conf_fn)
+            casa_conf_js = json.loads(casa_conf)
+
+            try:
+                casa_conf_js['oxd_config'].pop('use_https_extension')
+                casa_conf_js['oxd_config'].pop('client')
+            except:
+                pass
+
+            casa_conf = json.dumps(casa_conf_js, indent=2)
+            setupObject.writeFile(casa_conf_fn, casa_conf)
+
+        jettyServiceOxAuthCustomLibsPath = os.path.join(setupObject.jetty_base, 'oxauth', 'custom', 'libs')
+        casa_base = os.path.join(setupObject.jetty_base, 'casa', 'webapps')
+        
+        setupObject.run(['cp', '-f', os.path.join(setupObject.distGluuFolder, 'casa.war'), casa_base])
+        setupObject.run(['chown', '-R', 'jetty:jetty', casa_base])
+        setupObject.run(['cp', '-f', os.path.join(setupObject.distGluuFolder, 'twilio-7.17.0.jar') , jettyServiceOxAuthCustomLibsPath])
+        setupObject.run(['chown', '-R', 'jetty:jetty', jettyServiceOxAuthCustomLibsPath])
+        
+        casa_python_libs = os.path.join(setupObject.distGluuFolder, 'python','casa','*')
+        setupObject.run(['cp', '-f', casa_python_libs, '/opt/gluu/python/libs'])
 
 
     def update_apache_conf(self):
@@ -1435,16 +1489,11 @@ if __name__ == '__main__':
 
 
     updaterObj.dump_current_db()
-
     updaterObj.update_java()
-
-    if updaterObj.ldap_type == 'openldap':
-        updaterObj.install_opendj()
-
+    updaterObj.install_opendj()
     updaterObj.update_node()
 
-    updaterObj.update_apache_conf()    
-    
+    updaterObj.update_apache_conf()
     updaterObj.upgrade_jetty()
     updaterObj.update_war()
     
@@ -1459,7 +1508,8 @@ if __name__ == '__main__':
     updaterObj.update_conf_files()
     updaterObj.import_ldif2ldap()
     updaterObj.update_shib()
-
+    updaterObj.update_casa()
+    
     for sdbf in sdb_files:
         if os.path.exists(sdbf):
             os.remove(sdbf)
