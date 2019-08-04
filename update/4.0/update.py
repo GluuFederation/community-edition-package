@@ -1385,6 +1385,14 @@ class GluuUpdater:
         setupObject.configure_httpd()
 
 
+    def fix_init_scripts(self):
+        print "Fixing init scripts"
+        setupObject.fix_systemd_script()
+        for service in setupObject.service_requirements:
+            init_script_fn = os.path.join('/etc/init.d', service)
+            if os.path.exists(init_script_fn):
+                setupObject.fix_init_scripts(service, init_script_fn)
+
 if __name__ == '__main__':
     
     parser = argparse.ArgumentParser(description="This script upgrades OpenDJ gluu-servers (>3.0) to 4.0")
@@ -1509,6 +1517,7 @@ if __name__ == '__main__':
     updaterObj.import_ldif2ldap()
     updaterObj.update_shib()
     updaterObj.update_casa()
+    updaterObj.fix_init_scripts()
     
     for sdbf in sdb_files:
         if os.path.exists(sdbf):
