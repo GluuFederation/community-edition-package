@@ -1185,12 +1185,12 @@ class GluuUpdater:
 
 
     def import_ldif2ldap(self):
-        print "Stopping OpenDj"
+        print "Stopping WrenDS"
         setupObject.run_service_command('opendj', 'stop')
         setupObject.run(['rm', '-f', 'rejects.txt'])
         print "Importing processed ldif"
         setupObject.run(['/opt/opendj/bin/import-ldif', '--offline', '-b', 'o=gluu', '-n', 'userRoot', '-l', 'gluu_noinum.ldif', '-R', 'rejects.txt'], env={'OPENDJ_JAVA_HOME': setupObject.jre_home})
-        print "Starting OpenDj"
+        print "Starting WrenDS"
         setupObject.run_service_command('opendj', 'start')
         
     def update_shib(self):
