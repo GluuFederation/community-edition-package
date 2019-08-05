@@ -76,7 +76,6 @@ if not os.path.exists(os.path.join(cur_dir, 'setup')):
 
 
 if needs_restart:
-    print "Restart is needed"
     python_ = sys.executable
     os.execl(python_, python_, * sys.argv)
 
@@ -1323,46 +1322,6 @@ class GluuUpdater:
             setupObject.run(['/opt/jre/bin/keytool', '-import', '-alias', alias, '-file', crt_file, '-keystore', '/opt/jre/jre/lib/security/cacerts', '-storepass', 'changeit', '-noprompt', '-trustcacerts'])
 
 
-    def update_casa(self):
-        #upgrade of casa is delayed. I keep these code for future use.
-        return
-        
-        print "Upgrading Casa"
-
-        if argsp.online:
-            print "Online upgrade for casa is not available"
-            return
-            #print "Downloading Casa"
-            #setupObject.run(['wget', '-nv', 'https://ox.gluu.org/maven/org/gluu/casa/{0}/casa-{0}.war'.format(self.current_version), '-O', os.path.join(setupObject.distGluuFolder, 'casa.war')])
-            #setupObject.run(['wget', '-nv', 'http://central.maven.org/maven2/com/twilio/sdk/twilio/7.17.0/twilio-7.17.0.jar', '-O', os.path.join(setupObject.distGluuFolder, 'twilio-7.17.0.jar')])
-
-        casa_conf_fn = '/etc/gluu/conf/casa.json'
-
-        if os.path.exists(casa_conf_fn):
-            casa_conf = setupObject.readFile(casa_conf_fn)
-            casa_conf_js = json.loads(casa_conf)
-
-            try:
-                casa_conf_js['oxd_config'].pop('use_https_extension')
-                casa_conf_js['oxd_config'].pop('client')
-            except:
-                pass
-
-            casa_conf = json.dumps(casa_conf_js, indent=2)
-            setupObject.writeFile(casa_conf_fn, casa_conf)
-
-        jettyServiceOxAuthCustomLibsPath = os.path.join(setupObject.jetty_base, 'oxauth', 'custom', 'libs')
-        casa_base = os.path.join(setupObject.jetty_base, 'casa', 'webapps')
-        
-        setupObject.run(['cp', '-f', os.path.join(setupObject.distGluuFolder, 'casa.war'), casa_base])
-        setupObject.run(['chown', '-R', 'jetty:jetty', casa_base])
-        setupObject.run(['cp', '-f', os.path.join(setupObject.distGluuFolder, 'twilio-7.17.0.jar') , jettyServiceOxAuthCustomLibsPath])
-        setupObject.run(['chown', '-R', 'jetty:jetty', jettyServiceOxAuthCustomLibsPath])
-        
-        casa_python_libs = os.path.join(setupObject.distGluuFolder, 'python','casa','*')
-        setupObject.run(['cp', '-f', casa_python_libs, '/opt/gluu/python/libs'])
-
-
     def update_apache_conf(self):
         
         setupObject.install_dir = setup_install_dir
@@ -1398,6 +1357,11 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="This script upgrades OpenDJ gluu-servers (>3.0) to 4.0")
     parser.add_argument('-o', '--online', help="online installation", action='store_true')
     argsp = parser.parse_args()
+
+    start_upgrade = raw_input('Ready to upgrade Gluu Server. Start now (y/N)')
+    if not start_upgrade or start_upgrade[0].lower() == 'n':
+        print "You give up uprgade. Exiting ..."
+        sys.exit()
 
     from setup.pylib.ldif import LDIFParser, LDIFWriter
     from setup.setup import Setup
@@ -1484,8 +1448,6 @@ if __name__ == '__main__':
         def handle(self, dn, entry):
             self.DNs.append(dn)
             self.entries[str(dn)] = entry
-
-
     
     setupObject.check_properties()
     setupObject.os_type, setupObject.os_version = setupObject.detect_os_type()
@@ -1524,6 +1486,10 @@ if __name__ == '__main__':
             os.remove(sdbf)
 
     setupObject.save_properties(setup_properties_fn)
+
+    if os.path.exists(os.path.join(setupObject.jetty_base,'casa')):
+        print "\033[93mCasa installation was detected."
+        print "Please run 'update_casa.py' script before restarting Gluu Server.\033[0m"
 
     print "Please logout from container and restart Gluu Server"
     print "Notes:"
