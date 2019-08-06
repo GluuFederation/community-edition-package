@@ -138,9 +138,6 @@ class casaUpdate(object):
         except:
             pass
 
-        casa_conf = json.dumps(self.casa_conf_js, indent=2)
-        setupObject.writeFile(self.casa_config_fn, casa_conf)
-
         jettyServiceOxAuthCustomLibsPath = os.path.join(setupObject.jetty_base, 'oxauth', 'custom', 'libs')
         casa_base = os.path.join(setupObject.jetty_base, 'casa', 'webapps')
         
@@ -159,8 +156,10 @@ class casaUpdate(object):
         
         if os.path.exists(casa_default_fn):
             p=Properties()
+
             with open(casa_default_fn) as f:
                 p.load(f)
+    
             result = re.search('Xms(\d.*)m -Xmx(\d.*)m -XX:MaxMetaspaceSize=(\d.*)m', p['JAVA_OPTIONS'])
 
         if result:
@@ -171,6 +170,32 @@ class casaUpdate(object):
         tmp_config_fn = os.path.join(setup_dir, 'templates', 'jetty', 'casa')
         tmp_config = self.render_template(tmp_config_fn)
         setupObject.writeFile(tmp_config, tmp_config)
+
+
+        casa_plugins_dir = os.path.join(setupObject.jetty_base, 'casa', 'plugins')
+
+        #since download links are not ready, I put dummy links
+        plugin_upgrades = {'authorized-clients': 'https://ox.gluu.org/maven/org/gluu/casa/4.0.b2/',
+                           'strong-authn-settings': 'https://ox.gluu.org/maven/org/gluu/casa/4.0.b2/',
+                           'account-linking': 'https://ox.gluu.org/maven/org/gluu/casa/4.0.b2/',
+                           }
+
+        for plugin in self.casa_conf_js.get('plugins', []):
+
+            if plugin['id'] in plugin_upgrades:
+                plugin_fn = os.path.join(casa_plugins_dir, plugin['relativePath'])
+                
+                if os.path.exists(plugin_fn):
+                    setupObject.run(['rm', '-f', plugin_fn])
+                
+                if plugin['state'] == 'STARTED':
+                    setupObject.run(['wget', plugin_upgrades[plugin['id']], '-O', plugin_fn])
+                    plugin['relativePath'] = os.path.basename(plugin_upgrades[plugin['id']])
+
+
+        #write json config file
+        casa_conf = json.dumps(self.casa_conf_js, indent=2)
+        setupObject.writeFile(self.casa_config_fn, casa_conf)
 
 
 if __name__ == '__main__':
