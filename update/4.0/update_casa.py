@@ -6,8 +6,6 @@ import ssl
 import httplib
 import json
 import re
-from urlparse import urlparse
-
 
 cur_dir = os.path.dirname(os.path.realpath(__file__))
 setup_dir = os.path.join(cur_dir, 'setup')
@@ -24,6 +22,8 @@ if not os.path.exists(setup_init):
 
 from setup.pylib.printVersion import get_war_info
 from setup.setup import Setup
+
+from setup.pylib.Properties import Properties
 
 def check_oxd_server(host, port):
     conn = httplib.HTTPSConnection (host, port, context=ssl._create_unverified_context())
@@ -47,7 +47,8 @@ class casaUpdate(object):
     def __init__(self):
         
         self.casa_config_fn = os.path.join(setupObject.configFolder, 'casa.json')
-
+        self.current_version = '4.0.b1'
+        
         if not os.path.exists(self.casa_config_fn):
             print "Casa config file {} was not found. Exiting ...".format(self.casa_config_fn)
             sys.exit()
@@ -84,9 +85,9 @@ class casaUpdate(object):
                     print "oxd server seems good."
                 else:
                     print "oxd server health status seems not good. Please check oxd server."
-                    sys.exit()
+                    return False
             else:
-                sys.exit()
+                return False
         else:
             print "Casa 4.0 depends on oxd 4.0. Checking if oxd server is up to date."
 
@@ -108,9 +109,20 @@ class casaUpdate(object):
                 print "oxd server {}:8443 health status seems not good. Please download".format(oxd_host,oxd_port)
                 print "https://raw.githubusercontent.com/GluuFederation/oxd/version_4.0/upgrade/oxd_updater.py"
                 print "on your oxd server and perform upgrade."
-                sys.exit()
+                return False
             
             print "oxd server seems good."
+        
+        return True
+
+    def render_template(self, tmp_file):
+        data_dict = setupObject.__dict__
+        data_dict.update(setupObject.templateRenderingDict)
+        
+        ldif_temp = open(tmp_file).read()
+        ldif_temp = setupObject.fomatWithDict(ldif_temp,  data_dict)
+        
+        return ldif_temp
 
 
     def update_casa(self):
@@ -140,17 +152,32 @@ class casaUpdate(object):
         casa_python_libs = os.path.join(setupObject.distGluuFolder, 'python','casa','*')
         setupObject.run(['cp', '-f', casa_python_libs, '/opt/gluu/python/libs'])
 
+        casa_default_fn = os.path.join(setupObject.osDefault, 'casa')
+        setupObject.casa_min_heap_mem = '256'
+        setupObject.casa_max_heap_mem = '716'
+        setupObject.casa_max_meta_mem = '307'
+        
+        if os.path.exists(casa_default_fn):
+            p=Properties()
+            with open(casa_default_fn) as f:
+                p.load(f)
+            result = re.search('Xms(\d.*)m -Xmx(\d.*)m -XX:MaxMetaspaceSize=(\d.*)m', p['JAVA_OPTIONS'])
+
+        if result:
+            setupObject.casa_min_heap_mem, setupObject.casa_max_heap_mem, setupObject.casa_max_meta_mem = result.groups()
+
+
         #Update Default Config
-        tmp_config_fn = os.path.join(self.setup_dir, 'templates', 'jetty', 'casa')
+        tmp_config_fn = os.path.join(setup_dir, 'templates', 'jetty', 'casa')
         tmp_config = self.render_template(tmp_config_fn)
-        setupObject.writeFile(target_fn, tmp_config)
+        setupObject.writeFile(tmp_config, tmp_config)
 
 
 if __name__ == '__main__':
-    setup_install_dir = os.path.join(cur_dir,'setup')
-    setupObject = Setup(setup_install_dir)
-    setupObject.log = os.path.join(setup_install_dir, 'casa_update.log')
-    setupObject.logError = os.path.join(setup_install_dir, 'casa_update_error.log')
+    setup_dir = os.path.join(cur_dir,'setup')
+    setupObject = Setup(setup_dir)
+    setupObject.log = os.path.join(setup_dir, 'casa_update.log')
+    setupObject.logError = os.path.join(setup_dir, 'casa_update_error.log')
     
     setupObject.os_initdaemon = setupObject.detect_initd()
     setupObject.os_type, setupObject.os_version = setupObject.detect_os_type()
@@ -158,5 +185,6 @@ if __name__ == '__main__':
     updaterObj = casaUpdate()
 
     #updaterObj.check_if_gluu_upgarded()
-    updaterObj.check_and_update_oxd()
-
+    #updaterObj.check_and_update_oxd()
+    updaterObj.update_casa()
+    
