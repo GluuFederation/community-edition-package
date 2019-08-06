@@ -6,6 +6,7 @@ import ssl
 import httplib
 import json
 import re
+import glob
 
 cur_dir = os.path.dirname(os.path.realpath(__file__))
 setup_dir = os.path.join(cur_dir, 'setup')
@@ -145,9 +146,6 @@ class casaUpdate(object):
         setupObject.run(['chown', '-R', 'jetty:jetty', casa_base])
         setupObject.run(['cp', '-f', os.path.join(setupObject.distGluuFolder, 'twilio-7.17.0.jar') , jettyServiceOxAuthCustomLibsPath])
         setupObject.run(['chown', '-R', 'jetty:jetty', jettyServiceOxAuthCustomLibsPath])
-        
-        casa_python_libs = os.path.join(setupObject.distGluuFolder, 'python','casa','*')
-        setupObject.run(['cp', '-f', casa_python_libs, '/opt/gluu/python/libs'])
 
         casa_default_fn = os.path.join(setupObject.osDefault, 'casa')
         setupObject.casa_min_heap_mem = '256'
@@ -192,6 +190,15 @@ class casaUpdate(object):
                     setupObject.run(['wget', plugin_upgrades[plugin['id']], '-O', plugin_fn])
                     plugin['relativePath'] = os.path.basename(plugin_upgrades[plugin['id']])
 
+
+        custom_page_dir = os.path.join(setupObject.jetty_base, 'oxauth', 'custom', 'pages')
+        setupObject.backupFile(os.path.join(custom_page_dir, 'casa.xhtml'))
+        setupObject.copyFile(os.path.join(cur_dir, 'casa', 'casa.xhtml'), custom_page_dir)
+
+        lib_dir = os.path.join(setupObject.gluuOptPythonFolder, 'libs')
+        
+        for script in glob.glob(os.path.join(cur_dir, 'casa', 'pylib','*')):
+            setupObject.copyFile(script, lib_dir)
 
         #write json config file
         casa_conf = json.dumps(self.casa_conf_js, indent=2)
