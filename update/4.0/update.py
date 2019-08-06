@@ -223,7 +223,18 @@ class GluuUpdater:
 
     def dump_current_db(self):
         print "Dumping ldap to gluu.ldif"
+                
         if os.path.exists(self.current_ldif_fn):
+            print "Previously dumped gluu.ldif file was found."
+            while True:
+                use_old = setupObject.getPrompt("Use previously dumper gluu.ldif [yes/no]")
+                if not use_old.lower() in ('yes', 'no'):
+                    print "Please type \033[1myes\033[0m or \033[1mno\033[0m"
+                else:
+                    break
+            if use_old:
+                return
+
             self.backup_(self.current_ldif_fn)
         
         setupObject.run(' '.join([
@@ -240,7 +251,7 @@ class GluuUpdater:
                         'o=gluu',
                         'ObjectClass=*',
                         '>',
-                        os.path.join(cur_dir, 'gluu.ldif')]), shell=True)
+                        self.current_ldif_fn]), shell=True)
 
         fs = os.stat(self.current_ldif_fn)
 
@@ -529,10 +540,8 @@ class GluuUpdater:
             if checkIfAsimbaEntry(dn, new_entry):
                 continue
 
-
-            if 'ou' in new_entry and new_entry['ou'][0] in ('uma_permission', 'uma_rpt'):
+            if 'ou' in new_entry and new_entry['ou'][0] in ('uma_permission', 'uma_rpt', 'clientAuthorizations'):
                 continue
-
 
             dne = explode_dn(dn)
 
@@ -1478,7 +1487,6 @@ if __name__ == '__main__':
     updaterObj.update_conf_files()
     updaterObj.import_ldif2ldap()
     updaterObj.update_shib()
-    updaterObj.update_casa()
     updaterObj.fix_init_scripts()
     
     for sdbf in sdb_files:

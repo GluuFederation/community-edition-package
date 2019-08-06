@@ -205,18 +205,28 @@ class casaUpdate(object):
         setupObject.writeFile(self.casa_config_fn, casa_conf)
 
 
+    def import_oxd_certificate2javatruststore(self):
+        setupObject.logIt("Importing oxd certificate")
+        oxd_cert = ssl.get_server_certificate((self.casa_conf_js['oxd_config']['host'], self.casa_conf_js['oxd_config']['port']))
+        oxd_alias = 'oxd_' + self.casa_conf_js['oxd_config']['host'].replace('.','_')
+        oxd_cert_tmp_fn = '/tmp/{}.crt'.format(oxd_alias)
+
+        with open(oxd_cert_tmp_fn,'w') as w:
+            w.write(oxd_cert)
+
+        setupObject.run(['/opt/jre/jre/bin/keytool', '-import', '-trustcacerts', '-keystore', 
+                        '/opt/jre/jre/lib/security/cacerts', '-storepass', 'changeit', 
+                        '-noprompt', '-alias', oxd_alias, '-file', oxd_cert_tmp_fn])
+
 if __name__ == '__main__':
     setup_dir = os.path.join(cur_dir,'setup')
     setupObject = Setup(setup_dir)
     setupObject.log = os.path.join(setup_dir, 'casa_update.log')
     setupObject.logError = os.path.join(setup_dir, 'casa_update_error.log')
-    
     setupObject.os_initdaemon = setupObject.detect_initd()
     setupObject.os_type, setupObject.os_version = setupObject.detect_os_type()
-    
     updaterObj = casaUpdate()
-
-    #updaterObj.check_if_gluu_upgarded()
-    #updaterObj.check_and_update_oxd()
+    updaterObj.check_if_gluu_upgarded()
+    updaterObj.check_and_update_oxd()
     updaterObj.update_casa()
-    
+    updaterObj.import_oxd_certificate2javatruststore()
