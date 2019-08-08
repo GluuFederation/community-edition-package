@@ -7,6 +7,7 @@ import httplib
 import json
 import re
 import glob
+import time
 
 cur_dir = os.path.dirname(os.path.realpath(__file__))
 setup_dir = os.path.join(cur_dir, 'setup')
@@ -112,6 +113,9 @@ class casaUpdate(object):
                 print "on your oxd server and perform upgrade."
                 return False
             
+            self.casa_conf_js['oxd_config']['host'] = oxd_host
+            self.casa_conf_js['oxd_config']['port'] = oxd_port
+            
             print "oxd server seems good."
         
         return True
@@ -202,11 +206,12 @@ class casaUpdate(object):
 
         #write json config file
         casa_conf = json.dumps(self.casa_conf_js, indent=2)
-        setupObject.writeFile(self.casa_config_fn, casa_conf)
+        setupObject.writeFile(self.casa_config_fn, casa_conf)        
 
 
     def import_oxd_certificate2javatruststore(self):
         setupObject.logIt("Importing oxd certificate")
+        
         oxd_cert = ssl.get_server_certificate((self.casa_conf_js['oxd_config']['host'], self.casa_conf_js['oxd_config']['port']))
         oxd_alias = 'oxd_' + self.casa_conf_js['oxd_config']['host'].replace('.','_')
         oxd_cert_tmp_fn = '/tmp/{}.crt'.format(oxd_alias)
