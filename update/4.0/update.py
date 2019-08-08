@@ -123,6 +123,7 @@ class GluuUpdater:
         if not os.path.exists(self.backup_folder) and not dev_env:
             os.mkdir(self.backup_folder)
 
+
         self.wrends_version_number = '4.0.0-M3'
         self.setup_dir = os.path.join(cur_dir, 'setup')
         self.template_dir = os.path.join(self.setup_dir, 'templates')
@@ -1328,6 +1329,11 @@ class GluuUpdater:
 
         #import certs        
         for alias, crt_file in cacerts:
+            #ensure cert is not exists in keystore
+            result = setupObject.run(['/opt/jre/bin/keytool', '-list', '-alias', alias, '-keystore', '/opt/jre/jre/lib/security/cacerts', '-storepass', 'changeit', '-noprompt'])
+            if 'trustedCertEntry' in result:
+                setupObject.run(['/opt/jre/bin/keytool', '-delete ', '-alias', alias, '-keystore', '/opt/jre/jre/lib/security/cacerts', '-storepass', 'changeit', '-noprompt'])
+
             setupObject.run(['/opt/jre/bin/keytool', '-import', '-alias', alias, '-file', crt_file, '-keystore', '/opt/jre/jre/lib/security/cacerts', '-storepass', 'changeit', '-noprompt', '-trustcacerts'])
 
 
@@ -1383,6 +1389,10 @@ if __name__ == '__main__':
     setup_install_dir = os.path.join(cur_dir,'setup')
 
     setupObject = Setup(setup_install_dir)
+
+    setupObject.log = os.path.join(setup_install_dir, 'update.log')
+    setupObject.logError = os.path.join(setup_install_dir, 'update_error.log')
+
 
     setupObject.load_properties(setup_properties_fn,
                                 no_update = [
@@ -1463,6 +1473,7 @@ if __name__ == '__main__':
     setupObject.calculate_selected_aplications_memory()
     setupObject.ldapCertFn = setupObject.opendj_cert_fn
     setupObject.generate_oxtrust_api_configuration()
+
     setupObject.encode_passwords()
     setupObject.createLdapPw()
 
@@ -1487,6 +1498,11 @@ if __name__ == '__main__':
     updaterObj.update_conf_files()
     updaterObj.import_ldif2ldap()
     updaterObj.update_shib()
+    
+    scripts_dir = os.path.join(setupObject.distFolder, 'scripts')
+    if not os.path.exists(scripts_dir):
+        os.mkdir(scripts_dir)
+
     updaterObj.fix_init_scripts()
     
     for sdbf in sdb_files:
