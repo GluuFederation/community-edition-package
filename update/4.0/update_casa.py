@@ -171,7 +171,7 @@ class casaUpdate(object):
         #Update Default Config
         tmp_config_fn = os.path.join(setup_dir, 'templates', 'jetty', 'casa')
         tmp_config = self.render_template(tmp_config_fn)
-        setupObject.writeFile(tmp_config, tmp_config)
+        setupObject.writeFile(casa_default_fn, tmp_config)
 
 
         casa_plugins_dir = os.path.join(setupObject.jetty_base, 'casa', 'plugins')
