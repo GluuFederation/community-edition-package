@@ -357,6 +357,8 @@ class GluuUpdater:
 
         self.add_template(self.scripts_ldif)
 
+        if os.path.exists(os.path.join(setupObject.configFolder, 'casa.json')):
+            self.add_template(os.path.join(self.template_dir, 'scripts_casa.ldif'))
 
     def render_template(self, tmp_file):
         data_dict = setupObject.__dict__
@@ -1476,7 +1478,6 @@ if __name__ == '__main__':
 
     setupObject.encode_passwords()
     setupObject.createLdapPw()
-
 
     updaterObj.dump_current_db()
     updaterObj.update_java()
