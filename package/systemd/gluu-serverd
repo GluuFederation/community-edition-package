@@ -1,7 +1,5 @@
 #!/bin/bash
 
-GLUU_VERSION=4.0
-
 ready() {
     	PORTS=`ss -tunpl | awk '{ print $5 }' |grep -Eohw ':(80|443|8080|8081|8082|8083|8084|8085|8086|8090|1389|1689|11211)$'`
     	STAT=(`df -aP |grep \/opt\/gluu-server\/ | awk '{ print $6 }' | grep -Eohw 'proc|lo|pts|modules|dev'`)
@@ -33,26 +31,26 @@ wait_stop() {
 
 case "$1" in
         start)
-            systemctl start systemd-nspawn@gluu_server_$GLUU_VERSION.service
+            systemctl start systemd-nspawn@gluu_server.service
             ;;
          
         stop)
-            systemctl stop systemd-nspawn@gluu_server_$GLUU_VERSION.service
+            systemctl stop systemd-nspawn@gluu_server.service
             ;;
          
         status)
-            systemctl status systemd-nspawn@gluu_server_$GLUU_VERSION.service
+            systemctl status systemd-nspawn@gluu_server.service
             ;;
         restart)
-            systemctl stop systemd-nspawn@gluu_server_$GLUU_VERSION.service
+            systemctl stop systemd-nspawn@gluu_server.service
 	    wait_stop
-            systemctl start systemd-nspawn@gluu_server_$GLUU_VERSION.service
+            systemctl start systemd-nspawn@gluu_server.service
             ;;
 	ready)
 	    ready
 	    ;;
         login)
-            PID=$(machinectl status gluu_server_$GLUU_VERSION 2>/dev/null | grep Leader | awk -F ' ' '{ print $2 };' )
+            PID=$(machinectl status gluu_server 2>/dev/null | grep Leader | awk -F ' ' '{ print $2 };' )
 	    if [[ ${PID} =~ ^-?[0-9]+$ ]] ; then
                 ssh  -o IdentityFile=/etc/gluu/keys/gluu-console -o Port=60022 -o LogLevel=QUIET \
                 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
@@ -63,10 +61,10 @@ case "$1" in
 	    ;;
         enable)
 	    systemctl enable machines.target
-	    systemctl enable systemd-nspawn@gluu_server_$GLUU_VERSION.service
+	    systemctl enable systemd-nspawn@gluu_server.service
 	    ;;
 	disable) 
-	    systemctl disable systemd-nspawn@gluu_server_$GLUU_VERSION.service
+	    systemctl disable systemd-nspawn@gluu_server.service
             systemctl disable machines.target
             ;; 
 	*)
