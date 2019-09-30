@@ -135,7 +135,7 @@ class GluuUpdater:
         self.backup_time = time.ctime().replace(' ','_')
         self.newDns = []
         self.enabled_scripts = []
-        self.current_version = '4.0.b1'
+        self.current_version = '4.0.0-SNAPSHOT'
         self.ldap_type = 'opendj'
         self.bindDN = 'cn=directory manager'
         self.script_replacements = {
@@ -709,7 +709,7 @@ class GluuUpdater:
                                                                 'authenticatorCertsFolder':'{0}/authenticator_cert'.format(setupObject.fido2ConfigFolder),
                                                                 'mdsCertsFolder':'{0}/mds/cert'.format(setupObject.fido2ConfigFolder),
                                                                 'mdsTocsFolder':'{0}/mds/toc'.format(setupObject.fido2ConfigFolder),
-                                                                'serverMetadataFolder':'{0}/server_metadata',
+                                                                'serverMetadataFolder':'{0}/server_metadata'.format(setupObject.fido2ConfigFolder),
                                                                 'userAutoEnrollment':False,
                                                                 'unfinishedRequestExpiration':120,
                                                                 'authenticationHistoryExpiration':1296000,
