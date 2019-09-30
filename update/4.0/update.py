@@ -1052,11 +1052,13 @@ class GluuUpdater:
         self.add_missing_attributes()
 
 
-        self.write2ldif('ou=resetPasswordRequests,o=gluu', {'objectClass': ['top', 'organizationalUnit'], 'ou': ['resetPasswordRequests']})
-        self.write2ldif('ou=metric,o=gluu', {'objectClass':['top','organizationalunit'], 'ou': ['metric'] })
-        self.write2ldif('ou=tokens,o=gluu', {'objectClass':['top','organizationalunit'], 'ou': ['tokens'] })
-        #self.write2ldif('ou=pct,ou=uma,o=gluu', {'objectClass':['top','organizationalunit'], 'ou': ['pct'] })
+        new_Dns = [
+                    ('ou=resetPasswordRequests,o=gluu', {'objectClass': ['top', 'organizationalUnit'], 'ou': ['resetPasswordRequests']}),
+                    ('ou=tokens,o=gluu', {'objectClass':['top','organizationalunit'], 'ou': ['tokens'] }),
+                ]
 
+        for new_dn, new_attrib in new_Dns:
+            self.write2ldif(new_dn, new_attrib)
 
         processed_fp.close()
 
@@ -1198,9 +1200,23 @@ class GluuUpdater:
     def import_ldif2ldap(self):
         print "Stopping WrenDS"
         setupObject.run_service_command('opendj', 'stop')
-        setupObject.run(['rm', '-f', 'rejects.txt'])
+        setupObject.run(['rm', '-f', 'opendj_rejects.txt'])
+        setupObject.run(['rm', '-f', 'opendj_skips.txt'])
         print "Importing processed ldif"
-        setupObject.run(['/opt/opendj/bin/import-ldif', '--offline', '-b', 'o=gluu', '-n', 'userRoot', '-l', 'gluu_noinum.ldif', '-R', 'rejects.txt'], env={'OPENDJ_JAVA_HOME': setupObject.jre_home})
+        
+        ldif2import = [ ('o=gluu', 'userRoot', os.path.join(cur_dir, 'gluu_noinum.ldif')), 
+                        ('o=metric', 'metric',setupObject.ldif_metric),
+                      ]
+
+        for includeBranch, backendID, ldifFile in ldif2import:
+        
+            setupObject.run(['/opt/opendj/bin/import-ldif', '--offline', 
+                                '--includeBranch', includeBranch, 
+                                '--backendID', backendID, 
+                                '--ldifFile', ldifFile, 
+                                '--rejectFile', 'opendj_rejects.txt', 
+                                '--skipFile', 'opendj_skips.txt'
+                                ], env={'OPENDJ_JAVA_HOME': setupObject.jre_home})
         print "Starting WrenDS"
         setupObject.run_service_command('opendj', 'start')
         
@@ -1494,14 +1510,14 @@ if __name__ == '__main__':
     updaterObj.update_default_settings()
 
     updaterObj.update_schema()
+
     updaterObj.parse_current_ldif()
     updaterObj.process_ldif()
-    
-    
+
     updaterObj.update_conf_files()
     updaterObj.import_ldif2ldap()
     updaterObj.update_shib()
-    
+
     scripts_dir = os.path.join(setupObject.distFolder, 'scripts')
     if not os.path.exists(scripts_dir):
         os.mkdir(scripts_dir)
