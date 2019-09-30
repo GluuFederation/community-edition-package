@@ -1471,6 +1471,8 @@ if __name__ == '__main__':
             self.entries[str(dn)] = entry
     
     setupObject.check_properties()
+    setupObject.backupFile(setup_properties_fn)
+
     setupObject.os_type, setupObject.os_version = setupObject.detect_os_type()
     setupObject.calculate_selected_aplications_memory()
     setupObject.ldapCertFn = setupObject.opendj_cert_fn
@@ -1509,7 +1511,7 @@ if __name__ == '__main__':
     for sdbf in sdb_files:
         if os.path.exists(sdbf):
             os.remove(sdbf)
-
+    
     setupObject.save_properties(setup_properties_fn)
 
     if os.path.exists(os.path.join(setupObject.jetty_base,'casa')):
