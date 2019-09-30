@@ -1060,9 +1060,10 @@ class GluuUpdater:
 
         oxidp_ldif_fn = os.path.join(cur_dir, 'setup/templates/oxidp.ldif')
         oxidp_ldif_parser = pureLDIFParser(open(oxidp_ldif_fn))
+        oxidp_ldif_parser.parse()
 
         for oxidp_dn in oxidp_ldif_parser.DNs:
-            self.write2ldif(oxidp_dn, oxidp_ldif_parser.entries[oxidp_dn])
+            self.write2ldif(oxidp_dn, oxidp_ldif_parser.entries[str(oxidp_dn)])
 
         processed_fp.close()
 
@@ -1501,7 +1502,7 @@ if __name__ == '__main__':
     setupObject.encode_passwords()
     setupObject.createLdapPw()
 
-    """
+
     updaterObj.dump_current_db()
     updaterObj.update_java()
     updaterObj.install_opendj()
@@ -1515,7 +1516,7 @@ if __name__ == '__main__':
     updaterObj.update_default_settings()
 
     updaterObj.update_schema()
-    """
+
 
     updaterObj.parse_current_ldif()
     updaterObj.process_ldif()
