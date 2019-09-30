@@ -951,13 +951,12 @@ class GluuUpdater:
 
                 elif new_entry['inum'][0] == 'D2E0':
                     new_entry['oxAuthClaimName'] = ['member_of']
-                    
 
 
             if 'oxPolicyScriptDn' in new_entry:
                 new_entry['oxUmaPolicyScriptDn'] = [new_entry['oxPolicyScriptDn'][0]]
                 new_entry.pop('oxPolicyScriptDn')
-    
+
 
             if new_dn == 'ou=oxidp,ou=configuration,o=gluu':
                 oxConfApplication = json.loads(new_entry['oxConfApplication'][0])
@@ -982,7 +981,7 @@ class GluuUpdater:
                 self.do_config_changes(oxConfApplication, oxConfApplication_changes)
 
                 new_entry['oxConfApplication'] = [ json.dumps(oxConfApplication, indent=2) ]
-                
+
 
             if new_dn == 'o=gluu':
                 if 'gluuAddPersonCapability' in new_entry:
@@ -993,8 +992,8 @@ class GluuUpdater:
                     new_entry.pop('scimStatus')
                 if not 'organization' in new_entry['objectClass']:
                     new_entry['objectClass'].append('organization')
-            
-            
+
+
             # check for objectClass
             if 'oxAuthCustomScope' in new_entry['objectClass']:
                 if 'displayName' in new_entry:
@@ -1046,11 +1045,10 @@ class GluuUpdater:
             #Write modified entry to ldif
             self.write2ldif(new_dn, new_entry)
 
-        
+
         self.add_new_scripts()
         self.add_new_entries()
         self.add_missing_attributes()
-
 
         new_Dns = [
                     ('ou=resetPasswordRequests,o=gluu', {'objectClass': ['top', 'organizationalUnit'], 'ou': ['resetPasswordRequests']}),
@@ -1059,6 +1057,12 @@ class GluuUpdater:
 
         for new_dn, new_attrib in new_Dns:
             self.write2ldif(new_dn, new_attrib)
+
+        oxidp_ldif_fn = os.path.join(cur_dir, 'setup/templates/oxidp.ldif')
+        oxidp_ldif_parser = pureLDIFParser(open(oxidp_ldif_fn))
+
+        for oxidp_dn in oxidp_ldif_parser.DNs:
+            self.write2ldif(oxidp_dn, oxidp_ldif_parser.entries[oxidp_dn])
 
         processed_fp.close()
 
@@ -1497,6 +1501,7 @@ if __name__ == '__main__':
     setupObject.encode_passwords()
     setupObject.createLdapPw()
 
+    """
     updaterObj.dump_current_db()
     updaterObj.update_java()
     updaterObj.install_opendj()
@@ -1510,6 +1515,7 @@ if __name__ == '__main__':
     updaterObj.update_default_settings()
 
     updaterObj.update_schema()
+    """
 
     updaterObj.parse_current_ldif()
     updaterObj.process_ldif()
