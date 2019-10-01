@@ -14,6 +14,7 @@ import platform
 import uuid
 import random
 import string
+import subprocess
 
 import xml.etree.ElementTree as ET
 
@@ -236,6 +237,7 @@ class GluuUpdater:
 
         self.fido2ConfigFolder = '%s/fido2' % self.configFolder
 
+        self.jreArchive = "amazon-corretto-8.222.10.1-linux-x64.tar.gz"
 
         if self.setup_properties.has_key('currentGluuVersion'):
             self.cur_version = self.setup_properties['currentGluuVersion']
@@ -274,6 +276,32 @@ class GluuUpdater:
         
         if not os.path.exists(self.backup_folder):
             os.mkdir(self.backup_folder)
+
+    def logIt(self, msg):
+        
+        with open('update.log', 'a') as w:            
+            w.write('%s %s\n' % (time.strftime('%X %x'), msg))
+
+    def backup_(self, f, keep=False):
+        if os.path.exists(f):
+            if keep:
+                self.run(['cp','-r', '-f', f, self.backup_folder])
+            else:
+                self.run(['mv', f, self.backup_folder])
+
+    def run(self, args):
+        msg = 'Running ' + ' '.join(args)
+        self.logIt(msg)
+        p = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        p.wait()
+        output, err = p.communicate()
+        if output:
+            self.logIt(output)
+        if err:
+            self.logIt(err)
+
+        return output
+        
 
     def checkRemoteSchema(self):
 
@@ -1668,15 +1696,63 @@ class GluuUpdater:
 
             with open(self.ox_ldap_properties_file,'w') as w:
                 w.write(ox_ldap_properties)
-            
+
+    def updateJava(self):
+
+        print "Upgrading Java"
+
+        print "Downloading", self.jreArchive
+        self.run(['wget', '-nv', 'https://d3pxv6yz143wms.cloudfront.net/8.222.10.1/'+self.jreArchive, '-O', os.path.join(self.app_dir, self.jreArchive)])
+
+        cacerts = []
+
+        #get host specific certs in current cacerts
+        cmd =['/opt/jre/bin/keytool', '-list', '-keystore', '/opt/jre/jre/lib/security/cacerts', '-storepass', 'changeit']
+        result = self.run(cmd)
+        for l in result.split('\n'):
+            if self.hostname in l:
+                ls=l.split(', ')
+                if ls and (self.hostname in ls[0]) and (not 'opendj' in l):
+                    alias = ls[0]
+                    crt_file = os.path.join(cur_dir, ls[0]+'.crt')
+                    self.run(['/opt/jre/bin/keytool', '-export', '-alias', alias, '-file', crt_file, '-keystore', '/opt/jre/jre/lib/security/cacerts', '-storepass', 'changeit'])
+                    cacerts.append((alias, crt_file))
+
+
+        for cur_version in glob.glob('/opt/jdk*'):
+            self.run(['rm', '-r', cur_version])
+
+        if os.path.islink('/opt/jre'):
+            self.run(['unlink', '/opt/jre'])
+
+        print "Extracting {} into /opt/".format(self.jreArchive)
+        self.run(['tar', '-xzf', os.path.join(self.app_dir, self.jreArchive), '-C', '/opt/', '--no-xattrs', '--no-same-owner', '--no-same-permissions'])
+        self.run(['ln', '-sf', '/opt/amazon-corretto-8.222.10.1-linux-x64', '/opt/jre'])
+        self.run(['chmod', '-R', '755', '/opt/jre/bin/'])
+        self.run(['chown', '-R', 'root:root', '/opt/jre'])
+        self.run(['chown', '-h', 'root:root', '/opt/jre'])
+
+
+        #import certs
+        for alias, crt_file in cacerts:
+            #ensure cert is not exists in keystore
+            result = self.run(['/opt/jre/bin/keytool', '-list', '-alias', alias, '-keystore', '/opt/jre/jre/lib/security/cacerts', '-storepass', 'changeit', '-noprompt'])
+            if 'trustedCertEntry' in result:
+                self.run(['/opt/jre/bin/keytool', '-delete ', '-alias', alias, '-keystore', '/opt/jre/jre/lib/security/cacerts', '-storepass', 'changeit', '-noprompt'])
+
+            self.run(['/opt/jre/bin/keytool', '-import', '-alias', alias, '-file', crt_file, '-keystore', '/opt/jre/jre/lib/security/cacerts', '-storepass', 'changeit', '-noprompt', '-trustcacerts'])
+
+
 
 updaterObj = GluuUpdater()
+
 updaterObj.miscUpdates()
 updaterObj.stopJettyServices()
 updaterObj.updateApacheConfig()
 updaterObj.updateLdapSchema()
 updaterObj.ldappConn()
 updaterObj.createIDPClient()
+
 if repace_scripts:
     updaterObj.replace_scripts()
 
@@ -1695,6 +1771,10 @@ updaterObj.updateOtherLDAP()
 updaterObj.update_shib()
 updaterObj.checkAndCreateMetricBackend()
 
+update_java = raw_input("Do you want to replace java with {} [Y/n] ".format(updaterObject.jreArchive))
+
+if not (update_java and update_java[0].lower() == 'n'):
+    updaterObject.updateJava()
 
 #./makeself.sh --target /opt/upd/3.1.7-upg/  /opt/upd/3.1.7-upg/ 3-1-7-upg.sh  "Gluu Updater Package 3.1.7-upg" /opt/upd/3.1.7-upg/bin/update.py
 
