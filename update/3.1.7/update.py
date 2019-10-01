@@ -1771,10 +1771,10 @@ updaterObj.updateOtherLDAP()
 updaterObj.update_shib()
 updaterObj.checkAndCreateMetricBackend()
 
-update_java = raw_input("Do you want to replace java with {} [Y/n] ".format(updaterObject.jreArchive))
+update_java = raw_input("Do you want to replace java with {} [Y/n] ".format(updaterObj.jreArchive))
 
 if not (update_java and update_java[0].lower() == 'n'):
-    updaterObject.updateJava()
+    updaterObj.updateJava()
 
 #./makeself.sh --target /opt/upd/3.1.7-upg/  /opt/upd/3.1.7-upg/ 3-1-7-upg.sh  "Gluu Updater Package 3.1.7-upg" /opt/upd/3.1.7-upg/bin/update.py
 
