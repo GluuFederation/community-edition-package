@@ -289,13 +289,13 @@ class GluuUpdater:
             else:
                 self.run(['mv', f, self.backup_folder])
 
-    def run(self, args, cwd=None):
+    def run(self, args, cwd=None, env=None):
         if not cwd:
             cwd = cur_dir
 
         msg = 'Running ' + ' '.join(args)
         self.logIt(msg)
-        p = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE, cwd=cwd)
+        p = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE, cwd=cwd, env=env)
         p.wait()
         output, err = p.communicate()
         if output:
@@ -1753,6 +1753,32 @@ class GluuUpdater:
                     )
         self.run(['chmod','+x', self.profile_fn])
 
+
+        opendj_java_properties_fn = '/opt/opendj/config/java.properties'
+
+        opendj_java_properties_content = []
+
+        jre_home_line = 'default.java-home=/opt/jre\n'
+        
+        with open(opendj_java_properties_fn) as f:
+            opendj_java_properties_content = f.readlines()
+            
+        for i, l in enumerate(opendj_java_properties_content[:]):
+            ls = l.strip()
+            if not ls.startswith('#'):
+                n = ls.find('=')
+                if ls[:n] == 'default.java-home':
+                    opendj_java_properties_content[i] = jre_home_line
+                    break
+        else:
+            opendj_java_properties_content.append(jre_home_line)
+                        
+        self.run(['cp', opendj_java_properties_fn, opendj_java_properties_fn+'.bak'])
+
+        with open(opendj_java_properties_fn, 'w') as w:
+            w.write(''.join(opendj_java_properties_content))
+
+        self.run(['/opt/opendj/bin/dsjavaproperties'], env={"OPENDJ_JAVA_HOME": "/opt/jre"})
 
 updaterObj = GluuUpdater()
 
