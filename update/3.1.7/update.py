@@ -19,9 +19,7 @@ import subprocess
 import xml.etree.ElementTree as ET
 
 
-cur_dir=os.path.dirname(os.path.realpath(__file__))
-
-
+cur_dir = os.path.dirname(os.path.realpath(__file__))
 
 up_version = '3.1.7'
 
@@ -100,7 +98,7 @@ if not result.strip() or (result.strip() and result.strip().lower()[0] != 'y'):
 
 msg = """Would you like to replace all the default Gluu Server scripts WITH SCRIPTS FROM {0}?
 (This will replace any customization you may have made to these default script entries)
-(Y|n)""".format(up_version)
+(Y|n) """.format(up_version)
 
 repace_scripts = False
 result = raw_input(msg)
@@ -227,7 +225,9 @@ class GluuUpdater:
         self.gluu_app_dir = '/opt/gluu/jetty'
         self.update_temp_dir = os.path.join(self.app_dir,'temp')
         self.outputFolder = '/install/community-edition-setup/output'
-
+        
+        self.profile_fn = '/etc/profile.d/Z99-gluu-upg.sh'
+        
         self.passport_mdules_archive = os.path.join(self.app_dir, 'passport-version_{0}-node_modules.tar.gz'.format(self.gluu_version))
         self.saml_meta_data = '/opt/shibboleth-idp/metadata/idp-metadata.xml'
         self.extensionFolder = os.path.join(self.app_dir, 'extension')
@@ -278,8 +278,8 @@ class GluuUpdater:
             os.mkdir(self.backup_folder)
 
     def logIt(self, msg):
-        
-        with open('update.log', 'a') as w:            
+        log_file = os.path.join(cur_dir, 'update.log')
+        with open(log_file, 'a') as w:            
             w.write('%s %s\n' % (time.strftime('%X %x'), msg))
 
     def backup_(self, f, keep=False):
@@ -289,10 +289,13 @@ class GluuUpdater:
             else:
                 self.run(['mv', f, self.backup_folder])
 
-    def run(self, args):
+    def run(self, args, cwd=None):
+        if not cwd:
+            cwd = cur_dir
+
         msg = 'Running ' + ' '.join(args)
         self.logIt(msg)
-        p = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        p = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE, cwd=cwd)
         p.wait()
         output, err = p.communicate()
         if output:
@@ -539,25 +542,20 @@ class GluuUpdater:
     def stop_opendj(self):
         print "Stopping OpenDJ"
         if self.os_type == 'red' and self.os_version == '7':
-            cmd = 'systemctl stop opendj'
-            print "Executing", cmd
-            os.system(cmd)
+            cmd = ['systemctl', 'stop', 'opendj']
         else:
-            cmd = '/etc/init.d/opendj stop'
-            print "Executing", cmd
-            os.system(cmd)
+            cmd = ['/etc/init.d/opendj', 'stop']
 
+        self.run(cmd)
 
     def start_opendj(self):
         print "Starting OpenDJ"
         if self.os_type == 'red' and self.os_version == '7':
-            cmd = 'systemctl start opendj'
-            print "Executing", cmd
-            os.system(cmd)
+            cmd = ['systemctl', 'start', 'opendj']
         else:
-            cmd = '/etc/init.d/opendj start'
-            print "Executing", cmd
-            os.system(cmd)
+            cmd = ['/etc/init.d/opendj', 'start']
+
+        self.run(cmd)
 
     def updateLdapSchema(self):
         
@@ -585,7 +583,7 @@ class GluuUpdater:
         
         print "Stopping LDAP Server"
         if self.ldap_type == 'openldap':
-            os.system('/etc/init.d/solserver stop')
+            self.run(['/etc/init.d/solserver', 'stop'])
         else:
            self.stop_opendj()
 
@@ -1384,10 +1382,8 @@ class GluuUpdater:
         os.system('cp -r {0}/WEB-INF/ /opt/shibboleth-idp/webapp'.format(idp_tmp_dir))
 
         os.system('chown -R jetty:jetty /opt/shibboleth-idp')
-        #os.system('cp {0} /opt/shibboleth-idp/conf'.format(os.path.join(self.app_dir,'temp/metadata-providers.xml.vm')))
-        #os.system('cp {0} /opt/shibboleth-idp/conf'.format(os.path.join(self.app_dir,'temp/saml-nameid.xml.vm')))
-        os.system('chmod u=rw,g=r,o=r /opt/shibboleth-idp/conf/metadata-providers.xml.vm')
-        os.system('chmod u=rw,g=r,o=r /opt/shibboleth-idp/conf/saml-nameid.xml.vm')
+        self.run(['cp', '-f', os.path.join(self.app_dir,'temp/saml-nameid.xml.vm'), '/opt/gluu/jetty/identity/conf/shibboleth3/idp/'])
+        self.run(['chown', 'jetty:jetty', '/opt/gluu/jetty/identity/conf/shibboleth3/idp/'])
 
         os.system('rm -r -f '+ idp_tmp_dir)
 
@@ -1701,6 +1697,8 @@ class GluuUpdater:
 
         print "Upgrading Java"
 
+        self.stop_opendj()
+
         print "Downloading", self.jreArchive
         self.run(['wget', '-nv', 'https://d3pxv6yz143wms.cloudfront.net/8.222.10.1/'+self.jreArchive, '-O', os.path.join(self.app_dir, self.jreArchive)])
 
@@ -1708,6 +1706,7 @@ class GluuUpdater:
 
         #get host specific certs in current cacerts
         cmd =['/opt/jre/bin/keytool', '-list', '-keystore', '/opt/jre/jre/lib/security/cacerts', '-storepass', 'changeit']
+        
         result = self.run(cmd)
         for l in result.split('\n'):
             if self.hostname in l:
@@ -1731,7 +1730,11 @@ class GluuUpdater:
         self.run(['chmod', '-R', '755', '/opt/jre/bin/'])
         self.run(['chown', '-R', 'root:root', '/opt/jre'])
         self.run(['chown', '-h', 'root:root', '/opt/jre'])
-
+        
+        ### Below commands help us to set permissions readable if umask is set as 077
+        self.run(['find', "/opt", '-user', 'root', '-perm', '700', '-exec', 'chmod', "755", '{}',  ';'])
+        self.run(['find', "/opt", '-user', 'root', '-perm', '600', '-exec', 'chmod', "644", '{}',  ';'])
+        self.run(['find', "/opt", '-user', 'root', '-perm', '400', '-exec', 'chmod', "444", '{}',  ';'])
 
         #import certs
         for alias, crt_file in cacerts:
@@ -1742,6 +1745,13 @@ class GluuUpdater:
 
             self.run(['/opt/jre/bin/keytool', '-import', '-alias', alias, '-file', crt_file, '-keystore', '/opt/jre/jre/lib/security/cacerts', '-storepass', 'changeit', '-noprompt', '-trustcacerts'])
 
+        #update profile
+        with open(self.profile_fn, 'w') as w:
+            w.write('export JAVA_HOME=/opt/jre\n'
+                    'export OPENDJ_JAVA_HOME=/opt/jre\n'
+                    'export PATH=$PATH:/opt/jre/bin\n'
+                    )
+        self.run(['chmod','+x', self.profile_fn])
 
 
 updaterObj = GluuUpdater()

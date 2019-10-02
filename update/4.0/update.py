@@ -283,7 +283,7 @@ class GluuUpdater:
 
     def update_war(self):
 
-        os.environ['PATH'] += ':/opt/jre/bin/java'
+        os.environ['PATH'] += ':/opt/jre/bin'
 
         for app in os.listdir(self.gluu_app_dir):
             war_app = app+'.war'
