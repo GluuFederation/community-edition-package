@@ -135,7 +135,7 @@ class GluuUpdater:
         self.backup_time = time.ctime().replace(' ','_')
         self.newDns = []
         self.enabled_scripts = []
-        self.current_version = '4.1.0-SNAPSHOT'
+        self.current_version = '4.0.0-SNAPSHOT'
         self.ldap_type = 'opendj'
         self.bindDN = 'cn=directory manager'
         self.script_replacements = {
