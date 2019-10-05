@@ -1119,7 +1119,7 @@ class GluuUpdater:
                 'twitter': 'passport-twitter',
                 'yahoo': 'passport-yahoo-oauth2',
                 'tumblr': 'passport-tumblr',
-                'linkedin': 'passport-linkedin-oauth2',
+                'linkedin': '@sokratis/passport-linkedin-oauth2',
                 'google': 'passport-google-oauth2',
                 'facebook': 'passport-facebook',
                 'dropbox': 'passport-dropbox-oauth2',
