@@ -138,6 +138,7 @@ class GluuUpdater:
         self.current_version = 'version_4.0'
         self.ldap_type = 'opendj'
         self.bindDN = 'cn=directory manager'
+        self.passport_saml_dn = None
         self.script_replacements = {
                 '2DAF-F995': '2DAF-F9A5'
             }
@@ -523,9 +524,13 @@ class GluuUpdater:
 
             # we don't need existing scripts won't work in 4.0, passing
             if 'oxCustomScript' in new_entry['objectClass']:
+                if new_entry['inum'][0].endswith('D40C.1CA4'):
+                    self.passport_saml_dn = dn
+
                 if new_entry.get('gluuStatus',[None])[0]=='true' or new_entry.get('oxEnabled',[None])[0]=='true':
                     scr_inum = self.inum2uuid(new_entry['inum'][0])
                     self.enabled_scripts.append(self.script_replacements.get(scr_inum, scr_inum))
+
                 continue
 
             # we don't need existing tokens, passing
@@ -1192,6 +1197,116 @@ class GluuUpdater:
             setupObject.run(['chown', '-R', 'node:node', '/opt/gluu/node/'])
             setupObject.run_service_command('passport', 'start')
 
+
+    def fix_passport_saml(self):
+
+
+        if not self.passport_saml_dn:
+            return
+
+        passport_saml_config_fn = os.path.join(setupObject.configFolder, 'passport-saml-config.json')
+        
+        if not os.path.exists(passport_saml_config_fn):
+            return
+        
+        print "Updating passport saml configuration"
+        setupObject.logIt("Updating passport saml configuration")
+        temp_dir = os.path.join(cur_dir, 'temp')
+        if not os.path.exists(temp_dir):
+            os.mkdir(temp_dir)
+ 
+
+        passport_saml_config = json.loads(setupObject.readFile(passport_saml_config_fn))
+        oxConfigurationProperty = self.ldif_parser.entries[self.passport_saml_dn]['oxConfigurationProperty']
+
+        for e in oxConfigurationProperty:
+            data_ = json.loads(e)
+            if data_['value1'] == 'generic_remote_attributes_list':
+                generic_remote_attributes_list = [v.strip() for v in data_['value2'].split(',')]
+            elif data_['value1'] == 'generic_local_attributes_list':
+                generic_local_attributes_list = [v.strip() for v in data_['value2'].split(',')]
+
+
+        mappings_file_content_tmp= ('module.exports = profile => {\n'
+                                    '        return {\n'
+                                    '%s\n'
+                                    '        }\n'
+                                    '}\n')
+
+
+        if not isinstance(passport_saml_config, dict):
+            setupObject.logIt("Passport configuration is not dictionary not updating")
+            return
+
+        new_passport_saml_config = []
+
+        for provider in passport_saml_config:
+            new_provider = {
+                    'id': provider,
+                    'displayName': provider,
+                    'type': 'saml',
+                    'enabled': True if passport_saml_config[provider]['enable'].lower() == 'true' else False,
+                    'passportStrategyId': 'passport-saml',
+                    'mapping': provider,
+                    'options': {
+                            'entryPoint': passport_saml_config[provider]['entryPoint'],
+                            'issuer': passport_saml_config[provider]['issuer'],
+                            'identifierFormat': passport_saml_config[provider]['identifierFormat'],
+                            'cert': passport_saml_config[provider]['cert'],
+                        }
+                }
+
+            for key in passport_saml_config[provider]:
+                if not key in ('enable', 'entryPoint', 'issuer', 'identifierFormat', 'cert', 'reverseMapping'):
+                    val = passport_saml_config[provider][key]
+                    if isinstance(val, list):
+                        val = [str(v) for v in val]
+                    else:
+                        val = str(val)
+
+                    new_provider['options'][key] = val
+            
+            new_passport_saml_config.append(new_provider)
+
+            provider_mapping_fn = provider+'.js'
+
+            mapping_fn_tmp = os.path.join(temp_dir, provider_mapping_fn)
+
+            newMappings = []
+
+            for i in range(len(generic_local_attributes_list)):
+                
+                local_key = generic_local_attributes_list[i]
+                remote_key = generic_remote_attributes_list[i]
+
+                if remote_key in passport_saml_config[provider]['reverseMapping']:
+                    newMappings.append( '               {}: profile["{}"]'.format(local_key, passport_saml_config[provider]['reverseMapping'][remote_key]))
+
+
+            setupObject.writeFile(
+                            os.path.join(temp_dir, provider_mapping_fn),
+                            mappings_file_content_tmp % ',\n'.join(newMappings)
+                            )
+
+
+            setupObject.copyFile(
+                        os.path.join(temp_dir, provider_mapping_fn),
+                        os.path.join(setupObject.gluu_passport_base, 'server/mappings')
+                        )
+
+
+        setupObject.writeFile(
+                        os.path.join(temp_dir, os.path.basename(passport_saml_config_fn)),
+                        json.dumps(new_passport_saml_config, indent=2)
+                        )
+
+
+        setupObject.copyFile(
+            os.path.join(temp_dir, os.path.basename(passport_saml_config_fn)),
+            setupObject.configFolder
+            )
+
+
     def update_conf_files(self):
         self.set_to_opendj()
 
@@ -1512,7 +1627,6 @@ if __name__ == '__main__':
     updaterObj.upgrade_jetty()
     updaterObj.update_war()
     
-    updaterObj.update_passport()
     updaterObj.update_default_settings()
 
     updaterObj.update_schema()
@@ -1523,7 +1637,10 @@ if __name__ == '__main__':
 
     updaterObj.update_conf_files()
     updaterObj.import_ldif2ldap()
+    updaterObj.update_passport()
     updaterObj.update_shib()
+
+    updaterObj.fix_passport_saml()
 
     scripts_dir = os.path.join(setupObject.distFolder, 'scripts')
     if not os.path.exists(scripts_dir):
