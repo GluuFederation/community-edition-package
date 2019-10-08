@@ -1152,7 +1152,7 @@ class GluuUpdater:
 
                 provider =  {
                       'displayName': strategy, 
-                      'passportStrategyId': passportStrategyId_mapping[strategy],
+                      'passportStrategyId': passportStrategyId_mapping.get(strategy, 'passport-openidconnect'),
                       'requestForEmail': False, 
                       'enabled': True, 
                       'mapping': strategy if strategy in ('dropbox', 'facebook', 'github', 'google', 'linkedin', 'openidconnect', 'tumblr', 'twitter', 'windowslive', 'yahoo') else 'openidconnect-default',
@@ -1671,6 +1671,7 @@ if __name__ == '__main__':
     setupObject.encode_passwords()
     setupObject.createLdapPw()
 
+
     updaterObj.dump_current_db()
     updaterObj.update_java()
     updaterObj.install_opendj()
@@ -1690,7 +1691,7 @@ if __name__ == '__main__':
 
     updaterObj.update_conf_files()
     updaterObj.import_ldif2ldap()
-    
+
     updaterObj.update_passport()
     updaterObj.update_shib()
 
