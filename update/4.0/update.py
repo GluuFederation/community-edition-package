@@ -12,7 +12,7 @@ import argparse
 import shelve
 import sys
 import glob
-
+from collections import OrderedDict
 
 cur_dir = os.path.dirname(os.path.realpath(__file__))
 
@@ -122,6 +122,10 @@ class GluuUpdater:
         
         if not os.path.exists(self.backup_folder) and not dev_env:
             os.mkdir(self.backup_folder)
+
+        self.temp_dir = os.path.join(cur_dir, 'temp')
+        if not os.path.exists(self.temp_dir):
+            os.mkdir(self.temp_dir)
 
 
         self.wrends_version_number = '4.0.0-M3'
@@ -1173,9 +1177,9 @@ class GluuUpdater:
             with open(passport_config_fn) as pcr:
                 cur_config = json.load(pcr)
             
-            passport_rp_client_id = self.inum2uuid(cur_config['clientId'])
+            self.passport_rp_client_id = self.inum2uuid(cur_config['clientId'])
 
-            setupObject.templateRenderingDict['passport_rp_client_id'] = passport_rp_client_id
+            setupObject.templateRenderingDict['passport_rp_client_id'] = self.passport_rp_client_id
             setupObject.templateRenderingDict['passport_rp_client_cert_alias'] = cur_config['keyId']
 
             passport_config = self.render_template(os.path.join(self.template_dir, 'passport-config.json'))
@@ -1211,11 +1215,7 @@ class GluuUpdater:
         
         print "Updating passport saml configuration"
         setupObject.logIt("Updating passport saml configuration")
-        temp_dir = os.path.join(cur_dir, 'temp')
-        if not os.path.exists(temp_dir):
-            os.mkdir(temp_dir)
  
-
         passport_saml_config = json.loads(setupObject.readFile(passport_saml_config_fn))
         oxConfigurationProperty = self.ldif_parser.entries[self.passport_saml_dn]['oxConfigurationProperty']
 
@@ -1259,10 +1259,12 @@ class GluuUpdater:
             for key in passport_saml_config[provider]:
                 if not key in ('enable', 'entryPoint', 'issuer', 'identifierFormat', 'cert', 'reverseMapping'):
                     val = passport_saml_config[provider][key]
-                    if isinstance(val, list):
-                        val = [str(v) for v in val]
-                    else:
+                    if type(val) in (type(1), type(1.2)):
                         val = str(val)
+                    elif isinstance(val, bool):
+                        val = str(val).lower()
+                    else:
+                        val = json.dumps(val)
 
                     new_provider['options'][key] = val
             
@@ -1270,7 +1272,7 @@ class GluuUpdater:
 
             provider_mapping_fn = provider+'.js'
 
-            mapping_fn_tmp = os.path.join(temp_dir, provider_mapping_fn)
+            mapping_fn_tmp = os.path.join(self.temp_dir, provider_mapping_fn)
 
             newMappings = []
 
@@ -1284,29 +1286,81 @@ class GluuUpdater:
 
 
             setupObject.writeFile(
-                            os.path.join(temp_dir, provider_mapping_fn),
+                            os.path.join(self.temp_dir, provider_mapping_fn),
                             mappings_file_content_tmp % ',\n'.join(newMappings)
                             )
 
 
             setupObject.copyFile(
-                        os.path.join(temp_dir, provider_mapping_fn),
+                        os.path.join(self.temp_dir, provider_mapping_fn),
                         os.path.join(setupObject.gluu_passport_base, 'server/mappings')
                         )
 
 
         setupObject.writeFile(
-                        os.path.join(temp_dir, os.path.basename(passport_saml_config_fn)),
+                        os.path.join(self.temp_dir, os.path.basename(passport_saml_config_fn)),
                         json.dumps(new_passport_saml_config, indent=2)
                         )
 
 
         setupObject.copyFile(
-            os.path.join(temp_dir, os.path.basename(passport_saml_config_fn)),
+            os.path.join(self.temp_dir, os.path.basename(passport_saml_config_fn)),
             setupObject.configFolder
             )
 
 
+    def fix_passport_inbound(self):
+        inbound_idp_initiated_json_fn = '/etc/gluu/conf/passport-inbound-idp-initiated.json'
+        if not os.path.exists(inbound_idp_initiated_json_fn):
+            return
+
+        print "Updating passport-inbound-idp-initiated.json"
+
+        inbound_idp_initiated_json = json.loads(
+                            setupObject.readFile(inbound_idp_initiated_json_fn),
+                            object_pairs_hook=OrderedDict
+                            )
+
+
+        idp_list = inbound_idp_initiated_json.keys()
+
+        if idp_list:
+            client_id = inbound_idp_initiated_json[idp_list[0]].get('openidclient', {}).get('client_id')
+            
+            if not client_id:
+                client_id = self.passport_rp_client_id
+
+        new_config = {
+                        'openidclient': {
+                        'authorizationEndpoint': "https://{}/oxauth/restv1/authorize".format(setupObject.hostname),
+                        'clientId': client_id,
+                        'acrValues': 'passport_saml'
+                        },
+                        
+                        'authorizationParams': []
+                }
+
+        for idp in idp_list:
+            new_config['authorizationParams'].append(
+                                        {
+                                        'provider' : idp,
+                                        'redirect_uri': inbound_idp_initiated_json[idp]['authorization_params'].get('redirect_uri',''),
+                                        'response_type': inbound_idp_initiated_json[idp]['authorization_params'].get('response_type',''),
+                                        'scope': inbound_idp_initiated_json[idp]['authorization_params'].get('scope',''),
+                                        }
+                                    )
+
+        setupObject.writeFile(
+                        os.path.join(self.temp_dir, os.path.basename(inbound_idp_initiated_json_fn)),
+                        json.dumps(new_config, indent=2)
+                        )
+
+        setupObject.copyFile(
+            os.path.join(self.temp_dir, os.path.basename(inbound_idp_initiated_json_fn)),
+            setupObject.configFolder
+            )
+        
+        
     def update_conf_files(self):
         self.set_to_opendj()
 
@@ -1617,7 +1671,6 @@ if __name__ == '__main__':
     setupObject.encode_passwords()
     setupObject.createLdapPw()
 
-
     updaterObj.dump_current_db()
     updaterObj.update_java()
     updaterObj.install_opendj()
@@ -1631,16 +1684,20 @@ if __name__ == '__main__':
 
     updaterObj.update_schema()
 
-
+    
     updaterObj.parse_current_ldif()
     updaterObj.process_ldif()
 
     updaterObj.update_conf_files()
     updaterObj.import_ldif2ldap()
+    
     updaterObj.update_passport()
     updaterObj.update_shib()
 
     updaterObj.fix_passport_saml()
+
+    updaterObj.fix_passport_inbound()
+
 
     scripts_dir = os.path.join(setupObject.distFolder, 'scripts')
     if not os.path.exists(scripts_dir):
