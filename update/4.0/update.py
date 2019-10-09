@@ -125,6 +125,13 @@ def get_entry_from_ldif(ldif_fn, subs):
 
     return ''
 
+def get_as_bool(val):
+
+    if str(val).lower() in ('true', 'on', 'ok', 'yes'):
+        return True
+        
+    return False
+
 class GluuUpdater:
     def __init__(self):
         
@@ -1190,10 +1197,8 @@ class GluuUpdater:
                 provider =  {
                       'displayName': strategy, 
                       'passportStrategyId': passportStrategyId_mapping.get(strategy, 'passport-openidconnect'),
-                      'requestForEmail': False, 
                       'enabled': True, 
                       'mapping': strategy if strategy in ('dropbox', 'facebook', 'github', 'google', 'linkedin', 'openidconnect', 'tumblr', 'twitter', 'windowslive', 'yahoo') else 'openidconnect-default',
-                      'emailLinkingSafe': False, 
                       'options': {
                         'clientSecret': field_key['clientSecret'], 
                         'clientID': field_key['clientID'],
@@ -1205,8 +1210,20 @@ class GluuUpdater:
                 if 'logo_img' in field_key:
                     provider['logo_img'] = field_key['logo_img']
 
+
+                for a in ('emailLinkingSafe', 'requestForEmail'):
+                    if a in field_key:
+                        provider[a] = get_as_bool(field_key[a])
+
+                for a in field_key:
+                    if a not in ('logo_img', 'requestForEmail', 'emailLinkingSafe','clientSecret', 'clientID'):
+                        provider['options'][a] = field_key[a]
+
                 providers.append(provider)
 
+        passport_central_config = self.render_template(os.path.join(self.template_dir, 'passport-central-config.json'))
+        passport_central_config_js = json.loads(passport_central_config)
+        
         passport_config_fn = '/etc/gluu/conf/passport-config.json'
 
         if os.path.exists(passport_config_fn):
@@ -1224,11 +1241,11 @@ class GluuUpdater:
             for a in ('consoleLogOnly', 'logLevel'):
                 if a in cur_config:
                     new_config[a] = cur_config[a]
+                    passport_central_config_js[a] = cur_config[a]
 
             setupObject.writeFile(passport_config_fn, json.dumps(new_config, indent=2))
 
-        passport_central_config = self.render_template(os.path.join(self.template_dir, 'passport-central-config.json'))
-        passport_central_config_js = json.loads(passport_central_config)
+        
         passport_central_config_js['providers'] = providers
 
 
@@ -1246,6 +1263,9 @@ class GluuUpdater:
             passport_central_config_js['conf']['logging']['activeMQConf']['enabled'] = cur_config['activeMQConf']['isEnabled']
 
         passport_central_config = json.dumps(passport_central_config_js, indent=2)
+
+
+        print passport_central_config
 
         new_entry['gluuPassportConfiguration'] = [passport_central_config]
 
@@ -1716,7 +1736,7 @@ if __name__ == '__main__':
         def handle(self, dn, entry):
             self.DNs.append(dn)
             self.entries[str(dn)] = entry
-    
+
     setupObject.check_properties()
     setupObject.backupFile(setup_properties_fn)
 
@@ -1737,12 +1757,11 @@ if __name__ == '__main__':
     updaterObj.update_apache_conf()
     updaterObj.upgrade_jetty()
     updaterObj.update_war()
-    
+
     updaterObj.update_default_settings()
 
     updaterObj.update_schema()
 
-    
     updaterObj.parse_current_ldif()
     updaterObj.process_ldif()
 
@@ -1754,7 +1773,7 @@ if __name__ == '__main__':
     updaterObj.update_shib()
 
     updaterObj.fix_passport_saml()
-    
+
     updaterObj.fix_passport_inbound()
 
     scripts_dir = os.path.join(setupObject.distFolder, 'scripts')
