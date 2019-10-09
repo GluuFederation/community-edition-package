@@ -12,6 +12,7 @@ import argparse
 import shelve
 import sys
 import glob
+import StringIO
 from collections import OrderedDict
 
 cur_dir = os.path.dirname(os.path.realpath(__file__))
@@ -105,6 +106,24 @@ attribute_type_changes = {
                     
                     
 
+def get_entry_from_ldif(ldif_fn, subs):
+    f=open(ldif_fn).readlines()
+    f += '\n'
+
+    entry = []
+
+    for l in f:
+        ls = l.strip()
+        if not ls:
+            for ll in entry:
+                if subs in ll:
+                    return ''.join(entry)
+            entry = []
+
+        if ls:
+            entry.append(l)
+
+    return ''
 
 class GluuUpdater:
     def __init__(self):
@@ -404,7 +423,24 @@ class GluuUpdater:
         
     def add_new_entries(self):
         self.add_template(self.oxtrust_api_ldif)
-
+        
+        #add Passport IDP-Initated flow Client if not exists
+        if not setupObject.passport_rp_ii_client_id:
+            setupObject.passport_rp_ii_client_id = '0008-'  + str(uuid.uuid4())
+        
+            passport_clients_ldif_fn = os.path.join(
+                                                self.template_dir,
+                                                os.path.basename(setupObject.ldif_passport_clients)
+                                                )
+                                                
+            ldif_s = get_entry_from_ldif(passport_clients_ldif_fn, 'passport_rp_ii_client_id')
+            if ldif_s:
+                ldif_s = ldif_s % setupObject.__dict__
+                sio = StringIO.StringIO(ldif_s)
+                sio.seek(0)
+                passport_rp_ii_client_entry = ParseLDIF(sio)
+                self.write2ldif(passport_rp_ii_client_entry[0][0],passport_rp_ii_client_entry[0][1])
+                print "Passport IDP-Initated flow Client was added"
 
     def inum2uuid(self, s):
 
@@ -1087,12 +1123,11 @@ class GluuUpdater:
         
         setupObject.run_service_command('passport', 'stop')
 
-        #print "Downloading passport server"
-        #os.system('wget https://ox.gluu.org/npm/passport/passport-4.0.0.tgz -O passport.tgz')
+        print "Downloading passport server"
+        os.system('wget https://ox.gluu.org/npm/passport/passport-4.0.0.tgz -O passport.tgz')
         
-        #print "Downloading passport node libraries"
-        #os.system('wget https://ox.gluu.org/npm/passport/passport-master-node_modules.tar.gz -O passport-master-node_modules.tar.gz')
-
+        print "Downloading passport node libraries"
+        os.system('wget https://ox.gluu.org/npm/passport/passport-master-node_modules.tar.gz -O passport-master-node_modules.tar.gz')
 
         print "Removing existing passport server and node libraries"
         setupObject.run(['rm', '-r', '-f', '/opt/gluu/node/passport/server/mappings'])
@@ -1204,7 +1239,6 @@ class GluuUpdater:
 
     def fix_passport_saml(self):
 
-
         if not self.passport_saml_dn:
             return
 
@@ -1310,6 +1344,7 @@ class GluuUpdater:
 
 
     def fix_passport_inbound(self):
+        
         inbound_idp_initiated_json_fn = '/etc/gluu/conf/passport-inbound-idp-initiated.json'
         if not os.path.exists(inbound_idp_initiated_json_fn):
             return
@@ -1324,8 +1359,11 @@ class GluuUpdater:
 
         idp_list = inbound_idp_initiated_json.keys()
 
+        client_id = None
+
         if idp_list:
-            client_id = inbound_idp_initiated_json[idp_list[0]].get('openidclient', {}).get('client_id')
+            if isinstance(inbound_idp_initiated_json[idp_list[0]], dict):
+                client_id = inbound_idp_initiated_json[idp_list[0]].get('openidclient', {}).get('client_id')
             
             if not client_id:
                 client_id = self.passport_rp_client_id
@@ -1570,7 +1608,7 @@ if __name__ == '__main__':
         print "You give up uprgade. Exiting ..."
         sys.exit()
 
-    from setup.pylib.ldif import LDIFParser, LDIFWriter
+    from setup.pylib.ldif import LDIFParser, LDIFWriter, ParseLDIF
     from setup.setup import Setup
     from ldap.dn import explode_dn, str2dn
     from setup.pylib import Properties
@@ -1671,7 +1709,6 @@ if __name__ == '__main__':
     setupObject.encode_passwords()
     setupObject.createLdapPw()
 
-
     updaterObj.dump_current_db()
     updaterObj.update_java()
     updaterObj.install_opendj()
@@ -1684,7 +1721,6 @@ if __name__ == '__main__':
     updaterObj.update_default_settings()
 
     updaterObj.update_schema()
-
     
     updaterObj.parse_current_ldif()
     updaterObj.process_ldif()
@@ -1693,10 +1729,12 @@ if __name__ == '__main__':
     updaterObj.import_ldif2ldap()
 
     updaterObj.update_passport()
+    
+    
     updaterObj.update_shib()
 
     updaterObj.fix_passport_saml()
-
+    
     updaterObj.fix_passport_inbound()
 
 
