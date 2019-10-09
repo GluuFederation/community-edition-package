@@ -560,6 +560,7 @@ class GluuUpdater:
 
         for dn in self.ldif_parser.DNs:
             dn = str(dn)
+
             new_entry = self.ldif_parser.entries[dn]
 
             # we don't need existing scripts won't work in 4.0, passing
@@ -1060,8 +1061,8 @@ class GluuUpdater:
 
             elif 'oxPassportConfiguration' in  new_entry['objectClass']:
                 if 'gluuPassportConfiguration' in new_entry:
+                    print new_entry
                     self.fix_passport_config(new_dn, new_entry)
-                    continue
             
             elif 'gluuSAMLconfig' in  new_entry['objectClass']:
                 new_entry['o'] = ['o=gluu']
@@ -1154,9 +1155,10 @@ class GluuUpdater:
 
     def fix_passport_config(self, new_dn, new_entry):
         
+        print "Fixing Passport Configuration"
+
         setupObject.generate_passport_configuration()
-        
-        
+
         passportStrategyId_mapping = {
                 'github': 'passport-github',
                 'openidconnect-default': 'passport-openidconnect',
@@ -1201,7 +1203,7 @@ class GluuUpdater:
                     }
 
                 if 'logo_img' in field_key:
-                    provider_tmp = field_key['logo_img']
+                    provider['logo_img'] = field_key['logo_img']
 
                 providers.append(provider)
 
@@ -1209,25 +1211,42 @@ class GluuUpdater:
 
         if os.path.exists(passport_config_fn):
 
-            with open(passport_config_fn) as pcr:
-                cur_config = json.load(pcr)
+            cur_config = json.loads(setupObject.readFile(passport_config_fn))
             
             self.passport_rp_client_id = self.inum2uuid(cur_config['clientId'])
 
             setupObject.templateRenderingDict['passport_rp_client_id'] = self.passport_rp_client_id
             setupObject.templateRenderingDict['passport_rp_client_cert_alias'] = cur_config['keyId']
 
-            passport_config = self.render_template(os.path.join(self.template_dir, 'passport-config.json'))
+            new_config_str = self.render_template(os.path.join(self.template_dir, 'passport-config.json'))
+            new_config = json.loads(new_config_str)
 
-            with open(passport_config_fn,'w') as pcw:
-                pcw.write(passport_config)
+            for a in ('consoleLogOnly', 'logLevel'):
+                if a in cur_config:
+                    new_config[a] = cur_config[a]
 
+            setupObject.writeFile(passport_config_fn, json.dumps(new_config, indent=2))
 
         passport_central_config = self.render_template(os.path.join(self.template_dir, 'passport-central-config.json'))
         passport_central_config_js = json.loads(passport_central_config)
         passport_central_config_js['providers'] = providers
+
+
+        if 'activeMQConf' in cur_config:
+
+            for a in ('host', 'username', 'password'):
+                passport_central_config_js['conf']['logging']['activeMQConf'][a] = cur_config['activeMQConf'][a]
+
+            try:
+                activeMQConf_port = int(cur_config['activeMQConf']['port'])
+            except:
+                activeMQConf_port = 0
+            
+            passport_central_config_js['conf']['logging']['activeMQConf']['port'] = activeMQConf_port
+            passport_central_config_js['conf']['logging']['activeMQConf']['enabled'] = cur_config['activeMQConf']['isEnabled']
+
         passport_central_config = json.dumps(passport_central_config_js, indent=2)
-        
+
         new_entry['gluuPassportConfiguration'] = [passport_central_config]
 
         self.write2ldif(new_dn, new_entry)
@@ -1709,6 +1728,7 @@ if __name__ == '__main__':
     setupObject.encode_passwords()
     setupObject.createLdapPw()
 
+
     updaterObj.dump_current_db()
     updaterObj.update_java()
     updaterObj.install_opendj()
@@ -1721,6 +1741,7 @@ if __name__ == '__main__':
     updaterObj.update_default_settings()
 
     updaterObj.update_schema()
+
     
     updaterObj.parse_current_ldif()
     updaterObj.process_ldif()
@@ -1729,14 +1750,12 @@ if __name__ == '__main__':
     updaterObj.import_ldif2ldap()
 
     updaterObj.update_passport()
-    
-    
+
     updaterObj.update_shib()
 
     updaterObj.fix_passport_saml()
     
     updaterObj.fix_passport_inbound()
-
 
     scripts_dir = os.path.join(setupObject.distFolder, 'scripts')
     if not os.path.exists(scripts_dir):
