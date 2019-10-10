@@ -17,6 +17,8 @@ from collections import OrderedDict
 
 cur_dir = os.path.dirname(os.path.realpath(__file__))
 
+sys.path.append(cur_dir)
+
 package_type = None
 setup_properties_fn = '/install/community-edition-setup/setup.properties.last'
 
@@ -232,7 +234,9 @@ class GluuUpdater:
                                 wrends_download_link,
                                 '-O', os.path.join(setupObject.distAppFolder, wrends_archieve),
                                 ])
-
+        else:
+            setupObject.run(['cp', '-f', '{0}/app/opendj-server-legacy-{1}.zip'.format(cur_dir, self.wrends_version_number), setupObject.distAppFolder])
+            
         setupObject.render_templates({setupObject.ldap_setup_properties: False})
         setupObject.listenAllInterfaces = False
         setupObject.opendj_type = 'wrends'
@@ -259,7 +263,7 @@ class GluuUpdater:
         if os.path.exists(self.current_ldif_fn):
             print "Previously dumped gluu.ldif file was found."
             while True:
-                use_old = setupObject.getPrompt("Use previously dumper gluu.ldif [yes/no]")
+                use_old = setupObject.getPrompt("Use previously dumped gluu.ldif [yes/no]")
                 if not use_old.lower() in ('yes', 'no'):
                     print "Please type \033[1myes\033[0m or \033[1mno\033[0m"
                 else:
@@ -1131,11 +1135,12 @@ class GluuUpdater:
         
         setupObject.run_service_command('passport', 'stop')
 
-        print "Downloading passport server"
-        os.system('wget https://ox.gluu.org/npm/passport/passport-4.0.0.tgz -O passport.tgz')
+        if argsp.online:
+            print "Downloading passport server"
+            setupObject.run(['wget', '-nv', 'https://ox.gluu.org/npm/passport/passport-4.0.0.tgz', '-O', os.path.join(cur_dir, 'app', 'passport.tgz')])
         
-        print "Downloading passport node libraries"
-        os.system('wget https://ox.gluu.org/npm/passport/passport-master-node_modules.tar.gz -O passport-master-node_modules.tar.gz')
+            print "Downloading passport node libraries"
+            setupObject.run(['wget', '-nv', 'https://ox.gluu.org/npm/passport/passport-master-node_modules.tar.gz', '-O', os.path.join(cur_dir, 'app', 'passport-master-node_modules.tar.gz')])
 
         print "Removing existing passport server and node libraries"
         setupObject.run(['rm', '-r', '-f', '/opt/gluu/node/passport/server/mappings'])
@@ -1143,14 +1148,16 @@ class GluuUpdater:
         setupObject.run(['rm', '-r', '-f', '/opt/gluu/node/passport/node_modules'])
 
         print "Extracting passport.tgz into /opt/gluu/node/passport"
-        setupObject.run(['tar', '--strip', '1', '-xzf', os.path.join(setupObject.distAppFolder, 'passport.tgz'),
+        setupObject.run(['tar', '--strip', '1', '-xzf', os.path.join(cur_dir, 'app', 'passport.tgz'),
                          '-C', '/opt/gluu/node/passport', '--no-xattrs', '--no-same-owner', '--no-same-permissions'])
     
         print "Extracting passport node modules"
         modules_dir = '/opt/gluu/node/passport/node_modules'
+
         if not os.path.exists(modules_dir):
             setupObject.run(['mkdir', '-p', modules_dir])
-        setupObject.run(['tar', '--strip', '1', '-xzf', os.path.join(setupObject.distAppFolder, 'passport-node_modules.tar.gz'),
+
+        setupObject.run(['tar', '--strip', '1', '-xzf', os.path.join(cur_dir, 'app', 'passport-node_modules.tar.gz'),
                          '-C', modules_dir, '--no-xattrs', '--no-same-owner', '--no-same-permissions'])
 
         log_dir = '/opt/gluu/node/passport/server/logs'
@@ -1489,6 +1496,8 @@ class GluuUpdater:
 
         if argsp.online:
             setupObject.run(['wget', 'https://raw.githubusercontent.com/GluuFederation/oxTrust/master/configuration/src/main/resources/META-INF/shibboleth3/idp/saml-nameid.properties.vm', '-O', '/opt/gluu/jetty/identity/conf/shibboleth3/idp/saml-nameid.properties.vm'])
+        else:
+            setupObject.run(['cp', 'f', '{}/app/saml-nameid.properties.vm'.format(cur_dir), '/opt/gluu/jetty/identity/conf/shibboleth3/idp/'])
 
         setupObject.run(['chown', '-R', 'jetty:jetty', '/opt/shibboleth-idp'])
 
@@ -1517,6 +1526,8 @@ class GluuUpdater:
             setupObject.run(['wget', '-nv', 
                              'https://repo1.maven.org/maven2/org/eclipse/jetty/jetty-distribution/{0}/jetty-distribution-{0}.tar.gz'.format(setupObject.jetty_version),
                              '-O', '{0}/jetty-distribution-{1}.tar.gz'.format(setupObject.distAppFolder, setupObject.jetty_version)])
+        else:
+            setupObject.run(['cp', '-f', '{0}/app/jetty-distribution-{1}.tar.gz'.format(cur_dir, setupObject.jetty_version), setupObject.distAppFolder])
 
         for cur_version in glob.glob('/opt/jetty-*'):
             print "Removing current jetty version:", cur_version
@@ -1535,7 +1546,9 @@ class GluuUpdater:
         if argsp.online:
             print "Downloading Node"
             setupObject.run(['wget', '-nv', 'https://nodejs.org/dist/v{0}/node-v{0}-linux-x64.tar.xz'.format(setupObject.node_version), '-O', '{0}/node-v{1}-linux-x64.tar.xz'.format(setupObject.distAppFolder, setupObject.node_version)])
- 
+        else:
+            setupObject.run(['cp', '-f', '{0}/app/node-v{1}-linux-x64.tar.xz'.format(cur_dir, setupObject.node_version), setupObject.distAppFolder])
+
         for cur_version in glob.glob('/opt/node-v*'):
             setupObject.run(['rm', '-r', cur_version])
         if os.path.islink('/opt/node'):
@@ -1564,6 +1577,8 @@ class GluuUpdater:
         if argsp.online:
             print "Downloading Java", setupObject.jre_version
             setupObject.run(['wget', '-nv', 'https://d3pxv6yz143wms.cloudfront.net/{0}/amazon-corretto-{0}-linux-x64.tar.gz'.format(setupObject.jre_version), '-O', '{1}/amazon-corretto-{0}-linux-x64.tar.gz'.format(setupObject.jre_version, setupObject.distAppFolder)])
+        else:
+            setupObject.run(['cp', '-f', '{0}/app/amazon-corretto-{1}-linux-x64.tar.gz'.format(cur_dir, setupObject.jre_version), setupObject.distAppFolder])
  
         for cur_version in glob.glob('/opt/jdk*'):
             setupObject.run(['rm', '-r', cur_version])
@@ -1775,3 +1790,5 @@ if __name__ == '__main__':
     print "Notes:"
     print " * Default authentication mode was set to auth_ldap_server"
     print " * Cache provider configuration was set to 4.0 defaults"
+
+#./makeself.sh --tar-extra "--exclude=/opt/upd/4.0-upg/download.sh" --target /opt/upd/4.0-upg/  /opt/upd/4.0-upg/ 4-0-upg.sh  "Gluu Updater Package 4.0-upg" /opt/upd/4.0-upg/update.py
