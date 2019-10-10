@@ -1488,7 +1488,7 @@ class GluuUpdater:
             setupObject.writeFile(os.path.join('/opt/shibboleth-idp/conf', prop_fn), properties)
 
         if argsp.online:
-            setupObject.run(['wget', 'https://raw.githubusercontent.com/GluuFederation/oxTrust/master/configuration/template/shibboleth3/idp/saml-nameid.properties.vm', '-O', '/opt/gluu/jetty/identity/conf/shibboleth3/idp/saml-nameid.properties.vm'])
+            setupObject.run(['wget', 'https://raw.githubusercontent.com/GluuFederation/oxTrust/master/configuration/src/main/resources/META-INF/shibboleth3/idp/saml-nameid.properties.vm', '-O', '/opt/gluu/jetty/identity/conf/shibboleth3/idp/saml-nameid.properties.vm'])
 
         setupObject.run(['chown', '-R', 'jetty:jetty', '/opt/shibboleth-idp'])
 
