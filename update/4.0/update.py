@@ -1755,8 +1755,6 @@ if __name__ == '__main__':
 
     updaterObj.fix_passport_saml()
 
-    updaterObj.fix_passport_inbound()
-
     scripts_dir = os.path.join(setupObject.distFolder, 'scripts')
     if not os.path.exists(scripts_dir):
         os.mkdir(scripts_dir)
