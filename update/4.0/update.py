@@ -1264,10 +1264,6 @@ class GluuUpdater:
             passport_central_config_js['conf']['logging']['activeMQConf']['port'] = activeMQConf_port
             passport_central_config_js['conf']['logging']['activeMQConf']['enabled'] = cur_config['activeMQConf']['isEnabled']
 
-            for a in ('consoleLogOnly', 'logLevel'):
-                if a in cur_config:
-                    passport_central_config_js['conf']['logging']['activeMQConf'][a] = cur_config[a]
-
         passport_central_config = json.dumps(passport_central_config_js, indent=2)
 
 
@@ -1771,7 +1767,6 @@ if __name__ == '__main__':
     updaterObj.parse_current_ldif()
     updaterObj.process_ldif()
 
-    sys.exit()
     updaterObj.update_conf_files()
     updaterObj.import_ldif2ldap()
 
@@ -1784,6 +1779,7 @@ if __name__ == '__main__':
     updaterObj.fix_passport_inbound()
 
     scripts_dir = os.path.join(setupObject.distFolder, 'scripts')
+
     if not os.path.exists(scripts_dir):
         os.mkdir(scripts_dir)
 
