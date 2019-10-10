@@ -1068,7 +1068,6 @@ class GluuUpdater:
 
             elif 'oxPassportConfiguration' in  new_entry['objectClass']:
                 if 'gluuPassportConfiguration' in new_entry:
-                    print new_entry
                     self.fix_passport_config(new_dn, new_entry)
             
             elif 'gluuSAMLconfig' in  new_entry['objectClass']:
@@ -1247,7 +1246,6 @@ class GluuUpdater:
 
             setupObject.writeFile(passport_config_fn, json.dumps(new_config, indent=2))
 
-        
         passport_central_config_js['providers'] = providers
 
 
@@ -1264,10 +1262,13 @@ class GluuUpdater:
             passport_central_config_js['conf']['logging']['activeMQConf']['port'] = activeMQConf_port
             passport_central_config_js['conf']['logging']['activeMQConf']['enabled'] = cur_config['activeMQConf']['isEnabled']
 
+        if 'logLevel' in cur_config:
+            passport_central_config_js['conf']['logging']['level'] = cur_config['logLevel']
+    
+        if 'consoleLogOnly' in cur_config:
+            passport_central_config_js['conf']['logging']['consoleLogOnly'] = cur_config['consoleLogOnly']
+
         passport_central_config = json.dumps(passport_central_config_js, indent=2)
-
-
-        print passport_central_config
 
         new_entry['gluuPassportConfiguration'] = [passport_central_config]
 
@@ -1779,7 +1780,6 @@ if __name__ == '__main__':
     updaterObj.fix_passport_inbound()
 
     scripts_dir = os.path.join(setupObject.distFolder, 'scripts')
-
     if not os.path.exists(scripts_dir):
         os.mkdir(scripts_dir)
 
