@@ -178,7 +178,7 @@ class GluuUpdater:
         
         ox_ldap_prop_fn = '/etc/gluu/conf/ox-ldap.properties'
 
-        p = Properties.Properties()
+        p = Properties()
         p.load(open(ox_ldap_prop_fn))
 
         if p['bindDN'].lower() == 'cn=directory manager,o=gluu':
@@ -431,10 +431,11 @@ class GluuUpdater:
     def add_new_entries(self):
         self.add_template(self.oxtrust_api_ldif)
         
-        #add Passport IDP-Initated flow Client if not exists
-        if not setupObject.passport_rp_ii_client_id:
-            setupObject.passport_rp_ii_client_id = '0008-'  + str(uuid.uuid4())
         
+        #add Passport IDP-Initated flow Client if not exists
+        if not setup_porperties['passport_rp_ii_client_id']:
+            print "Adding Passport IDP-Initated flow Client with inum", setupObject.passport_rp_ii_client_id
+
             passport_clients_ldif_fn = os.path.join(
                                                 self.template_dir,
                                                 os.path.basename(setupObject.ldif_passport_clients)
@@ -1268,6 +1269,37 @@ class GluuUpdater:
         if 'consoleLogOnly' in cur_config:
             passport_central_config_js['conf']['logging']['consoleLogOnly'] = cur_config['consoleLogOnly']
 
+
+
+        inbound_idp_initiated_json_fn = '/etc/gluu/conf/passport-inbound-idp-initiated.json'
+        if os.path.exists(inbound_idp_initiated_json_fn):
+
+
+            inbound_idp_initiated_json = json.loads(
+                                setupObject.readFile(inbound_idp_initiated_json_fn),
+                                object_pairs_hook=OrderedDict
+                                )
+
+
+            idp_list = inbound_idp_initiated_json.keys()
+
+
+            if idp_list:
+                
+                client_id = inbound_idp_initiated_json[idp_list[0]]['openidclient']['client_id']
+                passport_central_config_js['idpInitiated']['openidclient']['clientId'] = client_id
+
+
+            for idp in idp_list:
+                passport_central_config_js['idpInitiated']['authorizationParams'].append(
+                                            {
+                                            'provider' : idp,
+                                            'redirect_uri': inbound_idp_initiated_json[idp]['authorization_params'].get('redirect_uri',''),
+                                            'response_type': inbound_idp_initiated_json[idp]['authorization_params'].get('response_type',''),
+                                            'scope': ' '.join(inbound_idp_initiated_json[idp]['authorization_params'].get('scope',[])),
+                                            }
+                                        )
+
         passport_central_config = json.dumps(passport_central_config_js, indent=2)
 
         new_entry['gluuPassportConfiguration'] = [passport_central_config]
@@ -1366,81 +1398,22 @@ class GluuUpdater:
                             mappings_file_content_tmp % ',\n'.join(newMappings)
                             )
 
-
             setupObject.copyFile(
                         os.path.join(self.temp_dir, provider_mapping_fn),
                         os.path.join(setupObject.gluu_passport_base, 'server/mappings')
                         )
-
 
         setupObject.writeFile(
                         os.path.join(self.temp_dir, os.path.basename(passport_saml_config_fn)),
                         json.dumps(new_passport_saml_config, indent=2)
                         )
 
-
         setupObject.copyFile(
             os.path.join(self.temp_dir, os.path.basename(passport_saml_config_fn)),
             setupObject.configFolder
             )
 
-
-    def fix_passport_inbound(self):
-        
-        inbound_idp_initiated_json_fn = '/etc/gluu/conf/passport-inbound-idp-initiated.json'
-        if not os.path.exists(inbound_idp_initiated_json_fn):
-            return
-
-        print "Updating passport-inbound-idp-initiated.json"
-
-        inbound_idp_initiated_json = json.loads(
-                            setupObject.readFile(inbound_idp_initiated_json_fn),
-                            object_pairs_hook=OrderedDict
-                            )
-
-
-        idp_list = inbound_idp_initiated_json.keys()
-
-        client_id = None
-
-        if idp_list:
-            if isinstance(inbound_idp_initiated_json[idp_list[0]], dict):
-                client_id = inbound_idp_initiated_json[idp_list[0]].get('openidclient', {}).get('client_id')
-            
-            if not client_id:
-                client_id = self.passport_rp_client_id
-
-        new_config = {
-                        'openidclient': {
-                        'authorizationEndpoint': "https://{}/oxauth/restv1/authorize".format(setupObject.hostname),
-                        'clientId': client_id,
-                        'acrValues': 'passport_saml'
-                        },
-                        
-                        'authorizationParams': []
-                }
-
-        for idp in idp_list:
-            new_config['authorizationParams'].append(
-                                        {
-                                        'provider' : idp,
-                                        'redirect_uri': inbound_idp_initiated_json[idp]['authorization_params'].get('redirect_uri',''),
-                                        'response_type': inbound_idp_initiated_json[idp]['authorization_params'].get('response_type',''),
-                                        'scope': inbound_idp_initiated_json[idp]['authorization_params'].get('scope',''),
-                                        }
-                                    )
-
-        setupObject.writeFile(
-                        os.path.join(self.temp_dir, os.path.basename(inbound_idp_initiated_json_fn)),
-                        json.dumps(new_config, indent=2)
-                        )
-
-        setupObject.copyFile(
-            os.path.join(self.temp_dir, os.path.basename(inbound_idp_initiated_json_fn)),
-            setupObject.configFolder
-            )
-        
-        
+   
     def update_conf_files(self):
         self.set_to_opendj()
 
@@ -1653,7 +1626,12 @@ if __name__ == '__main__':
     from setup.pylib.ldif import LDIFParser, LDIFWriter, ParseLDIF
     from setup.setup import Setup
     from ldap.dn import explode_dn, str2dn
-    from setup.pylib import Properties
+    from setup.pylib.Properties import Properties
+
+
+    setup_porperties = Properties()
+    with open(setup_properties_fn) as f:
+        setup_porperties.load(f)
 
     updaterObj = GluuUpdater()
     updaterObj.determine_ldap_type()
