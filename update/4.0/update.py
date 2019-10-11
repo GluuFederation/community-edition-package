@@ -1752,9 +1752,11 @@ if __name__ == '__main__':
     setupObject.createLdapPw()
 
     updaterObj.dump_current_db()
-    updaterObj.install_opendj()
-    updaterObj.update_java()
 
+    updaterObj.update_java()
+    setupObject.set_permissions()
+
+    updaterObj.install_opendj()
     updaterObj.update_node()
 
     updaterObj.update_apache_conf()
