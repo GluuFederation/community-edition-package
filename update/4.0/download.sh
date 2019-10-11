@@ -1,8 +1,9 @@
 mkdir -p war
 mkdir -p app
 
-version=4.0.0-SNAPSHOT
+version=4.0.0-Final
 
+wget -nv https://github.com/GluuFederation/community-edition-package/blob/master/update/4.0/update.py -O update.py
 wget -nv https://ox.gluu.org/maven/org/gluu/oxshibbolethIdp/$version/oxshibbolethIdp-$version.war -O war/idp.war
 wget -nv https://ox.gluu.org/maven/org/gluu/oxtrust-server/$version/oxtrust-server-$version.war -O war/identity.war
 wget -nv https://ox.gluu.org/maven/org/gluu/oxauth-server/$version/oxauth-server-$version.war -O war/oxauth.war
@@ -17,6 +18,8 @@ wget -nv https://repo1.maven.org/maven2/org/eclipse/jetty/jetty-distribution/9.4
 wget -nv https://raw.githubusercontent.com/GluuFederation/oxTrust/master/configuration/src/main/resources/META-INF/shibboleth3/idp/saml-nameid.properties.vm -O app/saml-nameid.properties.vm
 wget -nv https://ox.gluu.org/npm/passport/passport-4.0.0.tgz -O app/passport.tgz
 wget -nv https://ox.gluu.org/npm/passport/passport-master-node_modules.tar.gz -O app/passport-master-node_modules.tar.gz
+
+
 
 if [ ! -f "jsonmerge" ] 
 then
