@@ -15,6 +15,8 @@ import glob
 import StringIO
 from collections import OrderedDict
 
+os.umask(0022)
+
 cur_dir = os.path.dirname(os.path.realpath(__file__))
 
 sys.path.append(cur_dir)
@@ -1603,7 +1605,6 @@ class GluuUpdater:
 
             setupObject.run(['/opt/jre/bin/keytool', '-import', '-alias', alias, '-file', crt_file, '-keystore', '/opt/jre/jre/lib/security/cacerts', '-storepass', 'changeit', '-noprompt', '-trustcacerts'])
 
-
     def update_apache_conf(self):
         
         setupObject.install_dir = setup_install_dir
@@ -1754,7 +1755,6 @@ if __name__ == '__main__':
     updaterObj.dump_current_db()
 
     updaterObj.update_java()
-    setupObject.set_permissions()
 
     updaterObj.install_opendj()
     updaterObj.update_node()
