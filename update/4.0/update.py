@@ -254,8 +254,6 @@ class GluuUpdater:
         setupObject.export_opendj_public_cert()
         print "Setting Up WrenDS Indexes"
         setupObject.index_opendj()
-        setupObject.post_install_opendj()
-
 
     def dump_current_db(self):
         print "Dumping ldap to gluu.ldif"
@@ -317,6 +315,15 @@ class GluuUpdater:
 
 
     def update_war(self):
+
+        if not argsp.online:
+           setupObject.run([
+                            'cp',
+                            '-f',
+                            os.path.join(cur_dir,'app', 'idp3_cml_keygenerator.jar'),
+                            setupObject.distGluuFolder
+                            ]
+                            )
 
         os.environ['PATH'] += ':/opt/jre/bin'
 
@@ -1747,6 +1754,7 @@ if __name__ == '__main__':
 
     updaterObj.dump_current_db()
     updaterObj.update_java()
+    time.sleep(1)
     updaterObj.install_opendj()
     updaterObj.update_node()
 
@@ -1791,4 +1799,4 @@ if __name__ == '__main__':
     print " * Default authentication mode was set to auth_ldap_server"
     print " * Cache provider configuration was set to 4.0 defaults"
 
-#./makeself.sh --tar-extra "--exclude=/opt/upd/4.0-upg/download.sh" --target /opt/upd/4.0-upg/  /opt/upd/4.0-upg/ 4-0-upg.sh  "Gluu Updater Package 4.0-upg" /opt/upd/4.0-upg/update.py
+#./makeself.sh --tar-extra "--exclude=/opt/upd/4.0-upg/download.sh" --target /opt/upd/4.0-upg/  /opt/upd/4.0-upg/ 4-0-upg.sh  "Gluu Updater Package 4.0-upg" echo "Please run /opt/upd/4.0-upg/update.py to start upgrade"

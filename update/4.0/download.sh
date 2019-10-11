@@ -1,14 +1,14 @@
 mkdir -p war
 mkdir -p app
 
-version=4.0.0-Final
+version=4.0.Final
 
 wget -nv https://raw.githubusercontent.com/GluuFederation/community-edition-package/master/update/4.0/update.py -O update.py
 wget -nv https://ox.gluu.org/maven/org/gluu/oxshibbolethIdp/$version/oxshibbolethIdp-$version.war -O war/idp.war
 wget -nv https://ox.gluu.org/maven/org/gluu/oxtrust-server/$version/oxtrust-server-$version.war -O war/identity.war
 wget -nv https://ox.gluu.org/maven/org/gluu/oxauth-server/$version/oxauth-server-$version.war -O war/oxauth.war
 wget -nv https://ox.gluu.org/maven/org/gluu/oxShibbolethStatic/$version/oxShibbolethStatic-$version.jar -O war/shibboleth-idp.jar
-wget -nv https://ox.gluu.org/maven/org/gluu/oxShibbolethKeyGenerator/$version/oxShibbolethKeyGenerator-$version.jar -O app/gluu/idp3_cml_keygenerator.jar
+wget -nv https://ox.gluu.org/maven/org/gluu/oxShibbolethKeyGenerator/$version/oxShibbolethKeyGenerator-$version.jar -O app/idp3_cml_keygenerator.jar
 wget -nv https://ox.gluu.org/npm/passport/passport-4.0.0.tgz -O app/passport.tgz
 wget -nv https://ox.gluu.org/npm/passport/passport-version_4.0.b1-node_modules.tar.gz -O app/passport-node_modules.tar.gz
 wget -nv https://d3pxv6yz143wms.cloudfront.net/8.222.10.1/amazon-corretto-8.222.10.1-linux-x64.tar.gz -O app/amazon-corretto-8.222.10.1-linux-x64.tar.gz
@@ -19,22 +19,20 @@ wget -nv https://raw.githubusercontent.com/GluuFederation/oxTrust/master/configu
 wget -nv https://ox.gluu.org/npm/passport/passport-4.0.0.tgz -O app/passport.tgz
 wget -nv https://ox.gluu.org/npm/passport/passport-master-node_modules.tar.gz -O app/passport-master-node_modules.tar.gz
 
-
-
 if [ ! -f "jsonmerge" ] 
 then
-    wget https://github.com/avian2/jsonmerge/archive/master.zip -O /tmp/jsonmerge-master.zip
+    wget -nv https://github.com/avian2/jsonmerge/archive/master.zip -O /tmp/jsonmerge-master.zip
     unzip -qo /tmp/jsonmerge-master.zip -d /tmp
     cp -r /tmp/jsonmerge-master/jsonmerge ./
-
 fi
+
 
 if [ ! -f "setup" ] 
 then
     rm -r -f setup
 fi
 
-wget https://github.com/GluuFederation/community-edition-setup/archive/master.zip -O /tmp/community-edition-setup-master.zip
+wget -nv https://github.com/GluuFederation/community-edition-setup/archive/master.zip -O /tmp/community-edition-setup-master.zip
 unzip -qo /tmp/community-edition-setup-master.zip -d /tmp
 mv /tmp/community-edition-setup-master ./setup
 touch setup/__init__.py
