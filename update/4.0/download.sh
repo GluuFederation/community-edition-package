@@ -36,3 +36,4 @@ wget -nv https://github.com/GluuFederation/community-edition-setup/archive/maste
 unzip -qo /tmp/community-edition-setup-master.zip -d /tmp
 mv /tmp/community-edition-setup-master ./setup
 touch setup/__init__.py
+wget -nv https://raw.githubusercontent.com/GluuFederation/community-edition-package/master/update/4.0/setup.py -O ./setup/setup.py
