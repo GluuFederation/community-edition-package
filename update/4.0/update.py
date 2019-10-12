@@ -1439,6 +1439,8 @@ class GluuUpdater:
 
             setupObject.writeFile(fn, properties)
 
+        setupObject.backupFile('/etc/gluu/conf/ox-ldap.properties')
+
 
     def import_ldif2ldap(self):
         print "Stopping WrenDS"
