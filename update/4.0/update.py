@@ -1441,7 +1441,7 @@ class GluuUpdater:
 
         ox_prop_fn = '/etc/gluu/conf/ox-ldap.properties'
         setupObject.backupFile(ox_prop_fn)
-        if os path.exists(ox_prop_fn):
+        if os.path.exists(ox_prop_fn):
             setupObject.run(['rm', '-f', ox_prop_fn])
 
     def import_ldif2ldap(self):
