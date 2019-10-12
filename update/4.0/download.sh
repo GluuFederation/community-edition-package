@@ -37,5 +37,5 @@ unzip -qo /tmp/community-edition-setup-master.zip -d /tmp
 mv /tmp/community-edition-setup-master ./setup
 touch setup/__init__.py
 
-chown +x update.py
+chmod +x update.py
 
