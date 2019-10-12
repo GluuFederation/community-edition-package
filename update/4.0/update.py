@@ -1439,8 +1439,10 @@ class GluuUpdater:
 
             setupObject.writeFile(fn, properties)
 
-        setupObject.backupFile('/etc/gluu/conf/ox-ldap.properties')
-
+        ox_prop_fn = '/etc/gluu/conf/ox-ldap.properties'
+        setupObject.backupFile(ox_prop_fn)
+        if os path.exists(ox_prop_fn):
+            setupObject.run(['rm', '-f', ox_prop_fn])
 
     def import_ldif2ldap(self):
         print "Stopping WrenDS"
@@ -1636,6 +1638,7 @@ class GluuUpdater:
             init_script_fn = os.path.join('/etc/init.d', service)
             if os.path.exists(init_script_fn):
                 setupObject.fix_init_scripts(service, init_script_fn)
+                setupObject.enable_service_at_start(service)
 
 if __name__ == '__main__':
     
