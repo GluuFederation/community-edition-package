@@ -1745,7 +1745,7 @@ if __name__ == '__main__':
         def handle(self, dn, entry):
             self.DNs.append(dn)
             self.entries[str(dn)] = entry
-
+    """
     setupObject.check_properties()
     setupObject.backupFile(setup_properties_fn)
 
@@ -1771,10 +1771,10 @@ if __name__ == '__main__':
     updaterObj.update_default_settings()
 
     updaterObj.update_schema()
-
+    """
     updaterObj.parse_current_ldif()
     updaterObj.process_ldif()
-
+    """
     updaterObj.update_conf_files()
     updaterObj.import_ldif2ldap()
 
@@ -1795,7 +1795,7 @@ if __name__ == '__main__':
             os.remove(sdbf)
 
     setupObject.save_properties(setup_properties_fn)
-
+    """
     if os.path.exists(os.path.join(setupObject.jetty_base,'casa')):
         print "\033[93mCasa installation was detected."
         print "Please run 'update_casa.py' script before restarting Gluu Server.\033[0m"
