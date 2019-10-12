@@ -177,19 +177,25 @@ class GluuUpdater:
                 '2DAF-F995': '2DAF-F9A5'
             }
 
-
     def determine_ldap_type(self):
-        
-        ox_ldap_prop_fn = '/etc/gluu/conf/ox-ldap.properties'
 
-        p = Properties()
-        p.load(open(ox_ldap_prop_fn))
+        ox_ldap_prop_fn_list = glob.glob('/etc/gluu/conf/ox-ldap.properties*')
 
-        if p['bindDN'].lower() == 'cn=directory manager,o=gluu':
-            self.ldap_type = 'openldap'
-            self.bindDN = p['bindDN']
+        if ox_ldap_prop_fn_list:
+            ox_ldap_prop_fn = min(ox_ldap_prop_fn_list)
 
-        print "LDAP type was determined as", self.ldap_type
+            p = Properties()
+            p.load(open(ox_ldap_prop_fn))
+
+            if p['bindDN'].lower() == 'cn=directory manager,o=gluu':
+                self.ldap_type = 'openldap'
+                self.bindDN = p['bindDN']
+
+            print "LDAP type was determined as", self.ldap_type
+
+        else:
+            print "Unable to determine current LDAP type. Exiting ..."
+            sys.exit(1)
 
     def backup_(self, f, keep=False):
         if os.path.exists(f):
@@ -601,6 +607,10 @@ class GluuUpdater:
             
             elif 'oxAuthExpiration' in new_entry:
                 continue
+            
+            if (self.ldap_type == 'openldap') and ('userPassword' in new_entry) and new_entry['userPassword'] and  new_entry['userPassword'][0].startswith('{BCRYPT}') and new_entry['userPassword'][0].endswith('\x00'):
+                new_entry['userPassword'][0] = new_entry['userPassword'][0][:-1]
+                
             #elif 'oxAuthTokenCode' in new_entry:
             #    continue
             #elif 'oxTicket' in new_entry:
@@ -1745,7 +1755,7 @@ if __name__ == '__main__':
         def handle(self, dn, entry):
             self.DNs.append(dn)
             self.entries[str(dn)] = entry
-    """
+
     setupObject.check_properties()
     setupObject.backupFile(setup_properties_fn)
 
@@ -1771,10 +1781,10 @@ if __name__ == '__main__':
     updaterObj.update_default_settings()
 
     updaterObj.update_schema()
-    """
+
     updaterObj.parse_current_ldif()
     updaterObj.process_ldif()
-    """
+
     updaterObj.update_conf_files()
     updaterObj.import_ldif2ldap()
 
@@ -1795,7 +1805,7 @@ if __name__ == '__main__':
             os.remove(sdbf)
 
     setupObject.save_properties(setup_properties_fn)
-    """
+
     if os.path.exists(os.path.join(setupObject.jetty_base,'casa')):
         print "\033[93mCasa installation was detected."
         print "Please run 'update_casa.py' script before restarting Gluu Server.\033[0m"
