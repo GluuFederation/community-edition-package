@@ -1833,5 +1833,6 @@ if __name__ == '__main__':
     print "Notes:"
     print " * Default authentication mode was set to auth_ldap_server"
     print " * Cache provider configuration was set to 4.0 defaults"
+    print " * Reconfigure your logo and favicon"
 
 #./makeself.sh --tar-extra "--exclude=/opt/upd/4.0-upg/download.sh" --target /opt/upd/4.0-upg/  /opt/upd/4.0-upg/ 4-0-upg.sh  "Gluu Updater Package 4.0-upg" /opt/upd/4.0-upg/update.py
