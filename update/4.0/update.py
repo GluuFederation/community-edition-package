@@ -1037,7 +1037,7 @@ class GluuUpdater:
 
 
             if 'oxPolicyScriptDn' in new_entry:
-                new_entry['oxUmaPolicyScriptDn'] = [new_entry['oxPolicyScriptDn'][0]]
+                new_entry['oxUmaPolicyScriptDn'] = new_entry['oxPolicyScriptDn'][:]
                 new_entry.pop('oxPolicyScriptDn')
 
 
