@@ -1661,6 +1661,15 @@ if __name__ == '__main__':
         print "You give up uprgade. Exiting ..."
         sys.exit()
 
+
+    msg = """This upgrade replaces all the default Gluu Server scripts WITH SCRIPTS FROM 4.0
+    and removes other custom scripts. (This will replace any customization you may
+    have made to these default script entries) Do you want to continue? (Y|n) """
+    result = raw_input(msg)
+    if result.strip() and result.strip().lower()[0] == 'n':
+        print "Can't continue wtihout replacing custom scripts. Exiting ..."
+        sys.exit()
+
     from setup.pylib.ldif import LDIFParser, LDIFWriter, ParseLDIF
     from setup.setup import Setup
     from ldap.dn import explode_dn, str2dn
