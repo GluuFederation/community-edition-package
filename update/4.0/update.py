@@ -1662,9 +1662,9 @@ if __name__ == '__main__':
         sys.exit()
 
 
-    msg = """This upgrade replaces all the default Gluu Server scripts WITH SCRIPTS FROM 4.0
-    and removes other custom scripts. (This will replace any customization you may
-    have made to these default script entries) Do you want to continue? (Y|n) """
+    msg = ('This upgrade replaces all the default Gluu Server scripts WITH SCRIPTS FROM 4.0\n'
+        'and removes other custom scripts. (This will replace any customization you may\n'
+        'have made to these default script entries) Do you want to continue? (Y|n) ')
     result = raw_input(msg)
     if result.strip() and result.strip().lower()[0] == 'n':
         print "Can't continue wtihout replacing custom scripts. Exiting ..."
