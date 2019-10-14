@@ -24,6 +24,12 @@ sys.path.append(cur_dir)
 package_type = None
 setup_properties_fn = '/install/community-edition-setup/setup.properties.last'
 
+
+if not os.path.exists(setup_properties_fn):
+    print "Upgrade script needs {0}.\nCan't continue without {0}.\nPlease put {0} and\nre-run upgrade script. Exiting for now...".format(setup_properties_fn)
+    sys.exit()
+    
+
 if os.path.exists('/etc/yum.repos.d/'):
     package_type = 'rpm'
 elif os.path.exists('/etc/apt/sources.list'):
