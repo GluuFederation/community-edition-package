@@ -1656,7 +1656,7 @@ if __name__ == '__main__':
     parser.add_argument('-o', '--online', help="online installation", action='store_true')
     argsp = parser.parse_args()
 
-    start_upgrade = raw_input('Ready to upgrade Gluu Server. Start now (y/N)')
+    start_upgrade = raw_input('Ready to upgrade Gluu Server. Start now (y|N) ')
     if not start_upgrade or start_upgrade[0].lower() == 'n':
         print "You give up uprgade. Exiting ..."
         sys.exit()
