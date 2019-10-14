@@ -1283,8 +1283,6 @@ class GluuUpdater:
 
             setupObject.writeFile(passport_config_fn, json.dumps(new_config, indent=2))
 
-        passport_central_config_js['providers'] = providers
-
 
         if 'activeMQConf' in cur_config:
 
@@ -1336,118 +1334,115 @@ class GluuUpdater:
                                             }
                                         )
 
-        passport_central_config = json.dumps(passport_central_config_js, indent=2)
-
-        new_entry['gluuPassportConfiguration'] = [passport_central_config]
-
-        self.write2ldif(new_dn, new_entry)
-
         if not dev_env:
             setupObject.run(['chown', '-R', 'node:node', '/opt/gluu/node/'])
             setupObject.run_service_command('passport', 'start')
 
 
-    def fix_passport_saml(self):
-
-        if not self.passport_saml_dn:
-            return
-
         passport_saml_config_fn = os.path.join(setupObject.configFolder, 'passport-saml-config.json')
-        
-        if not os.path.exists(passport_saml_config_fn):
-            return
-        
-        print "Updating passport saml configuration"
-        setupObject.logIt("Updating passport saml configuration")
- 
-        passport_saml_config = json.loads(setupObject.readFile(passport_saml_config_fn))
-        oxConfigurationProperty = self.ldif_parser.entries[self.passport_saml_dn]['oxConfigurationProperty']
 
-        for e in oxConfigurationProperty:
-            data_ = json.loads(e)
-            if data_['value1'] == 'generic_remote_attributes_list':
-                generic_remote_attributes_list = [v.strip() for v in data_['value2'].split(',')]
-            elif data_['value1'] == 'generic_local_attributes_list':
-                generic_local_attributes_list = [v.strip() for v in data_['value2'].split(',')]
+        if self.passport_saml_dn and os.path.exists(passport_saml_config_fn):
 
+            print "Updating passport saml configuration"
+            setupObject.logIt("Updating passport saml configuration")
+     
+            passport_saml_config = json.loads(setupObject.readFile(passport_saml_config_fn))
+            oxConfigurationProperty = self.ldif_parser.entries[self.passport_saml_dn]['oxConfigurationProperty']
 
-        mappings_file_content_tmp= ('module.exports = profile => {\n'
-                                    '        return {\n'
-                                    '%s\n'
-                                    '        }\n'
-                                    '}\n')
+            for e in oxConfigurationProperty:
+                data_ = json.loads(e)
+                if data_['value1'] == 'generic_remote_attributes_list':
+                    generic_remote_attributes_list = [v.strip() for v in data_['value2'].split(',')]
+                elif data_['value1'] == 'generic_local_attributes_list':
+                    generic_local_attributes_list = [v.strip() for v in data_['value2'].split(',')]
 
 
-        if not isinstance(passport_saml_config, dict):
-            setupObject.logIt("Passport configuration is not dictionary not updating")
-            return
-
-        new_passport_saml_config = []
-
-        for provider in passport_saml_config:
-            new_provider = {
-                    'id': provider,
-                    'displayName': provider,
-                    'type': 'saml',
-                    'enabled': True if passport_saml_config[provider]['enable'].lower() == 'true' else False,
-                    'passportStrategyId': 'passport-saml',
-                    'mapping': provider,
-                    'options': {
-                            'entryPoint': passport_saml_config[provider]['entryPoint'],
-                            'issuer': passport_saml_config[provider]['issuer'],
-                            'identifierFormat': passport_saml_config[provider]['identifierFormat'],
-                            'cert': passport_saml_config[provider]['cert'],
-                        }
-                }
-
-            for key in passport_saml_config[provider]:
-                if not key in ('enable', 'entryPoint', 'issuer', 'identifierFormat', 'cert', 'reverseMapping'):
-                    val = passport_saml_config[provider][key]
-                    if type(val) in (type(1), type(1.2)):
-                        val = str(val)
-                    elif isinstance(val, bool):
-                        val = str(val).lower()
-                    else:
-                        val = json.dumps(val)
-
-                    new_provider['options'][key] = val
-            
-            new_passport_saml_config.append(new_provider)
-
-            provider_mapping_fn = provider+'.js'
-
-            mapping_fn_tmp = os.path.join(self.temp_dir, provider_mapping_fn)
-
-            newMappings = []
-
-            for i in range(len(generic_local_attributes_list)):
-                
-                local_key = generic_local_attributes_list[i]
-                remote_key = generic_remote_attributes_list[i]
-
-                if remote_key in passport_saml_config[provider]['reverseMapping']:
-                    newMappings.append( '               {}: profile["{}"]'.format(local_key, passport_saml_config[provider]['reverseMapping'][remote_key]))
+            mappings_file_content_tmp= ('module.exports = profile => {\n'
+                                        '        return {\n'
+                                        '%s\n'
+                                        '        }\n'
+                                        '}\n')
 
 
-            setupObject.writeFile(
+            if not isinstance(passport_saml_config, dict):
+                setupObject.logIt("Passport configuration is not dictionary not updating")
+                return
+
+            new_passport_saml_config = []
+
+            for provider in passport_saml_config:
+                new_provider = {
+                        'id': provider,
+                        'displayName': provider,
+                        'type': 'saml',
+                        'enabled': get_as_bool(passport_saml_config[provider].pop('enable')),
+                        'passportStrategyId': 'passport-saml',
+                        'mapping': provider,
+                        'options': {
+                                'entryPoint': passport_saml_config[provider].pop('entryPoint'),
+                                'issuer': passport_saml_config[provider].pop('issuer'),
+                                'identifierFormat': passport_saml_config[provider].pop('identifierFormat'),
+                                'cert': passport_saml_config[provider].pop('cert'),
+                            }
+                    }
+
+
+                if 'logo_img' in passport_saml_config[provider]:
+                    new_provider['logo_img'] = passport_saml_config[provider].pop('logo_img')
+
+                for p_attr in ('emailLinkingSafe', 'requestForEmail'):
+                    if p_attr in passport_saml_config[provider]:
+                        new_provider[p_attr] = get_as_bool(passport_saml_config[provider].pop(p_attr))
+
+                for key in passport_saml_config[provider]:
+                    if not key in ('reverseMapping',):
+                        val = passport_saml_config[provider][key]
+                        if type(val) in (type(1), type(1.2)):
+                            val = str(val)
+                        elif isinstance(val, bool):
+                            val = str(val).lower()
+                        elif type(val) in (type('s'), type(u'u')):
+                            pass
+                        else:
+                            val = json.dumps(val)
+
+                        new_provider['options'][key] = val
+
+                providers.append(new_provider)
+
+                provider_mapping_fn = provider+'.js'
+
+                mapping_fn_tmp = os.path.join(self.temp_dir, provider_mapping_fn)
+
+                newMappings = []
+
+                for i in range(len(generic_local_attributes_list)):
+                    
+                    local_key = generic_local_attributes_list[i]
+                    remote_key = generic_remote_attributes_list[i]
+
+                    if remote_key in passport_saml_config[provider]['reverseMapping']:
+                        newMappings.append( '               {}: profile["{}"]'.format(local_key, passport_saml_config[provider]['reverseMapping'][remote_key]))
+
+
+                setupObject.writeFile(
+                                os.path.join(self.temp_dir, provider_mapping_fn),
+                                mappings_file_content_tmp % ',\n'.join(newMappings)
+                                )
+
+                setupObject.copyFile(
                             os.path.join(self.temp_dir, provider_mapping_fn),
-                            mappings_file_content_tmp % ',\n'.join(newMappings)
+                            os.path.join(setupObject.gluu_passport_base, 'server/mappings')
                             )
+            
+            setupObject.backupFile(passport_saml_config_fn)
+            setupObject.run(['rm', '-f', passport_saml_config_fn])
 
-            setupObject.copyFile(
-                        os.path.join(self.temp_dir, provider_mapping_fn),
-                        os.path.join(setupObject.gluu_passport_base, 'server/mappings')
-                        )
+        passport_central_config_js['providers'] = providers
+        passport_central_config = json.dumps(passport_central_config_js, indent=2)
 
-        setupObject.writeFile(
-                        os.path.join(self.temp_dir, os.path.basename(passport_saml_config_fn)),
-                        json.dumps(new_passport_saml_config, indent=2)
-                        )
-
-        setupObject.copyFile(
-            os.path.join(self.temp_dir, os.path.basename(passport_saml_config_fn)),
-            setupObject.configFolder
-            )
+        new_entry['gluuPassportConfiguration'] = [passport_central_config]
+        self.write2ldif(new_dn, new_entry)
 
    
     def update_conf_files(self):
@@ -1803,7 +1798,7 @@ if __name__ == '__main__':
 
     updaterObj.parse_current_ldif()
     updaterObj.process_ldif()
-
+ 
     updaterObj.update_conf_files()
     updaterObj.import_ldif2ldap()
 
@@ -1811,7 +1806,6 @@ if __name__ == '__main__':
 
     updaterObj.update_shib()
 
-    updaterObj.fix_passport_saml()
 
     scripts_dir = os.path.join(setupObject.distFolder, 'scripts')
     if not os.path.exists(scripts_dir):
