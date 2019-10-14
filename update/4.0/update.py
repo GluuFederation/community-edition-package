@@ -1082,6 +1082,10 @@ class GluuUpdater:
                 new_entry['objectClass'].append('oxAuthCustomScope')
                 new_entry['oxScopeType'] = ['uma']
                 
+                for uma_depr_attr in ('oxFaviconImage', 'owner'):
+                    if uma_depr_attr in new_entry:
+                        new_entry.pop(uma_depr_attr)
+
                 if new_entry['inum'][0] == '8CAD-B06D':
                     new_entry['oxId'] = [ 'https://%(hostname)s/oxauth/restv1/uma/scopes/scim_access' % setupObject.__dict__ ]
 
