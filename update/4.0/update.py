@@ -1422,6 +1422,8 @@ class GluuUpdater:
                     remote_key = generic_remote_attributes_list[i]
 
                     if remote_key in passport_saml_config[provider]['reverseMapping']:
+                        if remote_key == 'provider':
+                            continue
                         newMappings.append( '               {}: profile["{}"]'.format(local_key, passport_saml_config[provider]['reverseMapping'][remote_key]))
 
 
