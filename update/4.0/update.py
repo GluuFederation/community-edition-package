@@ -1521,7 +1521,7 @@ class GluuUpdater:
             properties = self.render_template(os.path.join(self.setup_dir, 'static/idp3/conf', prop_fn))
             setupObject.writeFile(os.path.join('/opt/shibboleth-idp/conf', prop_fn), properties)
 
-        setupObject.run(['cp', 'f', '{}/app/saml-nameid.properties.vm'.format(cur_dir), '/opt/gluu/jetty/identity/conf/shibboleth3/idp/'])
+        setupObject.run(['cp', '-f', '{}/app/saml-nameid.properties.vm'.format(cur_dir), '/opt/gluu/jetty/identity/conf/shibboleth3/idp/'])
 
         setupObject.run(['chown', '-R', 'jetty:jetty', '/opt/shibboleth-idp'])
 
