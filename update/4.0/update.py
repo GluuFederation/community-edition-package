@@ -154,15 +154,15 @@ class GluuUpdater:
         self.gluu_app_dir = '/opt/gluu/jetty'
         self.backup_time = time.strftime('%Y-%m-%d.%H:%M:%S')
         self.backup_folder = os.path.join(cur_dir, 'backup_{}'.format(self.backup_time))
-        
+        self.temp_dir = os.path.join(cur_dir, 'temp')
         
         if not os.path.exists(self.backup_folder) and not dev_env:
             os.mkdir(self.backup_folder)
 
-        self.temp_dir = os.path.join(cur_dir, 'temp')
-        if not os.path.exists(self.temp_dir):
-            os.mkdir(self.temp_dir)
-
+        #prepare directories
+        for d in (self.backup_folder, self.temp_dir, self.app_dir, self.war_dir):
+            if not os.path.exists(d):
+                os.makedirs(d)
 
         self.wrends_version_number = '4.0.0-M3'
         self.setup_dir = os.path.join(cur_dir, 'setup')
@@ -222,6 +222,8 @@ class GluuUpdater:
     def install_opendj(self):
         self.set_to_opendj()
 
+        print "Upgrading OpenDj to WrenDS"
+
         for f in (setupObject.opendj_cert_fn, setupObject.opendj_p12_fn):
             self.backup_(f)
 
@@ -237,19 +239,7 @@ class GluuUpdater:
         
         self.backup_('/opt/opendj')
 
-        if argsp.online:
-            setupObject.logIt("Downloading opendj Server")
-            
-            wrends_download_link = 'https://ox.gluu.org/maven/org/forgerock/opendj/opendj-server-legacy/{0}/opendj-server-legacy-{0}.zip'.format(self.wrends_version_number)
-            wrends_archieve = os.path.basename(wrends_download_link)
-
-            setupObject.run([
-                                'wget', '-nv',
-                                wrends_download_link,
-                                '-O', os.path.join(setupObject.distAppFolder, wrends_archieve),
-                                ])
-        else:
-            setupObject.run(['cp', '-f', '{0}/app/opendj-server-legacy-{1}.zip'.format(cur_dir, self.wrends_version_number), setupObject.distAppFolder])
+        setupObject.run(['cp', '-f', '{0}/app/opendj-server-legacy-{1}.zip'.format(cur_dir, self.wrends_version_number), setupObject.distAppFolder])
             
         setupObject.render_templates({setupObject.ldap_setup_properties: False})
         setupObject.listenAllInterfaces = False
@@ -315,29 +305,34 @@ class GluuUpdater:
 
 
     def download_apps(self):
-        for d in (self.app_dir, self.war_dir):
-            if not os.path.exists(d):
-                setupObject.run(['mkdir',d])
 
-        setupObject.run(['wget', '-nv', 'https://ox.gluu.org/maven/org/gluu/oxshibbolethIdp/{0}/oxshibbolethIdp-{0}.war'.format(self.current_version), '-O', os.path.join(self.war_dir, 'idp.war')])
-        setupObject.run(['wget', '-nv', 'https://ox.gluu.org/maven/org/gluu/oxtrust-server/{0}/oxtrust-server-{0}.war'.format(self.current_version), '-O', os.path.join(self.war_dir, 'identity.war')])
-        setupObject.run(['wget', '-nv', 'https://ox.gluu.org/maven/org/gluu/oxauth-server/{0}/oxauth-server-{0}.war'.format(self.current_version), '-O', os.path.join(self.war_dir, 'oxauth.war')])
-        setupObject.run(['wget', '-nv', 'https://ox.gluu.org/maven/org/gluu/oxShibbolethStatic/{0}/oxShibbolethStatic-{0}.jar'.format(self.current_version), '-O', os.path.join(self.war_dir, 'shibboleth-idp.jar')])
-        setupObject.run(['wget', '-nv', 'https://ox.gluu.org/maven/org/gluu/oxShibbolethKeyGenerator/{0}/oxShibbolethKeyGenerator-{0}.jar'.format(self.current_version), '-O', os.path.join(setupObject.distGluuFolder, 'idp3_cml_keygenerator.jar')])
-        setupObject.run(['wget', '-nv', 'https://ox.gluu.org/npm/passport/passport-4.0.0.tgz', '-O', os.path.join(setupObject.distAppFolder, 'passport.tgz')])
-        setupObject.run(['wget', '-nv', 'https://ox.gluu.org/npm/passport/passport-version_4.0.b1-node_modules.tar.gz', '-O', os.path.join(setupObject.distAppFolder, 'passport-node_modules.tar.gz')])
+        for download_link, out_file in (
+                        ('https://ox.gluu.org/maven/org/gluu/oxshibbolethIdp/{0}/oxshibbolethIdp-{0}.war'.format(self.current_version), os.path.join(self.war_dir, 'idp.war')),
+                        ('https://ox.gluu.org/maven/org/gluu/oxtrust-server/{0}/oxtrust-server-{0}.war'.format(self.current_version), os.path.join(self.war_dir, 'identity.war')),
+                        ('https://ox.gluu.org/maven/org/gluu/oxauth-server/{0}/oxauth-server-{0}.war'.format(self.current_version), os.path.join(self.war_dir, 'oxauth.war')),
+                        ('https://ox.gluu.org/maven/org/gluu/oxShibbolethStatic/{0}/oxShibbolethStatic-{0}.jar'.format(self.current_version), os.path.join(self.war_dir, 'shibboleth-idp.jar')),
+                        ('https://ox.gluu.org/maven/org/gluu/oxShibbolethKeyGenerator/{0}/oxShibbolethKeyGenerator-{0}.jar'.format(self.current_version), os.path.join(self.war_dir, 'idp3_cml_keygenerator.jar')),
+                        ('https://ox.gluu.org/npm/passport/passport-4.0.0.tgz', os.path.join(self.app_dir, 'passport.tgz')),
+                        ('https://ox.gluu.org/npm/passport/passport-version_4.0-node_modules.tar.gz', os.path.join(self.app_dir, 'passport-node_modules.tar.gz')),
+                        ('https://d3pxv6yz143wms.cloudfront.net/{0}/amazon-corretto-{0}-linux-x64.tar.gz'.format(setupObject.jre_version), os.path.join(self.app_dir, 'amazon-corretto-{0}-linux-x64.tar.gz'.format(setupObject.jre_version))),
+                        ('https://repo1.maven.org/maven2/org/eclipse/jetty/jetty-distribution/{0}/jetty-distribution-{0}.tar.gz'.format(setupObject.jetty_version), os.path.join(self.app_dir, 'jetty-distribution-{0}.tar.gz'.format(setupObject.jetty_version))),
+                        ('https://ox.gluu.org/maven/org/forgerock/opendj/opendj-server-legacy/{0}/opendj-server-legacy-{0}.zip'.format(self.wrends_version_number), os.path.join(self.app_dir, 'opendj-server-legacy-{0}.zip'.format(self.wrends_version_number))),
+                        ('https://nodejs.org/dist/v{0}/node-v{0}-linux-x64.tar.xz'.format(setupObject.node_version), os.path.join(self.app_dir, 'node-v{0}-linux-x64.tar.xz'.format(setupObject.node_version))),
+                        ('https://raw.githubusercontent.com/GluuFederation/oxTrust/master/configuration/src/main/resources/META-INF/shibboleth3/idp/saml-nameid.properties.vm', os.path.join(self.app_dir,'saml-nameid.properties.vm'))
+                    ):
+
+            print "Downaloading", download_link
+            setupObject.run(['wget', '-nv', download_link, '-O', out_file])
 
 
     def update_war(self):
 
-        if not argsp.online:
-           setupObject.run([
-                            'cp',
-                            '-f',
-                            os.path.join(cur_dir,'app', 'idp3_cml_keygenerator.jar'),
-                            setupObject.distGluuFolder
-                            ]
-                            )
+        setupObject.run([
+                        'cp',
+                        '-f',
+                        os.path.join(cur_dir,'war', 'idp3_cml_keygenerator.jar'),
+                        setupObject.distGluuFolder
+                        ])
 
         os.environ['PATH'] += ':/opt/jre/bin'
 
@@ -1102,6 +1097,10 @@ class GluuUpdater:
 
             elif 'oxPassportConfiguration' in  new_entry['objectClass']:
                 if 'gluuPassportConfiguration' in new_entry:
+                    setupObject.writeFile(
+                                    os.path.join(cur_dir, 'gluuPassportConfiguration.json'),
+                                    new_entry['gluuPassportConfiguration'][0]
+                                )
                     self.fix_passport_config(new_dn, new_entry)
             
             elif 'gluuSAMLconfig' in  new_entry['objectClass']:
@@ -1164,13 +1163,6 @@ class GluuUpdater:
         
         setupObject.run_service_command('passport', 'stop')
 
-        if argsp.online:
-            print "Downloading passport server"
-            setupObject.run(['wget', '-nv', 'https://ox.gluu.org/npm/passport/passport-4.0.0.tgz', '-O', os.path.join(cur_dir, 'app', 'passport.tgz')])
-        
-            print "Downloading passport node libraries"
-            setupObject.run(['wget', '-nv', 'https://ox.gluu.org/npm/passport/passport-master-node_modules.tar.gz', '-O', os.path.join(cur_dir, 'app', 'passport-master-node_modules.tar.gz')])
-
         print "Removing existing passport server and node libraries"
         setupObject.run(['rm', '-r', '-f', '/opt/gluu/node/passport/server/mappings'])
         setupObject.run(['rm', '-r', '-f', '/opt/gluu/node/passport/server/utils'])
@@ -1224,11 +1216,8 @@ class GluuUpdater:
             if 'strategy' in gluuPassportConfiguration:
                 strategy = gluuPassportConfiguration['strategy']
 
-
                 (key, val) = ('value1', 'value2') if 'value1' in gluuPassportConfiguration['fieldset'][0] else ('key','value')
-
                 field_key = { field[key]: field[val] for field in  gluuPassportConfiguration['fieldset'] }
-
 
                 provider =  {
                       'displayName': strategy, 
@@ -1256,12 +1245,11 @@ class GluuUpdater:
                         provider['options'][a] = field_key[a]
 
                 providers.append(provider)
-
+            
         passport_central_config = self.render_template(os.path.join(self.template_dir, 'passport-central-config.json'))
         passport_central_config_js = json.loads(passport_central_config)
         
         passport_config_fn = '/etc/gluu/conf/passport-config.json'
-
 
         cur_config = {}
 
@@ -1273,6 +1261,7 @@ class GluuUpdater:
 
             setupObject.templateRenderingDict['passport_rp_client_id'] = self.passport_rp_client_id
             setupObject.templateRenderingDict['passport_rp_client_cert_alias'] = cur_config['keyId']
+            setupObject.templateRenderingDict['passport_rp_client_cert_alias'] = cur_config['keyId']
 
             new_config_str = self.render_template(os.path.join(self.template_dir, 'passport-config.json'))
             new_config = json.loads(new_config_str)
@@ -1283,6 +1272,9 @@ class GluuUpdater:
 
             setupObject.writeFile(passport_config_fn, json.dumps(new_config, indent=2))
 
+            if 'serverWebPort' in cur_config:
+                passport_central_config_js['conf']['serverWebPort'] = cur_config['serverWebPort']
+                
 
         if 'activeMQConf' in cur_config:
 
@@ -1304,10 +1296,9 @@ class GluuUpdater:
             passport_central_config_js['conf']['logging']['consoleLogOnly'] = cur_config['consoleLogOnly']
 
 
-
         inbound_idp_initiated_json_fn = '/etc/gluu/conf/passport-inbound-idp-initiated.json'
-        if os.path.exists(inbound_idp_initiated_json_fn):
 
+        if os.path.exists(inbound_idp_initiated_json_fn):
 
             inbound_idp_initiated_json = json.loads(
                                 setupObject.readFile(inbound_idp_initiated_json_fn),
@@ -1316,7 +1307,6 @@ class GluuUpdater:
 
 
             idp_list = inbound_idp_initiated_json.keys()
-
 
             if idp_list:
                 
@@ -1333,6 +1323,8 @@ class GluuUpdater:
                                             'scope': ' '.join(inbound_idp_initiated_json[idp]['authorization_params'].get('scope',[])),
                                             }
                                         )
+            setupObject.backupFile(inbound_idp_initiated_json_fn)
+            setupObject.run(['rm', '-f', inbound_idp_initiated_json_fn])
 
         if not dev_env:
             setupObject.run(['chown', '-R', 'node:node', '/opt/gluu/node/'])
@@ -1446,7 +1438,7 @@ class GluuUpdater:
         new_entry['gluuPassportConfiguration'] = [passport_central_config]
         self.write2ldif(new_dn, new_entry)
 
-   
+
     def update_conf_files(self):
         self.set_to_opendj()
 
@@ -1524,10 +1516,7 @@ class GluuUpdater:
             properties = self.render_template(os.path.join(self.setup_dir, 'static/idp3/conf', prop_fn))
             setupObject.writeFile(os.path.join('/opt/shibboleth-idp/conf', prop_fn), properties)
 
-        if argsp.online:
-            setupObject.run(['wget', 'https://raw.githubusercontent.com/GluuFederation/oxTrust/master/configuration/src/main/resources/META-INF/shibboleth3/idp/saml-nameid.properties.vm', '-O', '/opt/gluu/jetty/identity/conf/shibboleth3/idp/saml-nameid.properties.vm'])
-        else:
-            setupObject.run(['cp', 'f', '{}/app/saml-nameid.properties.vm'.format(cur_dir), '/opt/gluu/jetty/identity/conf/shibboleth3/idp/'])
+        setupObject.run(['cp', 'f', '{}/app/saml-nameid.properties.vm'.format(cur_dir), '/opt/gluu/jetty/identity/conf/shibboleth3/idp/'])
 
         setupObject.run(['chown', '-R', 'jetty:jetty', '/opt/shibboleth-idp'])
 
@@ -1546,18 +1535,11 @@ class GluuUpdater:
         os.chdir(cur_dir)
 
 
-
     def upgrade_jetty(self):
 
         print "Upgrading Jetty"
 
-        if argsp.online:
-            print "Downloading Jetty"
-            setupObject.run(['wget', '-nv', 
-                             'https://repo1.maven.org/maven2/org/eclipse/jetty/jetty-distribution/{0}/jetty-distribution-{0}.tar.gz'.format(setupObject.jetty_version),
-                             '-O', '{0}/jetty-distribution-{1}.tar.gz'.format(setupObject.distAppFolder, setupObject.jetty_version)])
-        else:
-            setupObject.run(['cp', '-f', '{0}/app/jetty-distribution-{1}.tar.gz'.format(cur_dir, setupObject.jetty_version), setupObject.distAppFolder])
+        setupObject.run(['cp', '-f', '{0}/app/jetty-distribution-{1}.tar.gz'.format(cur_dir, setupObject.jetty_version), setupObject.distAppFolder])
 
         for cur_version in glob.glob('/opt/jetty-*'):
             print "Removing current jetty version:", cur_version
@@ -1573,11 +1555,7 @@ class GluuUpdater:
         
         print "Upgrading Node"
 
-        if argsp.online:
-            print "Downloading Node"
-            setupObject.run(['wget', '-nv', 'https://nodejs.org/dist/v{0}/node-v{0}-linux-x64.tar.xz'.format(setupObject.node_version), '-O', '{0}/node-v{1}-linux-x64.tar.xz'.format(setupObject.distAppFolder, setupObject.node_version)])
-        else:
-            setupObject.run(['cp', '-f', '{0}/app/node-v{1}-linux-x64.tar.xz'.format(cur_dir, setupObject.node_version), setupObject.distAppFolder])
+        setupObject.run(['cp', '-f', '{0}/app/node-v{1}-linux-x64.tar.xz'.format(cur_dir, setupObject.node_version), setupObject.distAppFolder])
 
         for cur_version in glob.glob('/opt/node-v*'):
             setupObject.run(['rm', '-r', cur_version])
@@ -1604,11 +1582,8 @@ class GluuUpdater:
                     setupObject.run(['/opt/jre/bin/keytool', '-export', '-alias', alias, '-file', crt_file, '-keystore', '/opt/jre/jre/lib/security/cacerts', '-storepass', 'changeit'])
                     cacerts.append((alias, crt_file))
 
-        if argsp.online:
-            print "Downloading Java", setupObject.jre_version
-            setupObject.run(['wget', '-nv', 'https://d3pxv6yz143wms.cloudfront.net/{0}/amazon-corretto-{0}-linux-x64.tar.gz'.format(setupObject.jre_version), '-O', '{1}/amazon-corretto-{0}-linux-x64.tar.gz'.format(setupObject.jre_version, setupObject.distAppFolder)])
-        else:
-            setupObject.run(['cp', '-f', '{0}/app/amazon-corretto-{1}-linux-x64.tar.gz'.format(cur_dir, setupObject.jre_version), setupObject.distAppFolder])
+        
+        setupObject.run(['cp', '-f', '{0}/app/amazon-corretto-{1}-linux-x64.tar.gz'.format(cur_dir, setupObject.jre_version), setupObject.distAppFolder])
  
         for cur_version in glob.glob('/opt/jdk*'):
             setupObject.run(['rm', '-r', cur_version])
@@ -1793,6 +1768,7 @@ if __name__ == '__main__':
     updaterObj.update_apache_conf()
     updaterObj.upgrade_jetty()
     updaterObj.update_war()
+    updaterObj.update_passport()
 
     updaterObj.update_default_settings()
 
@@ -1804,7 +1780,7 @@ if __name__ == '__main__':
     updaterObj.update_conf_files()
     updaterObj.import_ldif2ldap()
 
-    updaterObj.update_passport()
+    
 
     updaterObj.update_shib()
 
