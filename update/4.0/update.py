@@ -367,6 +367,11 @@ class GluuUpdater:
                 print "Updating", war_app
                 setupObject.run(['cp', '-f', new_war_app_file, app_dir])
 
+        for f in glob.glob(os.path.join(setupObject.jetty_user_home_lib,'*')):
+            setupObject.run(['rm', '-f', f])
+
+        setupObject.prepare_openid_keys_generator(distOxAuthPath=os.path.join(self.war_dir, 'oxauth.war'))
+
     def update_default_settings(self):
         for service in ('identity', 'idp', 'oxauth', 'oxauth-rp'):
             target_fn = os.path.join('/etc/default', service)
@@ -1752,6 +1757,12 @@ if __name__ == '__main__':
 
     setupObject.os_type, setupObject.os_version = setupObject.detect_os_type()
     setupObject.calculate_selected_aplications_memory()
+
+    updaterObj.update_java()
+    updaterObj.upgrade_jetty()
+    updaterObj.update_war()
+    updaterObj.update_node()
+
     setupObject.ldapCertFn = setupObject.opendj_cert_fn
     setupObject.generate_oxtrust_api_configuration()
 
@@ -1760,27 +1771,18 @@ if __name__ == '__main__':
 
     updaterObj.dump_current_db()
 
-    updaterObj.update_java()
-
-    updaterObj.install_opendj()
-    updaterObj.update_node()
 
     updaterObj.update_apache_conf()
-    updaterObj.upgrade_jetty()
-    updaterObj.update_war()
     updaterObj.update_passport()
 
     updaterObj.update_default_settings()
 
+    updaterObj.install_opendj()
     updaterObj.update_schema()
-
     updaterObj.parse_current_ldif()
     updaterObj.process_ldif()
- 
     updaterObj.update_conf_files()
     updaterObj.import_ldif2ldap()
-
-    
 
     updaterObj.update_shib()
 
