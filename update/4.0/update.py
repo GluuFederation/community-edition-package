@@ -61,7 +61,7 @@ if missing_packages:
             
 
     if package_type == 'rpm':
-        cmd = 'yum install -y epel-release'
+        cmd = 'yum install -y https://dl.fedoraproject.org/pub/epel/epel-release-latest-7.noarch.rpm'
         os.system(cmd)
         cmd = 'yum clean all'
         os.system(cmd)
