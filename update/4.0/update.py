@@ -1229,6 +1229,7 @@ class GluuUpdater:
                       'passportStrategyId': passportStrategyId_mapping.get(strategy, 'passport-openidconnect'),
                       'enabled': True, 
                       'mapping': strategy if strategy in ('dropbox', 'facebook', 'github', 'google', 'linkedin', 'openidconnect', 'tumblr', 'twitter', 'windowslive', 'yahoo') else 'openidconnect-default',
+                      'callbackUrl': 'https://{0}/passport/auth/{1}/callback'.format(setupObject.hostname, strategy),
                       'options': {
                         'clientSecret': field_key['clientSecret'], 
                         'clientID': field_key['clientID'],
@@ -1372,6 +1373,7 @@ class GluuUpdater:
                         'id': provider,
                         'displayName': provider,
                         'type': 'saml',
+                        'callbackUrl': 'https://{0}/passport/auth/saml/{1}>/callback'.format(setupObject.hostname, provider),
                         'enabled': get_as_bool(passport_saml_config[provider].pop('enable')),
                         'passportStrategyId': 'passport-saml',
                         'mapping': provider,
