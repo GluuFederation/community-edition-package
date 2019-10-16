@@ -1373,7 +1373,7 @@ class GluuUpdater:
                         'id': provider,
                         'displayName': provider,
                         'type': 'saml',
-                        'callbackUrl': 'https://{0}/passport/auth/saml/{1}>/callback'.format(setupObject.hostname, provider),
+                        'callbackUrl': 'https://{0}/passport/auth/saml/{1}/callback'.format(setupObject.hostname, provider),
                         'enabled': get_as_bool(passport_saml_config[provider].pop('enable')),
                         'passportStrategyId': 'passport-saml',
                         'mapping': provider,
