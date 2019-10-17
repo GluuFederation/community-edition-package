@@ -47,16 +47,23 @@ def check_oxd_server(host, port):
 class casaUpdate(object):
     
     def __init__(self):
-        
+
         self.casa_config_fn = os.path.join(setupObject.configFolder, 'casa.json')
-        self.current_version = '4.0.b1'
-        
+        self.current_version = '4.0.Final'
+        self.oxd_port = 8443
+        self.oxd_host = None
+
+        self.rpm_package = 'https://repo.gluu.org/centos/7-testing/gluu-casa-4.0-20.beta3.centos7.noarch.rpm'
+        self.deb_package = 'https://repo.gluu.org/ubuntu/pool/main/xenial-devel/gluu-casa_4.0-27-beta3~xenial+Ub16.04_all.deb'
+
+
         if not os.path.exists(self.casa_config_fn):
             print "Casa config file {} was not found. Exiting ...".format(self.casa_config_fn)
             sys.exit()
 
         casa_conf = setupObject.readFile(self.casa_config_fn)
         self.casa_conf_js = json.loads(casa_conf)
+
 
 
     def check_if_gluu_upgarded(self):
@@ -72,6 +79,11 @@ class casaUpdate(object):
     def check_and_update_oxd(self):
         if os.path.exists('/opt/oxd-server'):
             print "Local oxd installation is detected. Casa 4.0 depends on oxd 4.0."
+            print "Checking if local oxd is up to date"
+            if check_oxd_server('localhost', self.oxd_port):
+                print "oxd server seems good. No need to update."
+                return True
+
             upgrade_oxd = setupObject.getPrompt("Upgrade oxd now [y/N]", defaultValue='n')
             if upgrade_oxd and upgrade_oxd[0].lower() == 'y':
                 print "Downloading oxd updater script"
@@ -83,7 +95,7 @@ class casaUpdate(object):
                 #wait a couple of seconds
                 time.sleep(2)
                 print "Checking oxd server health"
-                if check_oxd_server('localhost', 8443):
+                if check_oxd_server('localhost', self.oxd_port):
                     print "oxd server seems good."
                 else:
                     print "oxd server health status seems not good. Please check oxd server."
@@ -96,26 +108,22 @@ class casaUpdate(object):
             prompt_default = '{}:8443'.format(self.casa_conf_js['oxd_config']['host'])
             oxd_server_address = setupObject.getPrompt("Enter oxd server and port", defaultValue=prompt_default)
 
-            oxd_port = 8443
-            oxd_host = self.casa_conf_js['oxd_config']['host']
+            self.oxd_host = self.casa_conf_js['oxd_config']['host']
             
             if ':' in oxd_server_address:
                 try:
-                    oxd_host, oxd_port = oxd_server_address.split(':')
+                    self.oxd_host, self.oxd_port = oxd_server_address.split(':')
                 except:
                     pass
             else:
-                oxd_host = oxd_server_address.strip()
+                self.oxd_host = oxd_server_address.strip()
 
-            if not check_oxd_server(oxd_host, oxd_port):
+            if not check_oxd_server(self.oxd_host, self.oxd_port):
                 print "oxd server {}:8443 health status seems not good. Please download".format(oxd_host,oxd_port)
                 print "https://raw.githubusercontent.com/GluuFederation/oxd/version_4.0/upgrade/oxd_updater.py"
                 print "on your oxd server and perform upgrade."
                 return False
-            
-            self.casa_conf_js['oxd_config']['host'] = oxd_host
-            self.casa_conf_js['oxd_config']['port'] = oxd_port
-            
+
             print "oxd server seems good."
         
         return True
@@ -130,25 +138,47 @@ class casaUpdate(object):
         return ldif_temp
 
 
+    def download_extract_package(self):
+    
+        cwdir = os.path.join(cur_dir, 'temp')
+    
+        if setupObject.os_type in ('debian', 'ubuntu'):
+            print "Downloading", self.deb_package
+            setupObject.run(['wget', '-nv', self.deb_package, '-O', os.path.join(cur_dir, 'temp', 'gluu-casa.deb')])
+            print "Extracting", self.deb_package
+            setupObject.run(['dpkg', '-x', 'gluu-casa.deb', cwdir], cwd=cwdir)
+        else:
+            print "Downloading", self.rpm_package
+            setupObject.run(['wget', '-nv', self.rpm_package, '-O', os.path.join(cur_dir, 'temp', 'gluu-casa.rpm')])
+            print "Extracting", self.rpm_package
+            setupObject.run(['rpm2cpio gluu-casa.rpm | cpio -idvm' ], shell=True, cwd=cwdir)
+
     def update_casa(self):
 
-        print "Downloading Casa"
-        setupObject.run(['wget', '-nv', 'https://ox.gluu.org/maven/org/gluu/casa/{0}/casa-{0}.war'.format(self.current_version), '-O', os.path.join(setupObject.distGluuFolder, 'casa.war')])
-        print "Downloading Twillo"
-        setupObject.run(['wget', '-nv', 'http://central.maven.org/maven2/com/twilio/sdk/twilio/7.17.0/twilio-7.17.0.jar', '-O', os.path.join(setupObject.distGluuFolder, 'twilio-7.17.0.jar')])
+        print "Updating Casa"
+        
+        print "Stopping Casa Service"
+        setupObject.run_service_command('casa', 'stop')
 
         try:
             self.casa_conf_js['oxd_config'].pop('use_https_extension')
             self.casa_conf_js['oxd_config'].pop('client')
         except:
             pass
+        
+        self.casa_conf_js['oxd_config']['port'] = self.oxd_port
+        self.casa_conf_js['ldap_settings']['config_file'] = setupObject.ox_ldap_properties
+        self.casa_conf_js['ldap_settings']['ox-ldap_location'] = None
+
+        if self.oxd_host:
+            self.casa_conf_js['oxd_config']['host'] = self.oxd_host
 
         jettyServiceOxAuthCustomLibsPath = os.path.join(setupObject.jetty_base, 'oxauth', 'custom', 'libs')
         casa_base = os.path.join(setupObject.jetty_base, 'casa', 'webapps')
         
-        setupObject.run(['cp', '-f', os.path.join(setupObject.distGluuFolder, 'casa.war'), casa_base])
+        setupObject.run(['cp', '-f', os.path.join(cur_dir, 'temp/opt/gluu-server/opt/dist/gluu/casa.war'), casa_base])
         setupObject.run(['chown', '-R', 'jetty:jetty', casa_base])
-        setupObject.run(['cp', '-f', os.path.join(setupObject.distGluuFolder, 'twilio-7.17.0.jar') , jettyServiceOxAuthCustomLibsPath])
+        setupObject.run(['cp', '-f', os.path.join(cur_dir, 'temp/opt/gluu-server/opt/dist/gluu/twilio-7.17.0.jar'), jettyServiceOxAuthCustomLibsPath])
         setupObject.run(['chown', '-R', 'jetty:jetty', jettyServiceOxAuthCustomLibsPath])
 
         casa_default_fn = os.path.join(setupObject.osDefault, 'casa')
@@ -210,6 +240,7 @@ class casaUpdate(object):
 
 
     def import_oxd_certificate2javatruststore(self):
+        print "Importing oxd certificate"
         setupObject.logIt("Importing oxd certificate")
         
         oxd_cert = ssl.get_server_certificate((self.casa_conf_js['oxd_config']['host'], self.casa_conf_js['oxd_config']['port']))
@@ -230,8 +261,15 @@ if __name__ == '__main__':
     setupObject.logError = os.path.join(setup_dir, 'casa_update_error.log')
     setupObject.os_initdaemon = setupObject.detect_initd()
     setupObject.os_type, setupObject.os_version = setupObject.detect_os_type()
+    
     updaterObj = casaUpdate()
     updaterObj.check_if_gluu_upgarded()
-    updaterObj.check_and_update_oxd()
-    updaterObj.update_casa()
-    updaterObj.import_oxd_certificate2javatruststore()
+
+    updaterObj.download_extract_package()
+    
+    if updaterObj.check_and_update_oxd():
+        updaterObj.update_casa()
+        updaterObj.import_oxd_certificate2javatruststore()
+    else:
+        print "Please fix oxd update and re-run this script. Exiting for now ..."
+

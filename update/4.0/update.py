@@ -847,26 +847,9 @@ class GluuUpdater:
                 
                 oxAuthConfDynamic['shareSubjectIdBetweenClientsWithSameSectorId'] = True
 
-                oxAuthConfStatic = {
-                                    "baseDn":{
-                                        "configuration":"ou=configuration,o=gluu",
-                                        "people":"ou=people,o=gluu",
-                                        "groups":"ou=groups,o=gluu",
-                                        "clients":"ou=clients,o=gluu",
-                                        "tokens":"ou=tokens,o=gluu",
-                                        "scopes":"ou=scopes,o=gluu",
-                                        "attributes":"ou=attributes,o=gluu",
-                                        "scripts": "ou=scripts,o=gluu",
-                                        "umaBase":"ou=uma,o=gluu",
-                                        "umaPolicy":"ou=policies,ou=uma,o=gluu",
-                                        "u2fBase":"ou=u2f,o=gluu",
-                                        "metric":"ou=statistic,o=metric",
-                                        "sectorIdentifiers": "ou=sector_identifiers,o=gluu"
-                                    }
-                                }
+                oxAuthConfStatic = setupObject.readFile(os.path.join(cur_dir, 'setup', 'templates', 'oxauth-static-conf.json'))
 
-
-                new_entry['oxAuthConfStatic'][0] = json.dumps(oxAuthConfStatic, indent=2)
+                new_entry['oxAuthConfStatic'][0] = oxAuthConfStatic
 
 
             elif 'oxTrustConfApplication' in new_entry:
