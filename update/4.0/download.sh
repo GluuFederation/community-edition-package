@@ -16,6 +16,8 @@ wget -nv https://ox.gluu.org/maven/org/forgerock/opendj/opendj-server-legacy/4.0
 wget -nv https://nodejs.org/dist/v12.6.0/node-v12.6.0-linux-x64.tar.xz -O app/node-v12.6.0-linux-x64.tar.xz
 wget -nv https://repo1.maven.org/maven2/org/eclipse/jetty/jetty-distribution/9.4.19.v20190610/jetty-distribution-9.4.19.v20190610.tar.gz -O app/jetty-distribution-9.4.19.v20190610.tar.gz
 wget -nv https://raw.githubusercontent.com/GluuFederation/oxTrust/master/configuration/src/main/resources/META-INF/shibboleth3/idp/saml-nameid.properties.vm -O app/saml-nameid.properties.vm
+wget -nv https://raw.githubusercontent.com/GluuFederation/community-edition-package/master/update/4.0/update_casa.py -O update_casa.py
+
 
 if [ ! -f "jsonmerge" ] 
 then
@@ -36,4 +38,5 @@ mv /tmp/community-edition-setup-master ./setup
 touch setup/__init__.py
 
 chmod +x update.py
+chmod +x update_casa.py
 

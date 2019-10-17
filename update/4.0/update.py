@@ -183,6 +183,8 @@ class GluuUpdater:
                 '2DAF-F995': '2DAF-F9A5'
             }
 
+        self.update_casa_script = os.path.join(cur_dir,'update_casa.py')
+
     def determine_ldap_type(self):
 
         ox_ldap_prop_fn_list = glob.glob('/etc/gluu/conf/ox-ldap.properties*')
@@ -318,12 +320,14 @@ class GluuUpdater:
                         ('https://repo1.maven.org/maven2/org/eclipse/jetty/jetty-distribution/{0}/jetty-distribution-{0}.tar.gz'.format(setupObject.jetty_version), os.path.join(self.app_dir, 'jetty-distribution-{0}.tar.gz'.format(setupObject.jetty_version))),
                         ('https://ox.gluu.org/maven/org/forgerock/opendj/opendj-server-legacy/{0}/opendj-server-legacy-{0}.zip'.format(self.wrends_version_number), os.path.join(self.app_dir, 'opendj-server-legacy-{0}.zip'.format(self.wrends_version_number))),
                         ('https://nodejs.org/dist/v{0}/node-v{0}-linux-x64.tar.xz'.format(setupObject.node_version), os.path.join(self.app_dir, 'node-v{0}-linux-x64.tar.xz'.format(setupObject.node_version))),
-                        ('https://raw.githubusercontent.com/GluuFederation/oxTrust/master/configuration/src/main/resources/META-INF/shibboleth3/idp/saml-nameid.properties.vm', os.path.join(self.app_dir,'saml-nameid.properties.vm'))
+                        ('https://raw.githubusercontent.com/GluuFederation/oxTrust/master/configuration/src/main/resources/META-INF/shibboleth3/idp/saml-nameid.properties.vm', os.path.join(self.app_dir,'saml-nameid.properties.vm')),
+                        ('https://raw.githubusercontent.com/GluuFederation/community-edition-package/master/update/4.0/update_casa.py', self.update_casa_script),
                     ):
 
             print "Downaloading", download_link
             setupObject.run(['wget', '-nv', download_link, '-O', out_file])
 
+        setupObject.run(['chmod', '+x', self.update_casa_script])
 
     def update_war(self):
 
@@ -1786,7 +1790,8 @@ if __name__ == '__main__':
 
     if os.path.exists(os.path.join(setupObject.jetty_base,'casa')):
         print "\033[93mCasa installation was detected."
-        print "Please run 'update_casa.py' script before restarting Gluu Server.\033[0m"
+        print "Please run ", updaterObj.update_casa_script
+        print "script before restarting Gluu Server.\033[0m"
 
     print "Please logout from container and restart Gluu Server"
     print "Notes:"
