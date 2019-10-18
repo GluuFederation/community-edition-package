@@ -12,6 +12,11 @@ import time
 cur_dir = os.path.dirname(os.path.realpath(__file__))
 setup_dir = os.path.join(cur_dir, 'setup')
 
+if not os.path.exists('/opt/dist/gluu/oxauth.war'):
+    print "Please run this script inside the Gluu container. Exiting..."
+    sys.exit()
+
+
 if not os.path.exists(setup_dir):
     print "setup directory does not exists. Please first run Gluu Server upgrader script. Exiting..."
     sys.exit()

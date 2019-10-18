@@ -1790,7 +1790,7 @@ if __name__ == '__main__':
 
     if os.path.exists(os.path.join(setupObject.jetty_base,'casa')):
         print "\033[93mCasa installation was detected."
-        print "Please run ", updaterObj.update_casa_script
+        print "Please run (inside container)", updaterObj.update_casa_script
         print "script before restarting Gluu Server.\033[0m"
 
     print "Please logout from container and restart Gluu Server"
