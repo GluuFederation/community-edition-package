@@ -299,6 +299,11 @@ class casaUpdate(object):
 
         self.import_oxd_certificate2javatruststore()
 
+        setupObject.writeFile(
+                os.path.join(setupObject.jetty_base, 'casa/.administrable'),
+                ''
+                )
+
         print "Starting Casa"
         setupObject.run_service_command('casa', 'start')
 
