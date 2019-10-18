@@ -266,7 +266,7 @@ class casaUpdate(object):
                     ldap_conn = ldap.initialize('ldaps://{}'.format(ldap_host))
                     ldap_conn.simple_bind_s(ldap_p['bindDN'], ldap_password)
                     
-                    result=ldap_conn.search_s('ou=scripts,o=gluu',ldap.SCOPE_SUBTREE,'(inum=BABA.CACA)')
+                    result=ldap_conn.search_s('ou=scripts,o=gluu',ldap.SCOPE_SUBTREE,'(displayName=casa)')
                     
                     if result:
                         dn = result[0][0]
