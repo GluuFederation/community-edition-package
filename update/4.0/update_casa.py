@@ -230,8 +230,8 @@ class casaUpdate(object):
         setupObject.copyFile(os.path.join(cur_dir, 'casa', 'casa.xhtml'), custom_page_dir)
 
         lib_dir = os.path.join(setupObject.gluuOptPythonFolder, 'libs')
-        
-        for script in glob.glob(os.path.join(cur_dir, 'casa', 'pylib','*')):
+
+        for script in glob.glob(os.path.join(cur_dir, 'temp/opt/gluu-server/opt/gluu/python/libs/*')):
             setupObject.copyFile(script, lib_dir)
 
         #write json config file
