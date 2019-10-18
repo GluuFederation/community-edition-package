@@ -27,6 +27,11 @@ from setup.setup import Setup
 
 from setup.pylib.Properties import Properties
 
+import ldap
+import ldap.modlist as modlist
+ldap.set_option(ldap.OPT_X_TLS_REQUIRE_CERT, ldap.OPT_X_TLS_ALLOW)
+
+
 def check_oxd_server(host, port):
     conn = httplib.HTTPSConnection (host, port, context=ssl._create_unverified_context())
     
@@ -205,13 +210,17 @@ class casaUpdate(object):
         casa_plugins_dir = os.path.join(setupObject.jetty_base, 'casa', 'plugins')
 
         #since download links are not ready, I put dummy links
-        plugin_upgrades = {'authorized-clients': 'https://casa.gluu.org/wp-content/uploads/2019/10/authorized-clients-4.0.Final-jar-with-dependencies.jar',
-                           'strong-authn-settings': 'https://casa.gluu.org/wp-content/uploads/2019/10/custom-branding-4.0.Final-jar-with-dependencies.jar',
-                           'account-linking': 'https://casa.gluu.org/wp-content/uploads/2019/10/account-linking-4.0.Final-jar-with-dependencies.jar',
-                           'inwebo-plugin': 'https://casa.gluu.org/wp-content/uploads/2019/10/inwebo-plugin-4.0.Final-jar-with-dependencies.jar.zip',
+        plugin_upgrades = {
+                            'authorized-clients': 'https://casa.gluu.org/wp-content/uploads/2019/10/authorized-clients-4.0.Final-jar-with-dependencies.jar',
+                            'custom-branding': 'https://casa.gluu.org/wp-content/uploads/2019/10/custom-branding-4.0.Final-jar-with-dependencies.jar',
+                            'strong-authn-settings': 'https://casa.gluu.org/wp-content/uploads/2019/10/strong-authn-settings-4.0.Final-jar-with-dependencies.jar',
+                            'account-linking': 'https://casa.gluu.org/wp-content/uploads/2019/10/account-linking-4.0.Final-jar-with-dependencies.jar',
+                            'inwebo-plugin': 'https://casa.gluu.org/wp-content/uploads/2019/10/inwebo-plugin-4.0.Final-jar-with-dependencies.jar.zip',
                            }
 
-        for plugin in self.casa_conf_js.get('plugins', []):
+        casa_plugins = self.casa_conf_js.get('plugins', []) 
+
+        for plugin in casa_plugins:
 
             if plugin['id'] in plugin_upgrades:
                 plugin_fn = os.path.join(casa_plugins_dir, plugin['relativePath'])
@@ -224,9 +233,42 @@ class casaUpdate(object):
                     print "Downloading", plugin_upgrades[plugin['id']]
                     setupObject.run(['wget', '-nv', plugin_upgrades[plugin['id']], '-O', new_plugin_fn])
 
-        custom_page_dir = os.path.join(setupObject.jetty_base, 'oxauth', 'custom', 'pages')
-        setupObject.backupFile(os.path.join(custom_page_dir, 'casa.xhtml'))
-        setupObject.copyFile(os.path.join(cur_dir, 'casa', 'casa.xhtml'), custom_page_dir)
+                if plugin['id'] == 'account-linking':
+                    account_linking_src_dir = os.path.join(cur_dir, 'account-linking')
+                    
+                    setupObject.copyFile(os.path.join(account_linking_src_dir, 'casa.xhtml'), 
+                                        os.path.join(setupObject.jetty_base, 'oxauth', 'custom', 'pages')
+                                        )
+                    setupObject.copyFile(os.path.join(account_linking_src_dir, 'casa.xhtml'), 
+                                        os.path.join(setupObject.jetty_base, 'oxauth', 'custom', 'pages')
+                                        )
+    
+                    ldap_p=Properties()
+
+                    with open(setupObject.ox_ldap_properties) as f:
+                        ldap_p.load(f)
+
+                    ldap_password = os.popen('/opt/gluu/bin/encode.py -D ' + ldap_p['bindPassword']).read().strip()
+
+                    ldap_host = ldap_p['servers'].split(',')[0].strip()
+                    
+                    ldap_conn = ldap.initialize('ldaps://{}'.format(ldap_host))
+                    ldap_conn.simple_bind_s(ldap_p['bindDN'], ldap_password)
+                    
+                    result=ldap_conn.search_s('ou=scripts,o=gluu',ldap.SCOPE_SUBTREE,'(inum=BABA-CACA)')
+                    
+                    if result:
+                        dn = result[0][0]
+                        oxLevel = int(result[0][1]['oxLevel'][0]) + 1
+                        oxScript = setupObject.readFile(
+                                    os.path.join(account_linking_src_dir, 'casa.py')
+                                    )
+
+                        ldap_conn.modify_s(dn, [
+                                                ( ldap.MOD_REPLACE, 'oxLevel',  str(oxLevel)),
+                                                ( ldap.MOD_REPLACE, 'oxScript',  oxScript),
+                                                ]
+                                            )
 
         lib_dir = os.path.join(setupObject.gluuOptPythonFolder, 'libs')
 
