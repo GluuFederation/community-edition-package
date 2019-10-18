@@ -389,6 +389,8 @@ class GluuUpdater:
         
         print "Parsing LDIF File. This may take a while"
         
+        print self.current_ldif_fn
+        
         self.ldif_parser = MyLDIF(open(self.current_ldif_fn))
         self.ldif_parser.parse()
 
@@ -590,6 +592,9 @@ class GluuUpdater:
 
         attributes_parser = pureLDIFParser(open(os.path.join(self.template_dir, 'attributes.ldif')))
         attributes_parser.parse()
+
+        gluuSAML2URI_n = 400
+
 
         processed_fp = open(self.processed_ldif_fn,'w')
         self.ldif_writer = LDIFWriter(processed_fp)
@@ -825,8 +830,7 @@ class GluuUpdater:
                 self.do_config_changes(oxAuthConfDynamic, oxAuthConfDynamic_config_changes)
 
                 new_entry['oxAuthConfDynamic'][0] = json.dumps(oxAuthConfDynamic, indent=2)
-                
-                
+
                 ##########################
                 
                 
@@ -854,7 +858,7 @@ class GluuUpdater:
                 oxAuthConfStatic = setupObject.readFile(os.path.join(cur_dir, 'setup', 'templates', 'oxauth-static-conf.json'))
 
                 new_entry['oxAuthConfStatic'][0] = oxAuthConfStatic
-
+                
 
             elif 'oxTrustConfApplication' in new_entry:
                 oxTrustConfApplication = json.loads(new_entry['oxTrustConfApplication'][0])
@@ -1115,13 +1119,20 @@ class GluuUpdater:
             #Fix attributes
             if 'gluuAttribute' in new_entry['objectClass']:
                 new_entry['gluuSAML1URI'] = [ 'urn:mace:dir:attribute-def:' + new_entry['gluuAttributeName'][0] ]
-                new_entry['gluuSAML2URI'] = attributes_parser.entries[new_dn]['gluuSAML2URI']
-                if  new_entry['gluuAttributeName'][0] in attribute_type_changes:
-                    new_entry['gluuAttributeType'] = [attribute_type_changes[new_entry['gluuAttributeName'][0]]]
+                
+                if not 'gluuSAML2URI' in new_entry:
+                
+                    if new_dn in attributes_parser.entries:
+                        new_entry['gluuSAML2URI'] = attributes_parser.entries[new_dn]['gluuSAML2URI']
+                    else:
+                        new_entry['gluuSAML2URI'] = [ 'urn:oid:1.3.6.1.4.1.48710.1.3.{}'.format(gluuSAML2URI_n) ]
+                        gluuSAML2URI_n += 1
+                    
+                    if  new_entry['gluuAttributeName'][0] in attribute_type_changes:
+                        new_entry['gluuAttributeType'] = [attribute_type_changes[new_entry['gluuAttributeName'][0]]]
 
             #Write modified entry to ldif
             self.write2ldif(new_dn, new_entry)
-
 
         self.add_new_scripts()
         self.add_new_entries()
@@ -1768,8 +1779,10 @@ if __name__ == '__main__':
 
     updaterObj.install_opendj()
     updaterObj.update_schema()
+
     updaterObj.parse_current_ldif()
     updaterObj.process_ldif()
+
     updaterObj.update_conf_files()
     updaterObj.import_ldif2ldap()
 
