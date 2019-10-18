@@ -289,6 +289,11 @@ class casaUpdate(object):
         setupObject.run(['rm', '-f', os.path.join(cur_dir, 'temp', self.casa_package)])
         setupObject.run(['rm', '-r', '-f', os.path.join(cur_dir, 'temp/opt')])
 
+        self.import_oxd_certificate2javatruststore()
+
+        print "Starting Casa"
+        setupObject.run_service_command('casa', 'start')
+
     def import_oxd_certificate2javatruststore(self):
         print "Importing oxd certificate"
         setupObject.logIt("Importing oxd certificate")
@@ -319,7 +324,6 @@ if __name__ == '__main__':
     
     if updaterObj.check_and_update_oxd():
         updaterObj.update_casa()
-        updaterObj.import_oxd_certificate2javatruststore()
     else:
         print "Please fix oxd update and re-run this script. Exiting for now ..."
 
