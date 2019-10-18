@@ -693,7 +693,7 @@ class GluuUpdater:
                 
                         ('organizationInum', 'remove', 'entry', None),
                         ('applianceInum', 'remove', 'entry', None),
-                
+                        ('claimsParameterSupported', 'change', 'entry', False),
                         ("baseEndpoint", 'change', 'entry', "https://{0}/oxauth/restv1".format(setupObject.hostname)),
                         ("authorizationEndpoint", 'change', 'entry', "https://{0}/oxauth/restv1/authorize".format(setupObject.hostname)),
                         ("tokenEndpoint", 'change', 'entry', "https://{0}/oxauth/restv1/token".format(setupObject.hostname)),
@@ -1790,7 +1790,7 @@ if __name__ == '__main__':
 
     if os.path.exists(os.path.join(setupObject.jetty_base,'casa')):
         print "\033[93mCasa installation was detected."
-        print "Please run (inside container)", updaterObj.update_casa_script
+        print "Please run ", updaterObj.update_casa_script
         print "script before restarting Gluu Server.\033[0m"
 
     print "Please logout from container and restart Gluu Server"
