@@ -146,17 +146,21 @@ class casaUpdate(object):
     def download_extract_package(self):
     
         cwdir = os.path.join(cur_dir, 'temp')
+        
     
         if setupObject.os_type in ('debian', 'ubuntu'):
             print "Downloading", self.deb_package
-            setupObject.run(['wget', '-nv', self.deb_package, '-O', os.path.join(cur_dir, 'temp', 'gluu-casa.deb')])
+            self.casa_package = 'gluu-casa.deb'
+            setupObject.run(['wget', '-nv', self.deb_package, '-O', os.path.join(cur_dir, 'temp', self.casa_package)])
             print "Extracting", self.deb_package
-            setupObject.run(['dpkg', '-x', 'gluu-casa.deb', cwdir], cwd=cwdir)
+            setupObject.run(['dpkg', '-x', self.casa_package, cwdir], cwd=cwdir)
         else:
             print "Downloading", self.rpm_package
-            setupObject.run(['wget', '-nv', self.rpm_package, '-O', os.path.join(cur_dir, 'temp', 'gluu-casa.rpm')])
+            self.casa_package = 'gluu-casa.rpm'
+            setupObject.run(['wget', '-nv', self.rpm_package, '-O', os.path.join(cur_dir, 'temp', self.casa_package)])
             print "Extracting", self.rpm_package
-            setupObject.run(['rpm2cpio gluu-casa.rpm | cpio -idvm' ], shell=True, cwd=cwdir)
+            cmd = 'rpm2cpio {0} | cpio -idvm'.format(self.casa_package)
+            setupObject.run([cmd], shell=True, cwd=cwdir)
 
     def update_casa(self):
 
@@ -218,7 +222,7 @@ class casaUpdate(object):
                             'inwebo-plugin': 'https://casa.gluu.org/wp-content/uploads/2019/10/inwebo-plugin-4.0.Final-jar-with-dependencies.jar.zip',
                            }
 
-        casa_plugins = self.casa_conf_js.get('plugins', []) 
+        casa_plugins = self.casa_conf_js.pop('plugins') if 'plugins' in self.casa_conf_js else []
 
         for plugin in casa_plugins:
 
@@ -242,7 +246,9 @@ class casaUpdate(object):
                     setupObject.copyFile(os.path.join(account_linking_src_dir, 'casa.xhtml'), 
                                         os.path.join(setupObject.jetty_base, 'oxauth', 'custom', 'pages')
                                         )
-    
+                    
+                    print "Updating casa.py in ldap"
+
                     ldap_p=Properties()
 
                     with open(setupObject.ox_ldap_properties) as f:
@@ -278,7 +284,10 @@ class casaUpdate(object):
         #write json config file
         casa_conf = json.dumps(self.casa_conf_js, indent=2)
         setupObject.writeFile(self.casa_config_fn, casa_conf)        
-
+    
+        print "Removing temporary files"
+        setupObject.run(['rm', '-f', os.path.join(cur_dir, 'temp', self.casa_package)])
+        setupObject.run(['rm', '-r', '-f', os.path.join(cur_dir, 'temp/opt')])
 
     def import_oxd_certificate2javatruststore(self):
         print "Importing oxd certificate"
