@@ -160,12 +160,10 @@ class casaUpdate(object):
         print "Stopping Casa Service"
         setupObject.run_service_command('casa', 'stop')
 
-        try:
-            self.casa_conf_js['oxd_config'].pop('use_https_extension')
-            self.casa_conf_js['oxd_config'].pop('client')
-        except:
-            pass
-        
+        for a in ('use_https_extension', 'client'):
+            if a in self.casa_conf_js['oxd_config']:
+                self.casa_conf_js['oxd_config'].pop(a)
+
         self.casa_conf_js['oxd_config']['port'] = self.oxd_port
         self.casa_conf_js['ldap_settings']['config_file'] = setupObject.ox_ldap_properties
         self.casa_conf_js['ldap_settings']['ox-ldap_location'] = None
@@ -207,9 +205,10 @@ class casaUpdate(object):
         casa_plugins_dir = os.path.join(setupObject.jetty_base, 'casa', 'plugins')
 
         #since download links are not ready, I put dummy links
-        plugin_upgrades = {'authorized-clients': 'https://ox.gluu.org/maven/org/gluu/casa/4.0.b2/',
-                           'strong-authn-settings': 'https://ox.gluu.org/maven/org/gluu/casa/4.0.b2/',
-                           'account-linking': 'https://ox.gluu.org/maven/org/gluu/casa/4.0.b2/',
+        plugin_upgrades = {'authorized-clients': 'https://casa.gluu.org/wp-content/uploads/2019/10/authorized-clients-4.0.Final-jar-with-dependencies.jar',
+                           'strong-authn-settings': 'https://casa.gluu.org/wp-content/uploads/2019/10/custom-branding-4.0.Final-jar-with-dependencies.jar',
+                           'account-linking': 'https://casa.gluu.org/wp-content/uploads/2019/10/account-linking-4.0.Final-jar-with-dependencies.jar',
+                           'inwebo-plugin': 'https://casa.gluu.org/wp-content/uploads/2019/10/inwebo-plugin-4.0.Final-jar-with-dependencies.jar.zip',
                            }
 
         for plugin in self.casa_conf_js.get('plugins', []):
@@ -221,9 +220,9 @@ class casaUpdate(object):
                     setupObject.run(['rm', '-f', plugin_fn])
                 
                 if plugin['state'] == 'STARTED':
-                    setupObject.run(['wget', plugin_upgrades[plugin['id']], '-O', plugin_fn])
-                    plugin['relativePath'] = os.path.basename(plugin_upgrades[plugin['id']])
-
+                    new_plugin_fn = os.path.join(casa_plugins_dir, os.path.basename(plugin_upgrades[plugin['id']]))
+                    print "Downloading", plugin_upgrades[plugin['id']]
+                    setupObject.run(['wget', '-nv', plugin_upgrades[plugin['id']], '-O', new_plugin_fn])
 
         custom_page_dir = os.path.join(setupObject.jetty_base, 'oxauth', 'custom', 'pages')
         setupObject.backupFile(os.path.join(custom_page_dir, 'casa.xhtml'))
