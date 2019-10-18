@@ -290,6 +290,9 @@ class casaUpdate(object):
         casa_conf = json.dumps(self.casa_conf_js, indent=2)
         setupObject.writeFile(self.casa_config_fn, casa_conf)        
     
+        for setup_script in glob.glob( os.path.join(cur_dir, 'temp', 'opt/gluu-server/install/community-edition-setup/*.*')):
+            setupObject.copyFile(setup_script, '/install/community-edition-setup')
+    
         print "Removing temporary files"
         setupObject.run(['rm', '-f', os.path.join(cur_dir, 'temp', self.casa_package)])
         setupObject.run(['rm', '-r', '-f', os.path.join(cur_dir, 'temp/opt')])
