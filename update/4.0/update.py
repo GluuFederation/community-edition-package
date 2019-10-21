@@ -388,9 +388,7 @@ class GluuUpdater:
     def parse_current_ldif(self):
         
         print "Parsing LDIF File. This may take a while"
-        
-        print self.current_ldif_fn
-        
+                
         self.ldif_parser = MyLDIF(open(self.current_ldif_fn))
         self.ldif_parser.parse()
 
@@ -586,6 +584,18 @@ class GluuUpdater:
 
         return new_entry
 
+
+    def remove_inum_dn(self, dn):
+        dn_dn = str2dn(dn)
+
+        for di in dn_dn:
+            if di[0][0] == 'inum':
+                dn_dn.remove(di)
+
+        return dn2str(dn_dn)
+
+
+
     def process_ldif(self):
 
         print "Processing ldif. This may take a while ...."
@@ -599,11 +609,48 @@ class GluuUpdater:
         processed_fp = open(self.processed_ldif_fn,'w')
         self.ldif_writer = LDIFWriter(processed_fp)
 
+        authorizationsParentExists = not 'ou=authorizations,o=gluu' in self.ldif_parser.DNs
 
-        for dn in self.ldif_parser.DNs:
+        for dn_counter, dn in enumerate(self.ldif_parser.DNs):
             dn = str(dn)
-
             new_entry = self.ldif_parser.entries[dn]
+            if dn_counter == 3 and authorizationsParentExists:
+                self.write2ldif('ou=authorizations,o=gluu', {'objectClass':['top','organizationalunit'], 'ou': ['authorizations'] })
+                
+            if 'oxClientAuthorizations' in new_entry['objectClass']:
+                new_entry['objectClass'].remove('oxClientAuthorizations')
+                new_entry['objectClass'].append('oxClientAuthorization')
+
+                if 'oxAuthClientId' in new_entry:
+                    new_entry['oxAuthClientId'][0] = self.inum2uuid(new_entry['oxAuthClientId'][0])
+                
+                if 'inum' in new_entry:
+                    old_inum = new_entry['inum'][0]
+                    new_inum = inum2uuid(old_inum)
+                    new_entry['inum'][0] = new_inum
+
+                dn_dn = str2dn(dn)
+
+                new_dn_dn = []
+
+                for di in dn_dn:
+                    if di[0][0] == 'inum':
+                        new_entry['oxAuthUserId'] = [ self.inum2uuid(di[0][1]) ]
+                    elif di[0][0] == 'ou' and (di[0][1] == 'oxClientAuthorizations' or di[0][1] == 'clientAuthorizations'):
+                        new_dn_dn.append( [('ou', 'authorizations', 1)] )
+                    elif di[0][0] == 'ou' and di[0][1] == 'people':
+                       continue
+                    else:
+                        new_dn_dn.append(di)
+
+                dn = dn2str(new_dn_dn)
+
+            elif 'ou=fido' in dn:
+                dn_dn = str2dn(dn)
+                for i, di in enumerate(dn_dn):
+                    if di[0][0] == 'inum':
+                        dn_dn[i] = [('inum', self.inum2uuid(di[0][1]), 1)]
+                dn = dn2str(dn_dn)
 
             # we don't need existing scripts won't work in 4.0, passing
             if 'oxCustomScript' in new_entry['objectClass']:
@@ -640,6 +687,8 @@ class GluuUpdater:
 
             dne = explode_dn(dn)
 
+            
+
             if self.inumOrg_ou in dne:
                 dne.remove(self.inumOrg_ou)
 
@@ -651,7 +700,7 @@ class GluuUpdater:
                     dne.insert(0,'ou=configuration')
                     new_entry['ou'] = 'configuration'
                     new_entry['objectClass'].insert(1, 'organizationalUnit')
-                    
+            
                 
             new_dn = ','.join(dne)
 
@@ -965,8 +1014,7 @@ class GluuUpdater:
 
 
             if 'ou=configuration,o=gluu' == new_dn:
-                
-                
+
                 # we need to set authentication mode to ldap
                 new_entry['oxAuthenticationMode'] =  ['auth_ldap_server']
                 new_entry['oxTrustAuthenticationMode'] = ['auth_ldap_server']
@@ -1461,8 +1509,7 @@ class GluuUpdater:
     def import_ldif2ldap(self):
         print "Stopping WrenDS"
         setupObject.run_service_command('opendj', 'stop')
-        setupObject.run(['rm', '-f', 'opendj_rejects.txt'])
-        setupObject.run(['rm', '-f', 'opendj_skips.txt'])
+
         print "Importing processed ldif"
         
         ldif2import = [ ('o=gluu', 'userRoot', os.path.join(cur_dir, 'gluu_noinum.ldif')), 
@@ -1471,13 +1518,24 @@ class GluuUpdater:
 
         for includeBranch, backendID, ldifFile in ldif2import:
         
-            setupObject.run(['/opt/opendj/bin/import-ldif', '--offline', 
+            rejects_file = 'opendj_rejects_{}.txt'.format(backendID)
+            skips_file = 'opendj_skips_{}.txt'.format(backendID)
+            setupObject.run(['rm', '-f', rejects_file])
+            setupObject.run(['rm', '-f', skips_file])
+        
+            result = setupObject.run(['/opt/opendj/bin/import-ldif', '--offline', 
                                 '--includeBranch', includeBranch, 
                                 '--backendID', backendID, 
                                 '--ldifFile', ldifFile, 
-                                '--rejectFile', 'opendj_rejects.txt', 
-                                '--skipFile', 'opendj_skips.txt'
+                                '--rejectFile', rejects_file, 
+                                '--skipFile', skips_file
                                 ], env={'OPENDJ_JAVA_HOME': setupObject.jre_home})
+                                
+            if 'The import has been aborted because the entry' in result:
+                print "\033[31mIt seems not all entries are imported "
+                print  result
+                print "\033[0m"
+
         print "Starting WrenDS"
         setupObject.run_service_command('opendj', 'start')
         
@@ -1659,7 +1717,7 @@ if __name__ == '__main__':
 
     from setup.pylib.ldif import LDIFParser, LDIFWriter, ParseLDIF
     from setup.setup import Setup
-    from ldap.dn import explode_dn, str2dn
+    from ldap.dn import explode_dn, str2dn, dn2str
     from setup.pylib.Properties import Properties
 
 
@@ -1771,7 +1829,6 @@ if __name__ == '__main__':
 
     updaterObj.dump_current_db()
 
-
     updaterObj.update_apache_conf()
     updaterObj.update_passport()
 
@@ -1779,11 +1836,19 @@ if __name__ == '__main__':
 
     updaterObj.install_opendj()
     updaterObj.update_schema()
-
     updaterObj.parse_current_ldif()
+
     updaterObj.process_ldif()
 
     updaterObj.update_conf_files()
+
+    c = ''
+
+    while not c.lower() == 'c':
+        print "If you have custom ldap schema, add them now and press \033[92mc\033[0m"
+        print "If yuo don't have any custom schema you can continue with pressing \033[92mc\033[0m"
+        c = raw_input('Continue ? ')
+
     updaterObj.import_ldif2ldap()
 
     updaterObj.update_shib()
