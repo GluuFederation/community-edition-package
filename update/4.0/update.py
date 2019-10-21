@@ -620,6 +620,9 @@ class GluuUpdater:
             if 'oxClientAuthorizations' in new_entry['objectClass']:
                 new_entry['objectClass'].remove('oxClientAuthorizations')
                 new_entry['objectClass'].append('oxClientAuthorization')
+                
+                if dn.startswith('oxId'):
+                    new_entry['oxAuthScope'].append('oxd')
 
                 if 'oxAuthClientId' in new_entry:
                     new_entry['oxAuthClientId'][0] = self.inum2uuid(new_entry['oxAuthClientId'][0])
