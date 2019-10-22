@@ -73,9 +73,18 @@ class casaUpdate(object):
             print "Casa config file {} was not found. Exiting ...".format(self.casa_config_fn)
             sys.exit()
 
-        casa_conf = setupObject.readFile(self.casa_config_fn)
+        casa_conf = setupObject.readFile(self.get_first_backup(self.casa_config_fn))
         self.casa_conf_js = json.loads(casa_conf)
 
+    def get_first_backup(self, fn):
+        file_list = glob.glob(fn+'.gluu-{0}-*~'.format(setupObject.currentGluuVersion))
+
+        if not file_list:
+            return fn
+
+        file_list.sort(key=lambda fn_: [ c for c in re.split(r'(\d+)', fn_) ])
+
+        return file_list[0]
 
 
     def check_if_gluu_upgarded(self):
