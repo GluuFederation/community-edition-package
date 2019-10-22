@@ -84,6 +84,8 @@ class casaUpdate(object):
 
         file_list.sort(key=lambda fn_: [ c for c in re.split(r'(\d+)', fn_) ])
 
+        print "Using backed up file", file_list[0]
+
         return file_list[0]
 
 
@@ -309,24 +311,33 @@ class casaUpdate(object):
                     ldap_password = os.popen('/opt/gluu/bin/encode.py -D ' + ldap_p['bindPassword']).read().strip()
 
                     ldap_host = ldap_p['servers'].split(',')[0].strip()
+                    ldap_uri = 'ldaps://{}'.format(ldap_host)
+                    setupObject.logIt("Connecting ldap " + ldap_uri)
                     
-                    ldap_conn = ldap.initialize('ldaps://{}'.format(ldap_host))
+                    ldap_conn = ldap.initialize(ldap_uri)
                     ldap_conn.simple_bind_s(ldap_p['bindDN'], ldap_password)
                     
                     result=ldap_conn.search_s('ou=scripts,o=gluu',ldap.SCOPE_SUBTREE,'(inum=BABA-CACA)')
-                    
+
                     if result:
+                        setupObject.logIt("casa script entry in ldap found")
                         dn = result[0][0]
+                        setupObject.logIt("dn of casa script: " + dn)
                         oxLevel = int(result[0][1]['oxLevel'][0]) + 1
                         oxScript = setupObject.readFile(
                                     os.path.join(account_linking_src_dir, 'casa.py')
                                     )
 
-                        ldap_conn.modify_s(dn, [
+                        rm = ldap_conn.modify_s(dn, [
                                                 ( ldap.MOD_REPLACE, 'oxLevel',  str(oxLevel)),
                                                 ( ldap.MOD_REPLACE, 'oxScript',  oxScript),
                                                 ]
                                             )
+                        if rm:
+                            setupObject.logIt("casa script updated")
+                            print "Casa script in ldap was updated"
+                    else:
+                        setupObject.logIt("can't find casa script in ldap")
 
         lib_dir = os.path.join(setupObject.gluuOptPythonFolder, 'libs')
 
@@ -344,13 +355,13 @@ class casaUpdate(object):
         setupObject.run(['rm', '-f', os.path.join(cur_dir, 'temp', self.casa_package)])
         setupObject.run(['rm', '-r', '-f', os.path.join(cur_dir, 'temp/opt')])
 
-        self.import_oxd_certificate2javatruststore()
-
         setupObject.writeFile(
                 os.path.join(setupObject.jetty_base, 'casa/.administrable'),
                 ''
                 )
-
+        
+        updaterObj.import_oxd_certificate2javatruststore()
+        
         print "Starting Casa"
         setupObject.run_service_command('casa', 'start')
 
@@ -360,10 +371,9 @@ class casaUpdate(object):
         
         oxd_cert = ssl.get_server_certificate((self.casa_conf_js['oxd_config']['host'], self.casa_conf_js['oxd_config']['port']))
         oxd_alias = 'oxd_' + self.casa_conf_js['oxd_config']['host'].replace('.','_')
-        oxd_cert_tmp_fn = '/tmp/{}.crt'.format(oxd_alias)
+        oxd_cert_tmp_fn = os.path.join(cur_dir, '{}.crt'.format(oxd_alias))
 
-        with open(oxd_cert_tmp_fn,'w') as w:
-            w.write(oxd_cert)
+        setupObject.writeFile(oxd_cert_tmp_fn, oxd_cert)
 
         setupObject.run(['/opt/jre/jre/bin/keytool', '-import', '-trustcacerts', '-keystore', 
                         '/opt/jre/jre/lib/security/cacerts', '-storepass', 'changeit', 
@@ -379,11 +389,13 @@ if __name__ == '__main__':
     
     updaterObj = casaUpdate()
     updaterObj.check_if_gluu_upgarded()
-
+    
+    
     updaterObj.download_extract_package()
     
     if updaterObj.check_and_update_oxd():
         updaterObj.update_casa()
     else:
         print "Please fix oxd update and re-run this script. Exiting for now ..."
-
+    
+    

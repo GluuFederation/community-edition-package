@@ -185,6 +185,19 @@ class GluuUpdater:
 
         self.update_casa_script = os.path.join(cur_dir,'update_casa.py')
 
+    def get_first_backup(self, fn):
+        file_list = glob.glob(fn+'.gluu-{0}-*~'.format(setupObject.currentGluuVersion))
+
+
+        if not file_list:
+            return fn
+
+        file_list.sort(key=lambda fn_: [ c for c in re.split(r'(\d+)', fn_) ])
+
+        print "Using backed up file", file_list[0]
+
+        return file_list[0]
+
     def determine_ldap_type(self):
 
         ox_ldap_prop_fn_list = glob.glob('/etc/gluu/conf/ox-ldap.properties*')
@@ -1310,7 +1323,7 @@ class GluuUpdater:
 
         if os.path.exists(passport_config_fn):
 
-            cur_config = json.loads(setupObject.readFile(passport_config_fn))
+            cur_config = json.loads(setupObject.readFile(self.get_first_backup(passport_config_fn)))
             
             self.passport_rp_client_id = self.inum2uuid(cur_config['clientId'])
 
@@ -1351,7 +1364,7 @@ class GluuUpdater:
             passport_central_config_js['conf']['logging']['consoleLogOnly'] = cur_config['consoleLogOnly']
 
 
-        inbound_idp_initiated_json_fn = '/etc/gluu/conf/passport-inbound-idp-initiated.json'
+        inbound_idp_initiated_json_fn = self.get_first_backup('/etc/gluu/conf/passport-inbound-idp-initiated.json')
 
         if os.path.exists(inbound_idp_initiated_json_fn):
 
@@ -1378,15 +1391,16 @@ class GluuUpdater:
                                             'scope': ' '.join(inbound_idp_initiated_json[idp]['authorization_params'].get('scope',[])),
                                             }
                                         )
-            setupObject.backupFile(inbound_idp_initiated_json_fn)
-            setupObject.run(['rm', '-f', inbound_idp_initiated_json_fn])
+            if not inbound_idp_initiated_json_fn.endswith('~'):
+                setupObject.backupFile(inbound_idp_initiated_json_fn)
+                setupObject.run(['rm', '-f', inbound_idp_initiated_json_fn])
 
         if not dev_env:
             setupObject.run(['chown', '-R', 'node:node', '/opt/gluu/node/'])
             setupObject.run_service_command('passport', 'start')
 
 
-        passport_saml_config_fn = os.path.join(setupObject.configFolder, 'passport-saml-config.json')
+        passport_saml_config_fn = self.get_first_backup(os.path.join(setupObject.configFolder, 'passport-saml-config.json'))
 
         if self.passport_saml_dn and os.path.exists(passport_saml_config_fn):
 
@@ -1485,8 +1499,9 @@ class GluuUpdater:
                             os.path.join(setupObject.gluu_passport_base, 'server/mappings')
                             )
             
-            setupObject.backupFile(passport_saml_config_fn)
-            setupObject.run(['rm', '-f', passport_saml_config_fn])
+            if not passport_saml_config_fn.endswith('~'):
+                setupObject.backupFile(passport_saml_config_fn)
+                setupObject.run(['rm', '-f', passport_saml_config_fn])
 
         passport_central_config_js['providers'] = providers
         passport_central_config = json.dumps(passport_central_config_js, indent=2)
