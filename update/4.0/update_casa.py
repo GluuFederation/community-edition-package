@@ -9,6 +9,8 @@ import re
 import glob
 import time
 
+import xml.etree.ElementTree as ET
+
 cur_dir = os.path.dirname(os.path.realpath(__file__))
 setup_dir = os.path.join(cur_dir, 'setup')
 
@@ -63,7 +65,7 @@ class casaUpdate(object):
         self.oxd_port = 8443
         self.oxd_host = None
 
-        self.rpm_package = 'https://repo.gluu.org/centos/7-testing/gluu-casa-4.0-20.beta3.centos7.noarch.rpm'
+        self.rpm_package = 'https://repo.gluu.org/centos/7-testing/gluu-casa-4.0-22.beta3.centos7.noarch.rpm'
         self.deb_package = 'https://repo.gluu.org/ubuntu/pool/main/xenial-devel/gluu-casa_4.0-30-beta3~xenial+Ub16.04_all.deb'
 
 
@@ -174,6 +176,8 @@ class casaUpdate(object):
         print "Stopping Casa Service"
         setupObject.run_service_command('casa', 'stop')
 
+        twilio_jar_fn = 'twilio-7.17.0.jar'
+
         for a in ('use_https_extension', 'client'):
             if a in self.casa_conf_js['oxd_config']:
                 self.casa_conf_js['oxd_config'].pop(a)
@@ -190,8 +194,38 @@ class casaUpdate(object):
         
         setupObject.run(['cp', '-f', os.path.join(cur_dir, 'temp/opt/gluu-server/opt/dist/gluu/casa.war'), casa_base])
         setupObject.run(['chown', '-R', 'jetty:jetty', casa_base])
-        setupObject.run(['cp', '-f', os.path.join(cur_dir, 'temp/opt/gluu-server/opt/dist/gluu/twilio-7.17.0.jar'), jettyServiceOxAuthCustomLibsPath])
+        setupObject.run(['cp', '-f', os.path.join(cur_dir, 'temp/opt/gluu-server/opt/dist/gluu', twilio_jar_fn), jettyServiceOxAuthCustomLibsPath])
         setupObject.run(['chown', '-R', 'jetty:jetty', jettyServiceOxAuthCustomLibsPath])
+
+        twilio_path = os.path.join(jettyServiceOxAuthCustomLibsPath, twilio_jar_fn)
+        oxauth_fn = os.path.join(setupObject.jetty_base, 'oxauth/webapps/oxauth.xml')
+
+        oxauth_fn_exists = os.path.exists(oxauth_fn)
+
+        if not oxauth_fn_exists:
+            setupObject.copyFile(
+                        os.path.join(cur_dir, 'setup/templates/jetty/oxauth.xml'),
+                        os.path.join(setupObject.jetty_base, 'oxauth/webapps')
+                        )
+
+        tree = ET.parse(oxauth_fn)
+        root = tree.getroot()
+
+        for Set in root.findall('Set'):
+            if Set.get('name') == 'extraClasspath':
+                if 'twilio' in Set.text:
+                    Set.text = twilio_path
+                    break
+        else:
+            child = ET.Element("Set", {'name':'extraClasspath'})
+            child.text = twilio_path
+            root.append(child)
+    
+        if oxauth_fn_exists:
+            setupObject.backupFile(oxauth_fn)
+    
+        tree.write(oxauth_fn)
+        setupObject.run(['chown', '-R', 'jetty:jetty', oxauth_fn])
 
         casa_default_fn = os.path.join(setupObject.osDefault, 'casa')
         setupObject.casa_min_heap_mem = '256'
@@ -229,6 +263,8 @@ class casaUpdate(object):
 
         casa_plugins = self.casa_conf_js.pop('plugins') if 'plugins' in self.casa_conf_js else []
 
+        account_linking_src_dir = os.path.join(cur_dir, 'temp', 'opt/gluu-server/opt/dist/gluu/casa-al')
+
         for plugin in casa_plugins:
 
             if plugin['id'] in plugin_upgrades:
@@ -242,8 +278,10 @@ class casaUpdate(object):
                     print "Downloading", plugin_upgrades[plugin['id']]
                     setupObject.run(['wget', '-nv', plugin_upgrades[plugin['id']], '-O', new_plugin_fn])
 
+                
+
                 if plugin['id'] == 'account-linking':
-                    account_linking_src_dir = os.path.join(cur_dir, 'account-linking')
+                    
                     
                     setupObject.copyFile(os.path.join(account_linking_src_dir, 'casa.xhtml'), 
                                         os.path.join(setupObject.jetty_base, 'oxauth', 'custom', 'pages')
@@ -252,34 +290,34 @@ class casaUpdate(object):
                                         os.path.join(setupObject.jetty_base, 'oxauth', 'custom', 'pages')
                                         )
                     
-                    print "Updating casa.py in ldap"
+        print "Updating casa.py in ldap"
 
-                    ldap_p=Properties()
+        ldap_p=Properties()
 
-                    with open(setupObject.ox_ldap_properties) as f:
-                        ldap_p.load(f)
+        with open(setupObject.ox_ldap_properties) as f:
+            ldap_p.load(f)
 
-                    ldap_password = os.popen('/opt/gluu/bin/encode.py -D ' + ldap_p['bindPassword']).read().strip()
+        ldap_password = os.popen('/opt/gluu/bin/encode.py -D ' + ldap_p['bindPassword']).read().strip()
 
-                    ldap_host = ldap_p['servers'].split(',')[0].strip()
-                    
-                    ldap_conn = ldap.initialize('ldaps://{}'.format(ldap_host))
-                    ldap_conn.simple_bind_s(ldap_p['bindDN'], ldap_password)
-                    
-                    result=ldap_conn.search_s('ou=scripts,o=gluu',ldap.SCOPE_SUBTREE,'(displayName=casa)')
-                    
-                    if result:
-                        dn = result[0][0]
-                        oxLevel = int(result[0][1]['oxLevel'][0]) + 1
-                        oxScript = setupObject.readFile(
-                                    os.path.join(account_linking_src_dir, 'casa.py')
-                                    )
+        ldap_host = ldap_p['servers'].split(',')[0].strip()
+        
+        ldap_conn = ldap.initialize('ldaps://{}'.format(ldap_host))
+        ldap_conn.simple_bind_s(ldap_p['bindDN'], ldap_password)
+        
+        result=ldap_conn.search_s('ou=scripts,o=gluu',ldap.SCOPE_SUBTREE,'(inum=BABA-CACA)')
+        
+        if result:
+            dn = result[0][0]
+            oxLevel = int(result[0][1]['oxLevel'][0]) + 1
+            oxScript = setupObject.readFile(
+                        os.path.join(account_linking_src_dir, 'casa.py')
+                        )
 
-                        ldap_conn.modify_s(dn, [
-                                                ( ldap.MOD_REPLACE, 'oxLevel',  str(oxLevel)),
-                                                ( ldap.MOD_REPLACE, 'oxScript',  oxScript),
-                                                ]
-                                            )
+            ldap_conn.modify_s(dn, [
+                                    ( ldap.MOD_REPLACE, 'oxLevel',  str(oxLevel)),
+                                    ( ldap.MOD_REPLACE, 'oxScript',  oxScript),
+                                    ]
+                                )
 
         lib_dir = os.path.join(setupObject.gluuOptPythonFolder, 'libs')
 
