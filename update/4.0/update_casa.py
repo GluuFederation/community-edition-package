@@ -290,34 +290,34 @@ class casaUpdate(object):
                                         os.path.join(setupObject.jetty_base, 'oxauth', 'custom', 'pages')
                                         )
                     
-        print "Updating casa.py in ldap"
+                    print "Updating casa.py in ldap"
 
-        ldap_p=Properties()
+                    ldap_p=Properties()
 
-        with open(setupObject.ox_ldap_properties) as f:
-            ldap_p.load(f)
+                    with open(setupObject.ox_ldap_properties) as f:
+                        ldap_p.load(f)
 
-        ldap_password = os.popen('/opt/gluu/bin/encode.py -D ' + ldap_p['bindPassword']).read().strip()
+                    ldap_password = os.popen('/opt/gluu/bin/encode.py -D ' + ldap_p['bindPassword']).read().strip()
 
-        ldap_host = ldap_p['servers'].split(',')[0].strip()
-        
-        ldap_conn = ldap.initialize('ldaps://{}'.format(ldap_host))
-        ldap_conn.simple_bind_s(ldap_p['bindDN'], ldap_password)
-        
-        result=ldap_conn.search_s('ou=scripts,o=gluu',ldap.SCOPE_SUBTREE,'(inum=BABA-CACA)')
-        
-        if result:
-            dn = result[0][0]
-            oxLevel = int(result[0][1]['oxLevel'][0]) + 1
-            oxScript = setupObject.readFile(
-                        os.path.join(account_linking_src_dir, 'casa.py')
-                        )
+                    ldap_host = ldap_p['servers'].split(',')[0].strip()
+                    
+                    ldap_conn = ldap.initialize('ldaps://{}'.format(ldap_host))
+                    ldap_conn.simple_bind_s(ldap_p['bindDN'], ldap_password)
+                    
+                    result=ldap_conn.search_s('ou=scripts,o=gluu',ldap.SCOPE_SUBTREE,'(inum=BABA-CACA)')
+                    
+                    if result:
+                        dn = result[0][0]
+                        oxLevel = int(result[0][1]['oxLevel'][0]) + 1
+                        oxScript = setupObject.readFile(
+                                    os.path.join(account_linking_src_dir, 'casa.py')
+                                    )
 
-            ldap_conn.modify_s(dn, [
-                                    ( ldap.MOD_REPLACE, 'oxLevel',  str(oxLevel)),
-                                    ( ldap.MOD_REPLACE, 'oxScript',  oxScript),
-                                    ]
-                                )
+                        ldap_conn.modify_s(dn, [
+                                                ( ldap.MOD_REPLACE, 'oxLevel',  str(oxLevel)),
+                                                ( ldap.MOD_REPLACE, 'oxScript',  oxScript),
+                                                ]
+                                            )
 
         lib_dir = os.path.join(setupObject.gluuOptPythonFolder, 'libs')
 
