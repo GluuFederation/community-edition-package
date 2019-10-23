@@ -274,7 +274,7 @@ class GluuUpdater:
         setupObject.configure_opendj()
         print "Exporting WrenDS certificate"
         setupObject.export_opendj_public_cert()
-        print "Setting Up WrenDS Indexes"
+        print "Setting Up WrenDS Indexes (this may take several minutes)"
         setupObject.index_opendj()
 
     def dump_current_db(self):
@@ -1880,7 +1880,7 @@ if __name__ == '__main__':
 
     while not c.lower() == 'c':
         print "If you have custom ldap schema, add them now and press \033[92mc\033[0m"
-        print "If yuo don't have any custom schema you can continue with pressing \033[92mc\033[0m"
+        print "If you don't have any custom schema you can continue with pressing \033[92mc\033[0m"
         c = raw_input('Continue ? ')
 
     updaterObj.import_ldif2ldap()
