@@ -900,8 +900,6 @@ class GluuUpdater:
                 self.do_config_changes(oxAuthConfDynamic, oxAuthConfDynamic_config_changes)
 
                 new_entry['oxAuthConfDynamic'][0] = json.dumps(oxAuthConfDynamic, indent=2)
-                
-                print new_entry['oxAuthConfDynamic'][0]
 
                 ##########################
                 
