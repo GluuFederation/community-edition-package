@@ -831,8 +831,10 @@ class GluuUpdater:
                         ('httpLoggingEnabled', 'add', 'entry', False),
                         ('httpLoggingExludePaths', 'add', 'entry',[]),
                         ('externalLoggerConfiguration', 'add', 'entry',''),
-                        ('authorizationRequestCustomAllowedParameters', 'add', 'entry',["customParam1","customParam2","customParam3"]),
-                            
+                        ('authorizationRequestCustomAllowedParameters', 'add', 'element', 'customParam1'),
+                        ('authorizationRequestCustomAllowedParameters', 'add', 'element', 'customParam2'),
+                        ('authorizationRequestCustomAllowedParameters', 'add', 'element', 'customParam3'),
+
                         ('legacyDynamicRegistrationScopeParam', 'add', 'entry', False),
                         ('useCacheForAllImplicitFlowObjects', 'add', 'entry', False),
                         ('disableU2fEndpoint', 'add', 'entry', False),
@@ -892,9 +894,14 @@ class GluuUpdater:
 
                     ]
     
+                if not 'authorizationRequestCustomAllowedParameters' in oxAuthConfDynamic:
+                    oxAuthConfDynamic['authorizationRequestCustomAllowedParameters'] = []
+    
                 self.do_config_changes(oxAuthConfDynamic, oxAuthConfDynamic_config_changes)
 
                 new_entry['oxAuthConfDynamic'][0] = json.dumps(oxAuthConfDynamic, indent=2)
+                
+                print new_entry['oxAuthConfDynamic'][0]
 
                 ##########################
                 
@@ -1849,13 +1856,12 @@ if __name__ == '__main__':
 
     updaterObj.update_apache_conf()
     updaterObj.update_passport()
-
     updaterObj.update_default_settings()
 
     updaterObj.install_opendj()
     updaterObj.update_schema()
+    
     updaterObj.parse_current_ldif()
-
     updaterObj.process_ldif()
 
     updaterObj.update_conf_files()
