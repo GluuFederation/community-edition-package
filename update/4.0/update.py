@@ -12,6 +12,7 @@ import argparse
 import shelve
 import sys
 import glob
+import copy
 import StringIO
 from collections import OrderedDict
 
@@ -163,6 +164,8 @@ class GluuUpdater:
         for d in (self.backup_folder, self.temp_dir, self.app_dir, self.war_dir):
             if not os.path.exists(d):
                 os.makedirs(d)
+
+        self.preserveCustomScriptProperties = {}
 
         self.wrends_version_number = '4.0.0-M3'
         self.setup_dir = os.path.join(cur_dir, 'setup')
@@ -455,7 +458,8 @@ class GluuUpdater:
         for scr_dn in parser.DNs:
             scr_dn = str(scr_dn)
             if 'inum' in parser.entries[scr_dn]:
-                if parser.entries[scr_dn]['inum'][0] in ('2DAF-F995', '2DAF-F9A5'):
+                inum = parser.entries[scr_dn]['inum'][0]
+                if inum in ('2DAF-F995', '2DAF-F9A5'):
                     oxConfigurationProperty = json.loads(parser.entries[scr_dn]['oxConfigurationProperty'][0])
                     tmp_ = [self.inum2uuid(v.strip()) for v in oxConfigurationProperty['value2'].split(',')]
                     oxConfigurationProperty['value2'] = ', '.join(tmp_)
@@ -463,17 +467,24 @@ class GluuUpdater:
                     new_entry['oxConfigurationProperty'] = [ json.dumps(oxConfigurationProperty) ]
                     parser.entries[scr_dn] = new_entry
 
-                if parser.entries[scr_dn]['inum'][0] in self.enabled_scripts:
+                if inum in self.enabled_scripts:
                     new_entry = parser.entries[scr_dn]
                     new_entry['oxEnabled'] = ['true']
                     parser.entries[scr_dn] = new_entry
 
+                if inum in self.preserveCustomScriptProperties:
+                    new_entry = parser.entries[scr_dn]
+
+                    for prop in self.preserveCustomScriptProperties[inum]:
+                        new_entry[prop] = self.preserveCustomScriptProperties[inum][prop]
+                    
+                    parser.entries[scr_dn] = new_entry
+
             self.write2ldif(scr_dn, parser.entries[scr_dn])
-        
+
     def add_new_entries(self):
         self.add_template(self.oxtrust_api_ldif)
-        
-        
+
         #add Passport IDP-Initated flow Client if not exists
         if not setup_porperties['passport_rp_ii_client_id']:
             print "Adding Passport IDP-Initated flow Client with inum", setupObject.passport_rp_ii_client_id
@@ -618,7 +629,6 @@ class GluuUpdater:
 
         gluuSAML2URI_n = 400
 
-
         processed_fp = open(self.processed_ldif_fn,'w')
         self.ldif_writer = LDIFWriter(processed_fp)
 
@@ -672,7 +682,9 @@ class GluuUpdater:
             if 'oxCustomScript' in new_entry['objectClass']:
                 if new_entry['inum'][0].endswith('D40C.1CA4'):
                     self.passport_saml_dn = dn
-
+                    self.preserveCustomScriptProperties['D40C-1CA4'] = {'oxConfigurationProperty': copy.deepcopy(new_entry['oxConfigurationProperty'])}
+                elif new_entry['inum'][0].endswith('2FDB.CF02'):
+                    self.preserveCustomScriptProperties['2FDB-CF02'] = {'oxConfigurationProperty': new_entry['oxConfigurationProperty']}
                 if new_entry.get('gluuStatus',[None])[0]=='true' or new_entry.get('oxEnabled',[None])[0]=='true':
                     scr_inum = self.inum2uuid(new_entry['inum'][0])
                     self.enabled_scripts.append(self.script_replacements.get(scr_inum, scr_inum))
@@ -1854,6 +1866,7 @@ if __name__ == '__main__':
 
     updaterObj.update_apache_conf()
     updaterObj.update_passport()
+
     updaterObj.update_default_settings()
 
     updaterObj.install_opendj()
@@ -1861,7 +1874,6 @@ if __name__ == '__main__':
     
     updaterObj.parse_current_ldif()
     updaterObj.process_ldif()
-
     updaterObj.update_conf_files()
 
     c = ''

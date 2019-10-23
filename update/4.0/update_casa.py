@@ -350,11 +350,8 @@ class casaUpdate(object):
         setupObject.run(['rm', '-f', os.path.join(cur_dir, 'temp', self.casa_package)])
         setupObject.run(['rm', '-r', '-f', os.path.join(cur_dir, 'temp/opt')])
 
-        setupObject.writeFile(
-                os.path.join(setupObject.jetty_base, 'casa/.administrable'),
-                ''
-                )
-        
+        open(os.path.join(setupObject.jetty_base, 'casa/.administrable'), 'w').close()
+
         updaterObj.import_oxd_certificate2javatruststore()
         
         print "Starting Casa"
