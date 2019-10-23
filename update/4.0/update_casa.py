@@ -289,18 +289,13 @@ class casaUpdate(object):
                     print "Downloading", plugin_upgrades[plugin['id']]
                     setupObject.run(['wget', '-nv', plugin_upgrades[plugin['id']], '-O', new_plugin_fn])
 
-                
 
                 if plugin['id'] == 'account-linking':
-                    
-                    
+
                     setupObject.copyFile(os.path.join(account_linking_src_dir, 'casa.xhtml'), 
                                         os.path.join(setupObject.jetty_base, 'oxauth', 'custom', 'pages')
                                         )
-                    setupObject.copyFile(os.path.join(account_linking_src_dir, 'casa.xhtml'), 
-                                        os.path.join(setupObject.jetty_base, 'oxauth', 'custom', 'pages')
-                                        )
-                    
+
                     print "Updating casa.py in ldap"
 
                     ldap_p=Properties()
