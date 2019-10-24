@@ -340,7 +340,7 @@ class GluuUpdater:
                         ('https://raw.githubusercontent.com/GluuFederation/community-edition-package/master/update/4.0/update_casa.py', self.update_casa_script),
                     ):
 
-            print "Downaloading", download_link
+            print "Downloading", download_link
             setupObject.run(['wget', '-nv', download_link, '-O', out_file])
 
         setupObject.run(['chmod', '+x', self.update_casa_script])
