@@ -48,6 +48,11 @@ except:
     missing_packages.append('python-ldap')
 
 try:
+    import requests
+except:
+    missing_packages.append('python-requests')
+
+try:
     import jsonschema
 except:
     missing_packages.append('python-jsonschema')
@@ -399,7 +404,6 @@ class GluuUpdater:
                 tmp_config_fn = os.path.join(self.setup_dir, 'templates/jetty', service)
                 tmp_config = self.render_template(tmp_config_fn)
                 setupObject.writeFile(target_fn, tmp_config)
-                
 
     def parse_current_ldif(self):
         
@@ -745,6 +749,9 @@ class GluuUpdater:
                 oxIDPAuthentication_config = json.loads(oxIDPAuthentication['config'])
                 oxIDPAuthentication_config['baseDNs'][0] = 'ou=people,o=gluu'
 
+                if setupObject.persistence_type == 'couchbase':
+                    oxIDPAuthentication_config['enabled'] = False
+
                 if self.ldap_type == 'openldap':
                     if oxIDPAuthentication_config['servers'][0]=='localhost:1636' and oxIDPAuthentication_config['bindDN'].lower()=='cn=directory manager,o=gluu':
                         oxIDPAuthentication_config['bindDN'] = 'cn=Directory Manager'
@@ -1048,10 +1055,13 @@ class GluuUpdater:
 
             if 'ou=configuration,o=gluu' == new_dn:
 
-                # we need to set authentication mode to ldap
-                new_entry['oxAuthenticationMode'] =  ['auth_ldap_server']
-                new_entry['oxTrustAuthenticationMode'] = ['auth_ldap_server']
-                
+                # we need to set authentication mode to ldap or couchbase
+                if setupObject.persistence_type == 'couchbase':
+                    new_entry['oxAuthenticationMode'] = ['simple_password_auth']
+                    new_entry['oxTrustAuthenticationMode'] = ['simple_password_auth']
+                else:
+                    new_entry['oxAuthenticationMode'] =  ['auth_ldap_server']
+                    new_entry['oxTrustAuthenticationMode'] = ['auth_ldap_server']
 
                 if not 'oxCacheConfiguration' in new_entry:
                     continue
@@ -1528,9 +1538,16 @@ class GluuUpdater:
 
 
     def update_conf_files(self):
-        self.set_to_opendj()
+        
+        prop_files = ['gluu.properties']
 
-        for prop_file in ('gluu.properties', 'gluu-ldap.properties'):
+        if setupObject.persistence_type == 'couchbase':
+            setupObject.couchbaseProperties()
+        else:
+            prop_files.append('gluu-ldap.properties')
+            self.set_to_opendj()
+
+        for prop_file in prop_files:
             properties =  self.render_template(os.path.join(self.template_dir, prop_file))
             fn = os.path.join(setupObject.configFolder, prop_file)
 
@@ -1734,6 +1751,7 @@ if __name__ == '__main__':
     
     parser = argparse.ArgumentParser(description="This script upgrades OpenDJ gluu-servers (>3.0) to 4.0")
     parser.add_argument('-o', '--online', help="online installation", action='store_true')
+    parser.add_argument('--remote-couchbase', help="Enables using remote couchbase server", action='store_true')
     argsp = parser.parse_args()
 
     start_upgrade = raw_input('Ready to upgrade Gluu Server. Start now (y|N) ')
@@ -1751,7 +1769,8 @@ if __name__ == '__main__':
         sys.exit()
 
     from setup.pylib.ldif import LDIFParser, LDIFWriter, ParseLDIF
-    from setup.setup import Setup
+    from setup.pylib.cbm import CBM
+    from setup.setup import *
     from ldap.dn import explode_dn, str2dn, dn2str
     from setup.pylib.Properties import Properties
 
@@ -1869,22 +1888,52 @@ if __name__ == '__main__':
 
     updaterObj.update_default_settings()
 
-    updaterObj.install_opendj()
-    updaterObj.update_schema()
+    if not argsp.remote_couchbase:
+        updaterObj.install_opendj()
+        updaterObj.update_schema()
+    else:
+        setupObject.remoteCouchbase=True
+        setupObject.persistence_type='couchbase'
     
     updaterObj.parse_current_ldif()
     updaterObj.process_ldif()
+    
+    if argsp.remote_couchbase:
+        attribDataTypes.startup(setup_install_dir)
+        setupObject.prompt_remote_couchbase()
+        setupObject.mappingLocations = { group: 'couchbase' for group in setupObject.couchbaseBucketDict }
+        
+        setupObject.cbm = CBM(
+                            setupObject.couchbase_hostname.split(',')[0].strip(),
+                            setupObject.couchebaseClusterAdmin, 
+                            setupObject.ldapPass
+                            )
+
+        setupObject.mappingLocations = { group: 'couchbase' for group in setupObject.couchbaseBucketDict }
+        
+        print "Creating buckets and indexes"
+        setupObject.create_couchbase_buckets()
+        
+        print "Importing ldif to Couchbase server"
+        setupObject.import_ldif_couchebase([ os.path.join(cur_dir, 'gluu_noinum.ldif') ])
+        
+        print "Exporting Couchbase SSL"
+        setupObject.couchbaseSSL()
+        
+        setupObject.encode_passwords()
+        setupObject.couchbaseDict()
+
+    else:
+        c = ''
+        while not c.lower() == 'c':
+            print "If you have custom ldap schema, add them now and press \033[92mc\033[0m"
+            print "If you don't have any custom schema you can continue with pressing \033[92mc\033[0m"
+            c = raw_input('Continue ? ')
+
+        updaterObj.import_ldif2ldap()
+
     updaterObj.update_conf_files()
-
-    c = ''
-
-    while not c.lower() == 'c':
-        print "If you have custom ldap schema, add them now and press \033[92mc\033[0m"
-        print "If you don't have any custom schema you can continue with pressing \033[92mc\033[0m"
-        c = raw_input('Continue ? ')
-
-    updaterObj.import_ldif2ldap()
-
+    
     updaterObj.update_shib()
 
 
