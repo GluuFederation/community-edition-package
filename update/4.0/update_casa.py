@@ -389,5 +389,9 @@ if __name__ == '__main__':
         updaterObj.update_casa()
     else:
         print "Please fix oxd update and re-run this script. Exiting for now ..."
-    
-    
+
+    print ("* Casa upgrade completed. Please restart gluu server before you\n"
+           "  access the application.")
+    print ("* You need a valid license for using this application.\n"
+           "  To purchase a license please contact us -\n"
+           "  https://www.gluu.org/company/contact-us")
