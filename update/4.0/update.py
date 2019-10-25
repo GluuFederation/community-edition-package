@@ -1899,6 +1899,12 @@ if __name__ == '__main__':
     updaterObj.process_ldif()
     
     if argsp.remote_couchbase:
+        print "Stopping WrenDS"
+        setupObject.run_service_command('opendj', 'stop')
+        
+        print "Disabling WrenDS"
+        setupObject.enable_service_at_start('opendj', action='disable')
+        
         attribDataTypes.startup(setup_install_dir)
         setupObject.prompt_remote_couchbase()
         setupObject.mappingLocations = { group: 'couchbase' for group in setupObject.couchbaseBucketDict }
