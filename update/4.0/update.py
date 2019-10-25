@@ -191,6 +191,8 @@ class GluuUpdater:
                 '2DAF-F995': '2DAF-F9A5'
             }
 
+        self.script_config_properties = {}
+
         self.update_casa_script = os.path.join(cur_dir,'update_casa.py')
 
     def get_first_backup(self, fn):
@@ -507,12 +509,15 @@ class GluuUpdater:
                 self.write2ldif(passport_rp_ii_client_entry[0][0],passport_rp_ii_client_entry[0][1])
                 print "Passport IDP-Initated flow Client was added"
 
-    def inum2uuid(self, s):
+    def inum2uuid(self, s, oxAuthClient=False):
 
         tmps = s
 
         if self.ldif_parser.inumApllience:
             tmps = tmps.replace(self.ldif_parser.inumApllience,'')
+
+        if oxAuthClient:
+            return tmps
 
         if self.ldif_parser.inumOrg:
             tmps = tmps.replace(self.ldif_parser.inumOrg,'')
@@ -641,6 +646,9 @@ class GluuUpdater:
         for dn_counter, dn in enumerate(self.ldif_parser.DNs):
             dn = str(dn)
             new_entry = self.ldif_parser.entries[dn]
+            
+            oxAuthClient = 'oxAuthClient' in new_entry['objectClass']
+            
             if dn_counter == 3 and authorizationsParentExists:
                 self.write2ldif('ou=authorizations,o=gluu', {'objectClass':['top','organizationalunit'], 'ou': ['authorizations'] })
                 
@@ -651,13 +659,14 @@ class GluuUpdater:
                 if dn.startswith('oxId'):
                     new_entry['oxAuthScope'].append('oxd')
 
-                if 'oxAuthClientId' in new_entry:
-                    new_entry['oxAuthClientId'][0] = self.inum2uuid(new_entry['oxAuthClientId'][0])
-                
+                #if 'oxAuthClientId' in new_entry:
+                #    new_entry['oxAuthClientId'][0] = self.inum2uuid(new_entry['oxAuthClientId'][0])
+
                 if 'inum' in new_entry:
                     old_inum = new_entry['inum'][0]
                     new_inum = inum2uuid(old_inum)
                     new_entry['inum'][0] = new_inum
+
 
                 dn_dn = str2dn(dn)
 
@@ -693,6 +702,9 @@ class GluuUpdater:
                     scr_inum = self.inum2uuid(new_entry['inum'][0])
                     self.enabled_scripts.append(self.script_replacements.get(scr_inum, scr_inum))
 
+                if 'oxConfigurationProperty' in new_entry:
+                    self.preserveCustomScriptProperties[self.inum2uuid(new_entry['inum'][0])] = {'oxConfigurationProperty': copy.deepcopy(new_entry['oxConfigurationProperty'])}
+
                 continue
 
             # we don't need existing tokens, passing
@@ -718,8 +730,6 @@ class GluuUpdater:
                 continue
 
             dne = explode_dn(dn)
-
-            
 
             if self.inumOrg_ou in dne:
                 dne.remove(self.inumOrg_ou)
@@ -990,8 +1000,7 @@ class GluuUpdater:
 
 
                 for cli in ('scimUmaClientId', 'passportUmaClientId', 'oxAuthClientId'):
-                    oxTrustConfApplication[cli] = self.inum2uuid(oxTrustConfApplication[cli])
-                
+                    oxTrustConfApplication[cli] = self.inum2uuid(oxTrustConfApplication[cli], True)
 
                 new_entry['oxTrustConfApplication'][0] = json.dumps(oxTrustConfApplication, indent=2)
                 
@@ -1090,8 +1099,12 @@ class GluuUpdater:
 
             if 'inum' in new_entry:
 
-                new_entry['inum'] = [self.inum2uuid(new_entry['inum'][0])]
-                new_dn = self.inum2uuid(new_dn)
+                
+
+                if not oxAuthClient:
+                    new_entry['inum'] = [self.inum2uuid(new_entry['inum'][0])]
+                
+                new_dn = self.inum2uuid(new_dn, oxAuthClient)
 
                 if new_entry['inum'][0] in ['8CAD-B06D', '8CAD-B06E']:
                     if 'oxRevision' in new_entry:
@@ -1129,7 +1142,7 @@ class GluuUpdater:
 
                 if self.ldif_parser.idp_client:
                     idp_entry = self.ldif_parser.entries[str(self.ldif_parser.idp_client)]
-                    openIdClientId =  self.inum2uuid(idp_entry['inum'][0])
+                    openIdClientId =  self.inum2uuid(idp_entry['inum'][0], oxAuthClient)
                     oxAuthClientSecret = idp_entry['oxAuthClientSecret'][0]
                 else:
                     idp_entry = self.create_idp_client()
@@ -1352,7 +1365,7 @@ class GluuUpdater:
 
             cur_config = json.loads(setupObject.readFile(self.get_first_backup(passport_config_fn)))
             
-            self.passport_rp_client_id = self.inum2uuid(cur_config['clientId'])
+            self.passport_rp_client_id = self.inum2uuid(cur_config['clientId'], True)
 
             setupObject.templateRenderingDict['passport_rp_client_id'] = self.passport_rp_client_id
             setupObject.templateRenderingDict['passport_rp_client_cert_alias'] = cur_config['keyId']
@@ -1894,17 +1907,17 @@ if __name__ == '__main__':
     else:
         setupObject.remoteCouchbase=True
         setupObject.persistence_type='couchbase'
-    
+
     updaterObj.parse_current_ldif()
     updaterObj.process_ldif()
-    
+
     if argsp.remote_couchbase:
         print "Stopping WrenDS"
         setupObject.run_service_command('opendj', 'stop')
-        
+
         print "Disabling WrenDS"
         setupObject.enable_service_at_start('opendj', action='disable')
-        
+
         attribDataTypes.startup(setup_install_dir)
         setupObject.prompt_remote_couchbase()
         setupObject.mappingLocations = { group: 'couchbase' for group in setupObject.couchbaseBucketDict }
@@ -1937,7 +1950,7 @@ if __name__ == '__main__':
             c = raw_input('Continue ? ')
 
         updaterObj.import_ldif2ldap()
-
+    
     updaterObj.update_conf_files()
     
     updaterObj.update_shib()
