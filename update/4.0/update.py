@@ -14,6 +14,7 @@ import sys
 import glob
 import copy
 import StringIO
+import uuid
 from collections import OrderedDict
 
 os.umask(0022)
@@ -491,8 +492,12 @@ class GluuUpdater:
     def add_new_entries(self):
         self.add_template(self.oxtrust_api_ldif)
 
+
         #add Passport IDP-Initated flow Client if not exists
+
+        
         if not setup_porperties['passport_rp_ii_client_id']:
+            setupObject.passport_rp_ii_client_id = '1503.'  + str(uuid.uuid4())
             print "Adding Passport IDP-Initated flow Client with inum", setupObject.passport_rp_ii_client_id
 
             passport_clients_ldif_fn = os.path.join(
@@ -740,9 +745,14 @@ class GluuUpdater:
 
                 if dn == self.ldif_parser.inumApllience_dn:
                     dne.insert(0,'ou=configuration')
-                    new_entry['ou'] = 'configuration'
+                    new_entry['ou'] = ['configuration']
                     new_entry['objectClass'].insert(1, 'organizationalUnit')
-            
+
+                    if self.ldif_parser.samlEnabled:
+                        new_entry['gluuSamlEnabled'] = ['true']
+
+                    if self.ldif_parser.passportEnabled
+                        new_entry['gluuPassportEnabled'] = ['true']
                 
             new_dn = ','.join(dne)
 
@@ -1138,11 +1148,11 @@ class GluuUpdater:
 
             if new_dn == 'ou=oxidp,ou=configuration,o=gluu':
                 oxConfApplication = json.loads(new_entry['oxConfApplication'][0])
-                oxConfApplication['openIdClientId'] =  self.inum2uuid(oxConfApplication['openIdClientId'])
+                oxConfApplication['openIdClientId'] =  self.inum2uuid(oxConfApplication['openIdClientId'], True)
 
                 if self.ldif_parser.idp_client:
                     idp_entry = self.ldif_parser.entries[str(self.ldif_parser.idp_client)]
-                    openIdClientId =  self.inum2uuid(idp_entry['inum'][0], oxAuthClient)
+                    openIdClientId =  self.inum2uuid(idp_entry['inum'][0], True)
                     oxAuthClientSecret = idp_entry['oxAuthClientSecret'][0]
                 else:
                     idp_entry = self.create_idp_client()
@@ -1845,7 +1855,8 @@ if __name__ == '__main__':
             self.inumApllience = None
             self.inumApllience_dn = None
             self.idp_client = None
-            
+            self.samlEnabled = False
+            self.passportEnabled = False
 
         def handle(self, dn, entry):
             if (dn != 'o=gluu') and (dn != 'ou=appliances,o=gluu'):
@@ -1857,11 +1868,18 @@ if __name__ == '__main__':
                     dne = str2dn(dn)
                     self.inumOrg = dne[0][0][1]
 
-                if not self.inumApllience and 'gluuAppliance' in entry['objectClass']:
+                elif not self.inumApllience and 'gluuAppliance' in entry['objectClass']:
                     self.inumApllience_dn = dn
                     dne = str2dn(dn)
                     self.inumApllience = dne[0][0][1]
-                    
+
+                elif not self.samlEnabled and 'gluuSAMLconfig' in entry['objectClass']:
+                    self.samlEnabled = True
+
+                elif not self.passportEnabled and 'oxPassportConfiguration' in entry['objectClass']:
+                    self.passportEnabled = True
+
+                
                 if (not self.idp_client) and ('oxAuthClient' in entry['objectClass']) and (entry['displayName'][0] == 'IDP client'):
                     self.idp_client = dn
 
@@ -1900,6 +1918,7 @@ if __name__ == '__main__':
     updaterObj.update_passport()
 
     updaterObj.update_default_settings()
+
 
     if not argsp.remote_couchbase:
         updaterObj.install_opendj()
