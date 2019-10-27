@@ -751,7 +751,7 @@ class GluuUpdater:
                     if self.ldif_parser.samlEnabled:
                         new_entry['gluuSamlEnabled'] = ['true']
 
-                    if self.ldif_parser.passportEnabled
+                    if self.ldif_parser.passportEnabled:
                         new_entry['gluuPassportEnabled'] = ['true']
                 
             new_dn = ','.join(dne)
