@@ -954,7 +954,6 @@ class GluuUpdater:
     
                 self.do_config_changes(oxAuthConfDynamic, oxAuthConfDynamic_config_changes)
 
-                new_entry['oxAuthConfDynamic'][0] = json.dumps(oxAuthConfDynamic, indent=2)
 
                 ##########################
                 
@@ -979,6 +978,8 @@ class GluuUpdater:
                 oxAuthConfDynamic['clientAuthenticationFilters'][0]['baseDn'] = 'ou=clients,o=gluu'
                 
                 oxAuthConfDynamic['shareSubjectIdBetweenClientsWithSameSectorId'] = True
+
+                new_entry['oxAuthConfDynamic'][0] = json.dumps(oxAuthConfDynamic, indent=2)
 
                 oxAuthConfStatic = setupObject.readFile(os.path.join(cur_dir, 'setup', 'templates', 'oxauth-static-conf.json'))
 
@@ -1986,7 +1987,7 @@ if __name__ == '__main__':
         updaterObj.import_ldif2ldap()
     
     updaterObj.update_conf_files()
-    
+
     updaterObj.update_shib()
 
 
