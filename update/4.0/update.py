@@ -173,6 +173,8 @@ class GluuUpdater:
 
         self.preserveCustomScriptProperties = {}
 
+        self.custom_attributes_fn = '77-customAttributes.ldif'
+
         self.wrends_version_number = '4.0.0-M3'
         self.setup_dir = os.path.join(cur_dir, 'setup')
         self.template_dir = os.path.join(self.setup_dir, 'templates')
@@ -258,6 +260,12 @@ class GluuUpdater:
             setupObject.run(['/etc/init.d/solserver', 'stop'])
             setupObject.enable_service_at_start('solserver', action='disable')
         
+        
+        custom_attributes_path = os.path.join(setupObject.openDjSchemaFolder, self.custom_attributes_fn)
+        
+        if os.path.exists(custom_attributes_path):
+            setupObject.copyFile(custom_attributes_path, self.temp_dir)
+
         #Ensure opendj is not running
         setupObject.run(['/opt/opendj/bin/stop-ds'])
 
@@ -324,10 +332,18 @@ class GluuUpdater:
 
     def update_schema(self):
         print "Updating schema"
-        new_schema = os.path.join(self.setup_dir, 'static/opendj/101-ox.ldif')
-        target_schema = os.path.join(setupObject.ldapBaseFolder, 'config/schema/101-ox.ldif')
-        setupObject.run(['cp', '-f', new_schema, target_schema])
-        setupObject.run(['chown', 'ldap:ldap', target_schema])
+        new_schema_list = [ os.path.join(self.setup_dir, 'static/opendj/101-ox.ldif') ]
+
+        custom_attributes_path = os.path.join(self.temp_dir, self.custom_attributes_fn)
+        if os.path.exists(custom_attributes_path):
+            new_schema_list.append(custom_attributes_path)
+        else:
+            new_schema_list.append(os.path.join(self.setup_dir, 'static/opendj', self.custom_attributes_fn))
+
+        for schema_fn in new_schema_list:
+            target_schema_fn = os.path.join(setupObject.openDjSchemaFolder, os.path.basename(schema_fn))
+            setupObject.run(['cp', '-f', schema_fn, target_schema_fn])
+            setupObject.run(['chown', 'ldap:ldap', target_schema_fn])
 
 
     def download_apps(self):
@@ -1919,7 +1935,6 @@ if __name__ == '__main__':
 
     updaterObj.update_default_settings()
 
-
     if not argsp.remote_couchbase:
         updaterObj.install_opendj()
         updaterObj.update_schema()
@@ -1964,8 +1979,8 @@ if __name__ == '__main__':
     else:
         c = ''
         while not c.lower() == 'c':
-            print "If you have custom ldap schema, add them now and press \033[92mc\033[0m"
-            print "If you don't have any custom schema you can continue with pressing \033[92mc\033[0m"
+            print "If you have custom ldap schema other than 77-customAttributes.ldif, add them now and press \033[92mc\033[0m"
+            print "If you defined all custom schemas in 77-customAttributes.ldif you can continue with pressing \033[92mc\033[0m"
             c = raw_input('Continue ? ')
 
         updaterObj.import_ldif2ldap()
