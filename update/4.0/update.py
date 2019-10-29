@@ -767,7 +767,7 @@ class GluuUpdater:
                     if self.ldif_parser.samlEnabled:
                         new_entry['gluuSamlEnabled'] = ['true']
 
-                    if self.ldif_parser.passportEnabled:
+                    if self.ldif_parser.passportEnabled or os.path.exists(setupObject.gluu_passport_base):
                         new_entry['gluuPassportEnabled'] = ['true']
                 
             new_dn = ','.join(dne)
@@ -796,7 +796,7 @@ class GluuUpdater:
                 new_entry['oxIDPAuthentication'][0] = json.dumps(oxIDPAuthentication, indent=2)
 
                 for bool_attr in (
-                                'gluuPassportEnabled',
+                                #'gluuPassportEnabled',
                                 'gluuManageIdentityPermission',
                                 'gluuOrgProfileMgt',
                                 'gluuScimEnabled',
@@ -1228,7 +1228,8 @@ class GluuUpdater:
                                     os.path.join(cur_dir, 'gluuPassportConfiguration.json'),
                                     new_entry['gluuPassportConfiguration'][0]
                                 )
-                    self.fix_passport_config(new_dn, new_entry)
+                self.fix_passport_config(new_dn, new_entry)
+                continue
             
             elif 'gluuSAMLconfig' in  new_entry['objectClass']:
                 new_entry['o'] = ['o=gluu']
@@ -1287,22 +1288,21 @@ class GluuUpdater:
         processed_fp.close()
 
     def update_passport(self):
-        
-        if not os.path.exists('/opt/gluu/node/passport'):
+
+        if not os.path.exists(setupObject.gluu_passport_base):
             return
-        
+
+        setupObject.run(['mv', setupObject.gluu_passport_base, setupObject.gluu_passport_base + self.backup_time])
+
         print "Updating Passport"
         
         print "Stopping passport server"
         
         setupObject.run_service_command('passport', 'stop')
 
-        print "Removing existing passport server and node libraries"
-        setupObject.run(['rm', '-r', '-f', '/opt/gluu/node/passport/server/mappings'])
-        setupObject.run(['rm', '-r', '-f', '/opt/gluu/node/passport/server/utils'])
-        setupObject.run(['rm', '-r', '-f', '/opt/gluu/node/passport/node_modules'])
+        setupObject.run(['mkdir', '-p', setupObject.gluu_passport_base])
 
-        print "Extracting passport.tgz into /opt/gluu/node/passport"
+        print "Extracting passport.tgz into " + setupObject.gluu_passport_base 
         setupObject.run(['tar', '--strip', '1', '-xzf', os.path.join(cur_dir, 'app', 'passport.tgz'),
                          '-C', '/opt/gluu/node/passport', '--no-xattrs', '--no-same-owner', '--no-same-permissions'])
     
@@ -1343,7 +1343,7 @@ class GluuUpdater:
         
         providers = []
 
-        for passport_configuration in new_entry['gluuPassportConfiguration']:
+        for passport_configuration in new_entry.get('gluuPassportConfiguration',[]):
 
             gluuPassportConfiguration = json.loads(passport_configuration)
             
@@ -1929,10 +1929,12 @@ if __name__ == '__main__':
     setupObject.encode_passwords()
     setupObject.createLdapPw()
 
+
     updaterObj.dump_current_db()
 
     updaterObj.update_apache_conf()
     updaterObj.update_passport()
+
 
     updaterObj.update_default_settings()
 
