@@ -65,8 +65,8 @@ class casaUpdate(object):
         self.oxd_port = 8443
         self.oxd_host = None
 
-        self.rpm_package = 'https://repo.gluu.org/centos/7-testing/gluu-casa-4.0-23.beta3.centos7.noarch.rpm'
-        self.deb_package = 'https://repo.gluu.org/ubuntu/pool/main/xenial-devel/gluu-casa_4.0-31-beta3~xenial+Ub16.04_all.deb'
+        self.rpm_package = 'https://repo.gluu.org/centos/7/gluu-casa-4.0-centos7.noarch.rpm'
+        self.deb_package = 'https://repo.gluu.org/ubuntu/pool/main/xenial/gluu-casa_4.0~xenial_all.deb'
 
 
         if not os.path.exists(self.casa_config_fn):
