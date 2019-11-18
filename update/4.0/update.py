@@ -1157,6 +1157,14 @@ class GluuUpdater:
                 elif new_entry['inum'][0] == 'D2E0':
                     new_entry['oxAuthClaimName'] = ['member_of']
 
+                elif new_entry['inum'][0] == 'BABA-CACA':
+                    for oxconfigprop in new_entry['oxConfigurationProperty']:
+                        oxconfigprop_js = json.loads(oxconfigprop)
+                        if oxconfigprop_js['value1'] == 'mobile_methods':
+                            break
+                    else:
+                        new_entry['oxConfigurationProperty'].append('{"value1":"mobile_methods","value2":"otp, twilio_sms, super_gluu","description":""}')
+
 
             if 'oxPolicyScriptDn' in new_entry:
                 new_entry['oxUmaPolicyScriptDn'] = new_entry['oxPolicyScriptDn'][:]
@@ -2004,6 +2012,9 @@ if __name__ == '__main__':
             os.remove(sdbf)
 
     setupObject.save_properties(setup_properties_fn)
+
+    print
+    setupObject.print_post_messages()
 
     if os.path.exists(os.path.join(setupObject.jetty_base,'casa')):
         print "\033[93mCasa installation was detected."
