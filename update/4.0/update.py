@@ -1243,7 +1243,10 @@ class GluuUpdater:
                                     os.path.join(cur_dir, 'gluuPassportConfiguration.json'),
                                     new_entry['gluuPassportConfiguration'][0]
                                 )
-                self.fix_passport_config(new_dn, new_entry)
+                try:
+                    self.fix_passport_config(new_dn, new_entry)
+                except Exception as e:
+                    print "ERROR fixing passport", e
                 continue
             
             elif 'gluuSAMLconfig' in  new_entry['objectClass']:
