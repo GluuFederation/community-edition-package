@@ -669,7 +669,14 @@ class GluuUpdater:
             new_entry = self.ldif_parser.entries[dn]
             
             oxAuthClient = 'oxAuthClient' in new_entry['objectClass']
+
+            for di in dn_dn:
+                if 'ou=pairwiseIdentifiers' in dn and di[0][0] == 'inum':
+                    continue
+                new_dn_dn.append(di)
             
+            dn = dn2str(new_dn_dn)
+
             if dn_counter == 3 and authorizationsParentExists:
                 self.write2ldif('ou=authorizations,o=gluu', {'objectClass':['top','organizationalunit'], 'ou': ['authorizations'] })
                 
