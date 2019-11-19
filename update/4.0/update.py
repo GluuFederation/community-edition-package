@@ -670,6 +670,9 @@ class GluuUpdater:
             
             oxAuthClient = 'oxAuthClient' in new_entry['objectClass']
 
+            dn_dn = str2dn(dn)
+            new_dn_dn = []
+
             for di in dn_dn:
                 if 'ou=pairwiseIdentifiers' in dn and di[0][0] == 'inum':
                     continue
