@@ -744,7 +744,15 @@ class GluuUpdater:
             
             elif 'oxAuthExpiration' in new_entry:
                 continue
-            
+
+            elif 'gluuContainerFederation'  in new_entry:
+                gcf = new_entry['gluuContainerFederation'][0]
+                gcf_list = gcf.split(',')
+                if 'ou=appliances' in gcf_list:
+                    gcf_list.remove('ou=appliances')
+                    gcf = ','.join(gcf_list)
+                    new_entry['gluuContainerFederation'][0] = gcf
+
             if (self.ldap_type == 'openldap') and ('userPassword' in new_entry) and new_entry['userPassword'] and  new_entry['userPassword'][0].startswith('{BCRYPT}') and new_entry['userPassword'][0].endswith('\x00'):
                 new_entry['userPassword'][0] = new_entry['userPassword'][0][:-1]
                 
