@@ -4,11 +4,45 @@ import uuid
 import os
 import sys
 import glob
+import ldap
+ldap.set_option(ldap.OPT_X_TLS_REQUIRE_CERT, ldap.OPT_X_TLS_ALLOW)
 
 ces_dir = os.path.join('/tmp', str(uuid.uuid4()).split('-')[0])
 
 ces_zip = '/opt/dist/gluu/community-edition-setup.zip'
 cmd = 'unzip -q {} -d {}'.format(ces_zip, ces_dir)
+
+
+for l in open('/etc/gluu/conf/gluu-ldap.properties'):
+    if l.startswith('bindPassword'):
+        crypted_passwd = l.split(':')[1].strip()
+        ldap_password = os.popen('/opt/gluu/bin/encode.py -D {}'.format(crypted_passwd)).read().strip()
+    elif l.startswith('servers'):
+        ls = l.strip()
+        n = ls.find(':')
+        s = ls[n+1:].strip()
+        servers_s = s.split(',')
+        ldap_server = servers_s[0].strip()
+    elif l.startswith('bindDN'):
+        ldap_binddn = l.split(':')[1].strip()
+
+ldap_conn = ldap.initialize('ldaps://'+ldap_server)
+ldap_conn.simple_bind_s(ldap_binddn, ldap_password)
+
+
+#Move value of oxAuthClientSecretExpiresAt to oxAuthExpiration in clients entries
+client_results = ldap_conn.search_s('ou=clients,o=gluu',ldap.SCOPE_SUBTREE,'(objectclass=oxAuthClient)',['oxAuthClientSecretExpiresAt'])
+ for client in client_results:
+    if 'oxAuthClientSecretExpiresAt' in client[1]:
+        oxAuthExpiration = client[1]['oxAuthClientSecretExpiresAt']
+        base_dn = client[0]
+        mod_type = ldap.MOD_REPLACE if 'oxAuthExpiration' in  client[1] else ldap.MOD_ADD
+        ldap_conn.modify_s(client[0], [(mod_type, 'oxAuthExpiration',  oxAuthExpiration)])
+        if mod_type == ldap.MOD_REPLACE:
+            ldap_conn.modify_s(base_dn, [(ldap.MOD_DELETE, 'oxAuthClientSecretExpiresAt', None)])
+        print base_dn
+        
+
 print "Unzipping community edition setup package with command:"
 print cmd
 os.system(cmd)
