@@ -4,6 +4,7 @@ import uuid
 import os
 import sys
 import glob
+import json
 import ldap
 ldap.set_option(ldap.OPT_X_TLS_REQUIRE_CERT, ldap.OPT_X_TLS_ALLOW)
 
@@ -26,13 +27,16 @@ for l in open('/etc/gluu/conf/gluu-ldap.properties'):
     elif l.startswith('bindDN'):
         ldap_binddn = l.split(':')[1].strip()
 
+
+######### LDAP ENTRY CHANGES #########
+
 ldap_conn = ldap.initialize('ldaps://'+ldap_server)
 ldap_conn.simple_bind_s(ldap_binddn, ldap_password)
 
 
 #Move value of oxAuthClientSecretExpiresAt to oxAuthExpiration in clients entries
 client_results = ldap_conn.search_s('ou=clients,o=gluu',ldap.SCOPE_SUBTREE,'(objectclass=oxAuthClient)',['oxAuthClientSecretExpiresAt'])
- for client in client_results:
+for client in client_results:
     if 'oxAuthClientSecretExpiresAt' in client[1]:
         oxAuthExpiration = client[1]['oxAuthClientSecretExpiresAt']
         base_dn = client[0]
@@ -41,7 +45,29 @@ client_results = ldap_conn.search_s('ou=clients,o=gluu',ldap.SCOPE_SUBTREE,'(obj
         if mod_type == ldap.MOD_REPLACE:
             ldap_conn.modify_s(base_dn, [(ldap.MOD_DELETE, 'oxAuthClientSecretExpiresAt', None)])
         print base_dn
-        
+
+#Increase value of defaultCleanupBatchSize in oxCacheConfiguration for nativePersistenceConfiguration to 10 mins
+oxCacheConfiguration_ldap_result = ldap_conn.search_s('ou=configuration,o=gluu',ldap.SCOPE_SUBTREE,'(objectclass=gluuConfiguration)',['oxCacheConfiguration'])
+oxCacheConfiguration_base_dn = oxCacheConfiguration_ldap_result[0][0]
+oxCacheConfiguration_json = oxCacheConfiguration_ldap_result[0][1]['oxCacheConfiguration'][0]
+oxCacheConfiguration = json.loads(oxCacheConfiguration_json)
+oxCacheConfiguration['nativePersistenceConfiguration']['defaultCleanupBatchSize'] = 10000
+oxCacheConfiguration_json = json.dumps(oxCacheConfiguration, indent=2)
+ldap_conn.modify_s(oxCacheConfiguration_base_dn, [(ldap.MOD_REPLACE, 'oxCacheConfiguration',  oxCacheConfiguration_json)])
+
+#Change clean up interval to 60 seconds and limit to 10000 in oxAuthConfDynamic
+oxAuthConfDynamic_ldap_result = ldap_conn.search_s('ou=oxauth,ou=configuration,o=gluu',ldap.SCOPE_SUBTREE,'(objectclass=oxAuthConfiguration)',['oxAuthConfDynamic'])
+oxAuthConfDynamic_base_dn = oxAuthConfDynamic_ldap_result[0][0]
+oxAuthConfDynamic_json = oxAuthConfDynamic_ldap_result[0][1]['oxAuthConfDynamic'][0]
+oxAuthConfDynamic = json.loads(oxAuthConfDynamic_json)
+oxAuthConfDynamic['cleanServiceInterval'] = 60
+oxAuthConfDynamic['cleanServiceBatchChunkSize'] = 10000
+oxAuthConfDynamic_json = json.dumps(oxAuthConfDynamic, indent=2)
+ldap_conn.modify_s(oxAuthConfDynamic_base_dn, [(ldap.MOD_REPLACE, 'oxAuthConfDynamic',  oxAuthConfDynamic_json)])
+
+######################################
+
+sys.exit()
 
 print "Unzipping community edition setup package with command:"
 print cmd
