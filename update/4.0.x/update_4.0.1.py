@@ -40,11 +40,10 @@ for client in client_results:
     if 'oxAuthClientSecretExpiresAt' in client[1]:
         oxAuthExpiration = client[1]['oxAuthClientSecretExpiresAt']
         base_dn = client[0]
-        mod_type = ldap.MOD_REPLACE if 'oxAuthExpiration' in  client[1] else ldap.MOD_ADD
-        ldap_conn.modify_s(client[0], [(mod_type, 'oxAuthExpiration',  oxAuthExpiration)])
-        if mod_type == ldap.MOD_REPLACE:
-            ldap_conn.modify_s(base_dn, [(ldap.MOD_DELETE, 'oxAuthClientSecretExpiresAt', None)])
-        print base_dn
+        if 'oxAuthExpiration' in  client[1]:
+            ldap_conn.modify_s(base_dn, [(ldap.MOD_DELETE, 'oxAuthExpiration', None)])
+        ldap_conn.modify_s(base_dn, [(ldap.MOD_ADD, 'oxAuthExpiration',  oxAuthExpiration)])
+        ldap_conn.modify_s(base_dn, [(ldap.MOD_DELETE, 'oxAuthClientSecretExpiresAt', None)])
 
 #Increase value of defaultCleanupBatchSize in oxCacheConfiguration for nativePersistenceConfiguration to 10 mins
 oxCacheConfiguration_ldap_result = ldap_conn.search_s('ou=configuration,o=gluu',ldap.SCOPE_SUBTREE,'(objectclass=gluuConfiguration)',['oxCacheConfiguration'])
