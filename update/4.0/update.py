@@ -19,6 +19,8 @@ from collections import OrderedDict
 
 os.umask(0022)
 
+upg_ver = 4.0
+
 cur_dir = os.path.dirname(os.path.realpath(__file__))
 
 sys.path.append(cur_dir)
@@ -86,10 +88,11 @@ if not os.path.exists(os.path.join(cur_dir, 'jsonmerge')):
     os.system('unzip -qo /tmp/jsonmerge-master.zip -d /tmp')
     os.system('cp -r /tmp/jsonmerge-master/jsonmerge ' + cur_dir)
 
+
 if not os.path.exists(os.path.join(cur_dir, 'setup')):
-    os.system('wget https://github.com/GluuFederation/community-edition-setup/archive/master.zip -O /tmp/community-edition-setup-master.zip')
+    os.system('wget https://github.com/GluuFederation/community-edition-setup/archive/version_{}.zip -O /tmp/community-edition-setup-master.zip'.format(upg_ver))
     os.system('unzip -qo /tmp/community-edition-setup-master.zip -d /tmp')
-    os.system('mv /tmp/community-edition-setup-master {}/setup'.format(cur_dir))
+    os.system('mv /tmp/community-edition-setup-version_{} {}/setup'.format(upg_ver, cur_dir))
     os.system('touch setup/__init__.py')
 
 
@@ -151,7 +154,7 @@ def get_as_bool(val):
 
 class GluuUpdater:
     def __init__(self):
-        
+
         self.update_dir = cur_dir
         self.app_dir = os.path.join(self.update_dir,'app')
         self.war_dir = os.path.join(self.update_dir,'war')
@@ -162,7 +165,8 @@ class GluuUpdater:
         self.backup_time = time.strftime('%Y-%m-%d.%H:%M:%S')
         self.backup_folder = os.path.join(cur_dir, 'backup_{}'.format(self.backup_time))
         self.temp_dir = os.path.join(cur_dir, 'temp')
-        
+        self.services_dir = os.path.join(cur_dir, 'services')
+
         if not os.path.exists(self.backup_folder) and not dev_env:
             os.mkdir(self.backup_folder)
 
@@ -346,6 +350,26 @@ class GluuUpdater:
             setupObject.run(['chown', 'ldap:ldap', target_schema_fn])
 
 
+    def download_services_scripts(self):
+
+        resp = requests.get('https://api.github.com/repos/GluuFederation/community-edition-package/contents/package/systemd')
+
+        if not os.path.exists(self.services_dir):
+            os.mkdir(self.services_dir)
+
+        if not resp.ok:
+            print "Github Api returns", f.code
+            sys.exit(False)
+
+        data = resp.json()
+
+        for service in data:
+            if service['name'].endswith('.service'):
+                print "Downloading", service['name']
+                resp_s = requests.get(service['download_url'])
+                with open(os.path.join(self.services_dir, service['name']),'w') as w:
+                    w.write(resp_s.text)
+
     def download_apps(self):
 
         for download_link, out_file in (
@@ -368,6 +392,8 @@ class GluuUpdater:
             setupObject.run(['wget', '-nv', download_link, '-O', out_file])
 
         setupObject.run(['chmod', '+x', self.update_casa_script])
+
+        self.download_services_scripts()
 
     def update_war(self):
 
@@ -1798,6 +1824,41 @@ class GluuUpdater:
         setupObject.render_templates(apache_templates)
         setupObject.configure_httpd()
 
+    def migrate2systemdscripts(self):
+        if (setupObject.os_type in ['centos', 'red', 'fedora'] and setupObject.os_initdaemon == 'systemd') or \
+            (setupObject.os_type == 'ubuntu' and setupObject.os_version >= '18') or \
+            (setupObject.os_type == 'debian' and setupObject.os_version >= '9'):
+
+            gluu_scripts_dir = os.path.join(setupObject.distFolder, 'scripts')
+            if not os.path.exists(gluu_scripts_dir):
+                setupObject.run(['mkdir', '-p', gluu_scripts_dir])
+
+            for service_fn in os.listdir(self.services_dir):
+                
+                service = os.path.splitext(service_fn)[0]
+                                
+                init_scr_fn = os.path.join('/etc/init.d', service)
+                systemd_scr_fn = os.path.join('/usr/lib/systemd/system', service_fn)
+                if os.path.exists(init_scr_fn) and not os.path.exists(systemd_scr_fn):
+
+                    #move initscript to backup folder
+                    setupObject.run(['mv', init_scr_fn, self.backup_folder])
+
+                    # copy systemd script and fix
+                    setupObject.copyFile(os.path.join(self.services_dir, service_fn), '/usr/lib/systemd/system')
+                    init_script_fn = os.path.join(setupObject.gluuOptSystemFolder, 'passport') if service == 'passport' else \
+                                    os.path.join(setupObject.jetty_home, 'bin/jetty.sh')
+
+                    setupObject.fix_init_scripts(service, init_script_fn)
+                    setupObject.enable_service_at_start(service)
+
+                    #remove initscript links
+                    for i in range(0,7):
+                        rc_fn_list = glob.glob('/etc/rc.d/rc{}.d/*{}*'.format(i, service))
+                        for rc_fn in rc_fn_list:
+                            print "removing", rc_fn
+                            setupObject.run(['rm', rc_fn])
+
 
     def fix_init_scripts(self):
         print "Fixing init scripts"
@@ -1937,6 +1998,7 @@ if __name__ == '__main__':
     setupObject.backupFile(setup_properties_fn)
 
     setupObject.os_type, setupObject.os_version = setupObject.detect_os_type()
+    setupObject.os_initdaemon = setupObject.detect_initd()
     setupObject.calculate_selected_aplications_memory()
 
     updaterObj.update_java()
@@ -2013,10 +2075,11 @@ if __name__ == '__main__':
 
     updaterObj.update_shib()
 
-
     scripts_dir = os.path.join(setupObject.distFolder, 'scripts')
     if not os.path.exists(scripts_dir):
         os.mkdir(scripts_dir)
+
+    updaterObj.migrate2systemdscripts()
 
     updaterObj.fix_init_scripts()
 
@@ -2027,7 +2090,8 @@ if __name__ == '__main__':
     setupObject.save_properties(setup_properties_fn)
 
     print
-    setupObject.print_post_messages()
+    if hasattr(setupObject, 'print_post_messages'):
+        setupObject.print_post_messages()
 
     if os.path.exists(os.path.join(setupObject.jetty_base,'casa')):
         print "\033[93mCasa installation was detected."
