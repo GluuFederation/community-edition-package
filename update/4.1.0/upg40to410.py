@@ -26,6 +26,15 @@ if not result.strip() or (result.strip() and result.strip().lower()[0] != 'y'):
     sys.exit()
 """
 
+"""
+1. IDP upgrade, hence we have to put new IDP with conf files
+2. LDAP schema update
+3. Add new CB indexes
+4. Fixes to some scritps.
+5. Update httpd conf
+6. Update oxauth-config.json and oxtrust-config.json
+"""
+
 def get_properties(prop_fn, current_properties=None):
     if not current_properties:
         p = Properties.Properties()
@@ -63,8 +72,10 @@ def make_key(l):
 
 class GluuUpdater:
     def __init__(self):
+        self.ces_dir = os.path.join(cur_dir, 'ces_current')
         self.up_version = '4.1.0'
-
+        self.build_tag = '.Final'
+        self.app_dir = os.path.join(cur_dir, 'app')
         self.persist_changes = { 'oxAuthConfDynamic': [
 
                         ('tokenEndpointAuthMethodsSupported', 'add', 'element', "tls_client_auth"),
@@ -81,9 +92,13 @@ class GluuUpdater:
                             ]
                 }
 
+        self.scripts_inum = ['2DAF-BA90', '2FDB-CF02', 'D40C-1CA4', '09A0-93D7', '92F0-BF9E', '09A0-93D6', '2124-0CF1', '2DAF-BA91']
+
+        if not os.path.exists(self.app_dir):
+            os.mkdir(self.app_dir)
 
     def download_ces(self):
-        if not os.path.exists('ces_current'):
+        if not os.path.exists(self.ces_dir):
             ces_url = 'https://github.com/GluuFederation/community-edition-setup/archive/version_{}.zip'.format(self.up_version)
             print "Downloading Community Edition Setup {}".format(self.up_version)
             os.system('wget -q {} -O version_{}.zip'.format(ces_url, self.up_version))
@@ -92,26 +107,26 @@ class GluuUpdater:
             os.system('mv community-edition-setup-version_{} ces_current'.format(self.up_version))
             os.system('rm version_{}.zip'.format(self.up_version))
 
-        open('ces_current/__init__.py','w').close()
+        open(os.path.join(self.ces_dir, '__init__.py'),'w').close()
         sys.path.append('ces_current')
 
         from ces_current import setup
         from ces_current.pylib.cbm import CBM
         
         self.cbm_obj = CBM
-        self.setupObj = setup.Setup('ces_current')
-
+        self.setup = setup
+        self.setupObj = self.setup.Setup(self.ces_dir)
+        self.setupObj.log = os.path.join(self.ces_dir, 'update.log')
+        self.setupObj.logError = os.path.join(self.ces_dir, 'update_error.log')
+        self.setup.attribDataTypes.startup(self.ces_dir)
 
     def determine_persistence_type(self):        
         gluu_prop = get_properties(self.setupObj.gluu_properties_fn)
-        persistence_type = gluu_prop['persistence.type']
+        self.persistence_type = gluu_prop['persistence.type']
+        getattr(self, 'db_connection_'+self.persistence_type)()
 
-        if persistence_type == 'ldap':
-            self.ldapConn()
-            self.update_ldap()
-        elif persistence_type == 'couchbase':
-            self.CBConn()
-            self.update_cb()
+    def update_persistence_data(self):
+        getattr(self, 'update_'+self.persistence_type)()
 
     def checkRemoteSchema(self):
 
@@ -123,7 +138,7 @@ class GluuUpdater:
             if  'oxCacheEntity' in obj.names:
                 return True
 
-    def CBConn(self):
+    def db_connection_couchbase(self):
         gluu_cb_prop = get_properties(self.setupObj.gluuCouchebaseProperties)
         cb_serevr = gluu_cb_prop['servers'].split(',')[0].strip()
         cb_admin = gluu_cb_prop['auth.userName']
@@ -151,7 +166,7 @@ class GluuUpdater:
 
     def cb_indexes(self):
         self.new_cb_indexes = {}
-        new_index_json_fn = os.path.join(cur_dir, 'ces_current/static/couchbase/index.json')
+        new_index_json_fn = os.path.join(self.ces_dir, 'static/couchbase/index.json')
         new_indexes = json.loads(self.setupObj.readFile(new_index_json_fn))
         
         data_result = self.cbm.exec_query('SELECT * FROM system:indexes')
@@ -215,7 +230,7 @@ class GluuUpdater:
             print "Executing", cmd
             self.cbm.exec_query(cmd)
 
-    def update_cb(self):
+    def update_couchbase(self):
 
         for n, k in (('oxAuthConfDynamic', 'configuration_oxauth'), ('oxTrustConfApplication', 'configuration_oxtrust')):
             result = self.cbm.exec_query('SELECT {} FROM `gluu` USE KEYS "{}"'.format(n,k))
@@ -226,7 +241,7 @@ class GluuUpdater:
 
             result = self.cbm.exec_query('update `gluu` USE KEYS "{}" set gluu.{}={}'.format(k, n, json.dumps(js_conf)))
 
-    def ldapConn(self):
+    def db_connection_ldap(self):
         gluu_ldap_prop = get_properties(self.setupObj.ox_ldap_properties)
         
         ldap_host = gluu_ldap_prop['servers'].split(',')[0].strip().split(':')[0]
@@ -287,12 +302,72 @@ class GluuUpdater:
         
         # update opendj schema and restart
         self.setupObj.run(['cp', '-f', 
-                            os.path.join(cur_dir, 'ces_current/static/opendj/101-ox.ldif'),
+                            os.path.join(self.ces_dir, 'static/opendj/101-ox.ldif'),
                             self.setupObj.openDjSchemaFolder
                             ])
         self.setupObj.run_service_command('opendj', 'stop')
         self.setupObj.run_service_command('opendj', 'start')
 
+
+    def download_apps(self):
+
+        for download_link, out_file in (
+                    ('https://ox.gluu.org/maven/org/gluu/oxshibbolethIdp/{0}{1}/oxshibbolethIdp-{0}{1}.war'.format(self.up_version, self.build_tag), os.path.join(self.app_dir, 'idp.war')),
+                    ('https://ox.gluu.org/maven/org/gluu/oxtrust-server/{0}{1}/oxtrust-server-{0}{1}.war'.format(self.up_version, self.build_tag), os.path.join(self.app_dir, 'identity.war')),
+                    ('https://ox.gluu.org/maven/org/gluu/oxauth-server/{0}{1}/oxauth-server-{0}{1}.war'.format(self.up_version, self.build_tag), os.path.join(self.app_dir, 'oxauth.war')),
+                    ('https://ox.gluu.org/maven/org/gluu/oxauth-rp/{0}{1}/oxauth-rp-{0}{1}.war'.format(self.up_version, self.build_tag), os.path.join(self.app_dir, 'oxauth-rp.war')),
+                    ('https://ox.gluu.org/maven/org/gluu/oxShibbolethStatic/{0}{1}/oxShibbolethStatic-{0}{1}.jar'.format(self.up_version, self.build_tag), os.path.join(self.app_dir, 'shibboleth-idp.jar')),
+                    ('https://ox.gluu.org/maven/org/gluu/oxShibbolethKeyGenerator/{0}{1}/oxShibbolethKeyGenerator-{0}{1}.jar'.format(self.up_version, self.build_tag), os.path.join(self.app_dir, 'idp3_cml_keygenerator.jar')),
+                    ('https://ox.gluu.org/npm/passport/passport-{}.tgz'.format(self.up_version), os.path.join(self.app_dir, 'passport.tgz')),
+                    ('https://ox.gluu.org/npm/passport/passport-version_{}-node_modules.tar.gz'.format(self.up_version), os.path.join(self.app_dir, 'passport-node_modules.tar.gz')),
+                    ('https://repo1.maven.org/maven2/org/eclipse/jetty/jetty-distribution/{0}/jetty-distribution-{0}.tar.gz'.format(self.setupObj.jetty_version), os.path.join(self.app_dir, 'jetty-distribution-{0}.tar.gz'.format(self.setupObj.jetty_version))),
+                ):
+
+            print "Downloading", download_link
+            self.setupObj.run(['wget', '-nv', download_link, '-O', out_file])
+
+    def update_war_files(self):
+        for service in self.setupObj.jetty_app_configuration:
+            service_webapps_dir = os.path.join(self.setupObj.jetty_base, service, 'webapps')
+            if os.path.exists(service_webapps_dir):
+                self.setupObj.run(['cp', '-f', os.path.join(self.app_dir, service+'.war'), service_webapps_dir])
+
+    def update_jetty(self):
+        distAppFolder = self.setupObj.distAppFolder
+        self.setupObj.distAppFolder = self.app_dir
+        jetty_folder = os.readlink(self.setupObj.jetty_home)
+        self.setupObj.run(['unlink', self.setupObj.jetty_home])
+        self.setupObj.run(['rm', '-r', '-f', jetty_folder])
+        self.setupObj.installJetty()
+        self.setupObj.distAppFolder = distAppFolder
+
+    def update_scripts(self):
+        self.setupObj.prepare_base64_extension_scripts()
+        self.setupObj.renderTemplate(self.setupObj.ldif_scripts)
+        self.ldif_scripts_fn = os.path.join(self.setupObj.outputFolder, os.path.basename(self.setupObj.ldif_scripts))
+        getattr(self, 'update_scripts_'+self.persistence_type)()
+
+    def update_scripts_couchbase(self):
+        documents = self.setup.get_documents_from_ldif(self.ldif_scripts_fn)
+        scr_keys = [ 'scripts_{}'.format(inum) for inum in self.scripts_inum ]
+
+        for k, doc in documents:
+            if k in scr_keys:                
+                query = 'UPSERT INTO `gluu` (KEY, VALUE) VALUES ("%s", %s)' % (k, json.dumps(doc))
+                result = self.cbm.exec_query(query)
+                print result.json()
+
+    def update_scripts_ldap(self):
+        parser = self.setup.myLdifParser(self.ldif_scripts_fn)
+        parser.parse()
+        
+        for dn, entry in parser.entries:
+            if entry['inum'][0] in self.scripts_inum:
+                try:
+                    self.conn.modify_s(dn, [( ldap.MOD_REPLACE, 'oxScript',  entry['oxScript'][0])])
+                except Exception as e:
+                    ldif = modlist.addModlist(entry)
+                    self.conn.add_s(dn, ldif)
 
 updaterObj = GluuUpdater()
 
@@ -301,4 +376,8 @@ updaterObj.download_ces()
 from ces_current.pylib import Properties
 
 updaterObj.determine_persistence_type()
-
+updaterObj.update_persistence_data()
+updaterObj.download_apps()
+updaterObj.update_jetty()
+updaterObj.update_war_files()
+updaterObj.update_scripts()
