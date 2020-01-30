@@ -1675,6 +1675,9 @@ class GluuUpdater:
                 print  result
                 print "\033[0m"
 
+        # make sure db files are owned by ldap
+        setupObject.run(['chown', '-R', 'ldap:ldap', '/opt/opendj/db/'])
+        
         print "Starting WrenDS"
         setupObject.run_service_command('opendj', 'start')
         
