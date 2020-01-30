@@ -14,7 +14,6 @@ cur_dir = os.path.dirname(os.path.realpath(__file__))
 # TODO: 
 # 1. casa upgrade
 # 2. oxd upgrade
-# 3. radius upgrade
 
 if not os.path.exists('/etc/gluu/conf'):
     sys.exit('Please run this script inside Gluu container.')
@@ -117,8 +116,8 @@ class GluuUpdater:
         global Properties
         from ces_current import setup
         from ces_current.pylib.cbm import CBM
-        from pylib import Properties
-
+        from ces_current.pylib import Properties
+        
         self.cbm_obj = CBM
         self.setup = setup
         self.setupObj = self.setup.Setup(self.ces_dir)
@@ -354,17 +353,33 @@ class GluuUpdater:
 
     def download_apps(self):
 
-        for download_link, out_file in (
-                    ('https://ox.gluu.org/maven/org/gluu/oxshibbolethIdp/{0}{1}/oxshibbolethIdp-{0}{1}.war'.format(self.up_version, self.build_tag), os.path.join(self.app_dir, 'idp.war')),
+        downloads = [
                     ('https://ox.gluu.org/maven/org/gluu/oxtrust-server/{0}{1}/oxtrust-server-{0}{1}.war'.format(self.up_version, self.build_tag), os.path.join(self.app_dir, 'identity.war')),
                     ('https://ox.gluu.org/maven/org/gluu/oxauth-server/{0}{1}/oxauth-server-{0}{1}.war'.format(self.up_version, self.build_tag), os.path.join(self.app_dir, 'oxauth.war')),
                     ('https://ox.gluu.org/maven/org/gluu/oxauth-rp/{0}{1}/oxauth-rp-{0}{1}.war'.format(self.up_version, self.build_tag), os.path.join(self.app_dir, 'oxauth-rp.war')),
+                    ('https://repo1.maven.org/maven2/org/eclipse/jetty/jetty-distribution/{0}/jetty-distribution-{0}.tar.gz'.format(self.setupObj.jetty_version), os.path.join(self.app_dir, 'jetty-distribution-{0}.tar.gz'.format(self.setupObj.jetty_version))),
+                    ]
+
+        if os.path.exists('/opt/shibboleth-idp'):
+            downloads += [
+                    ('https://ox.gluu.org/maven/org/gluu/oxshibbolethIdp/{0}{1}/oxshibbolethIdp-{0}{1}.war'.format(self.up_version, self.build_tag), os.path.join(self.app_dir, 'idp.war')),
                     ('https://ox.gluu.org/maven/org/gluu/oxShibbolethStatic/{0}{1}/oxShibbolethStatic-{0}{1}.jar'.format(self.up_version, self.build_tag), os.path.join(self.app_dir, 'shibboleth-idp.jar')),
                     ('https://ox.gluu.org/maven/org/gluu/oxShibbolethKeyGenerator/{0}{1}/oxShibbolethKeyGenerator-{0}{1}.jar'.format(self.up_version, self.build_tag), os.path.join(self.app_dir, 'idp3_cml_keygenerator.jar')),
+                    ]
+
+        if os.path.exists('/opt/gluu/node/passport'):
+            downloads += [
                     ('https://ox.gluu.org/npm/passport/passport-{}.tgz'.format(self.up_version), os.path.join(self.app_dir, 'passport.tgz')),
                     ('https://ox.gluu.org/npm/passport/passport-version_{}-node_modules.tar.gz'.format(self.up_version), os.path.join(self.app_dir, 'passport-node_modules.tar.gz')),
-                    ('https://repo1.maven.org/maven2/org/eclipse/jetty/jetty-distribution/{0}/jetty-distribution-{0}.tar.gz'.format(self.setupObj.jetty_version), os.path.join(self.app_dir, 'jetty-distribution-{0}.tar.gz'.format(self.setupObj.jetty_version))),
-                ):
+                    ]
+
+        if os.path.exists('/opt/gluu/radius'):
+            downloads += [
+                    ('https://ox.gluu.org/maven/org/gluu/super-gluu-radius-server/{0}{1}/super-gluu-radius-server-{0}{1}-distribution.zip'.format(self.up_version, self.build_tag), os.path.join(self.app_dir, 'gluu-radius-libs.zip')),
+                    ('https://ox.gluu.org/maven/org/gluu/super-gluu-radius-server/{0}{1}/super-gluu-radius-server-{0}{1}.jar'.format(self.up_version, self.build_tag), os.path.join(self.app_dir, 'super-gluu-radius-server.jar')),
+                    ]
+
+        for download_link, out_file in downloads:
 
             print "Downloading", download_link
             self.setupObj.run(['wget', '-nv', download_link, '-O', out_file])
@@ -495,12 +510,29 @@ class GluuUpdater:
 
         os.chdir(cur_dir)
 
+    def update_radius(self):
+        print "Updating Gluu Radius Server"
+
+        radius_dir = '/opt/gluu/radius'
+        if not os.path.exists(radius_dir):
+            return
+        
+        self.setupObj.copyFile(os.path.join(self.ces_dir, 'static/radius/etc/init.d/gluu-radius'), '/etc/init.d')
+        self.setupObj.run(['chmod', '+x', '/etc/init.d/gluu-radius'])
+
+        radius_libs = os.path.join(self.app_dir, 'gluu-radius-libs.zip')
+        radius_jar = os.path.join(self.app_dir, 'super-gluu-radius-server.jar')
+
+        self.setupObj.run(['unzip', '-o', '-q', radius_libs, '-d', radius_dir ])
+        self.setupObj.copyFile(radius_jar, radius_dir)
+
+        self.setupObj.copyFile(os.path.join(self.ces_dir, 'static/radius/etc/default/gluu-radius'), self.setupObj.osDefault)
+            
+            
 
 updaterObj = GluuUpdater()
 
 updaterObj.download_ces()
-
-from ces_current.pylib import Properties
 
 updaterObj.determine_persistence_type()
 updaterObj.update_persistence_data()
@@ -511,5 +543,6 @@ updaterObj.update_scripts()
 updaterObj.setupObj.load_properties(setup_properties_fn)
 updaterObj.update_apache_conf()
 updaterObj.update_shib()
+updaterObj.update_radius()
 
 print "Please logout from container and restart Gluu Server"
