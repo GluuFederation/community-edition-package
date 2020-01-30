@@ -9,8 +9,12 @@ import pyDes
 import base64
 import ldap.modlist as modlist
 
-
 cur_dir = os.path.dirname(os.path.realpath(__file__))
+
+# TODO: 
+# 1. casa upgrade
+# 2. oxd upgrade
+# 3. radius upgrade
 
 if not os.path.exists('/etc/gluu/conf'):
     sys.exit('Please run this script inside Gluu container.')
@@ -19,21 +23,18 @@ from pyDes import *
 
 ldap.set_option(ldap.OPT_X_TLS_REQUIRE_CERT, ldap.OPT_X_TLS_ALLOW)
 
-"""
+
+setup_properties_fn = '/install/community-edition-setup/setup.properties.last'
+
+if not os.path.exists(setup_properties_fn):
+    print "Setup Properties File {} not found".format(setup_properties_fn)
+    print "Can't continue. Exiting ..."
+    sys.exit()
+
 result = raw_input("Starting upgrade. CONTINUE? (y|N): ")
 if not result.strip() or (result.strip() and result.strip().lower()[0] != 'y'):
     print "You can re-run this script to upgrade. Bye now ..."
     sys.exit()
-"""
-
-"""
-1. IDP upgrade, hence we have to put new IDP with conf files
-2. LDAP schema update
-3. Add new CB indexes
-4. Fixes to some scritps.
-5. Update httpd conf
-6. Update oxauth-config.json and oxtrust-config.json
-"""
 
 def get_properties(prop_fn, current_properties=None):
     if not current_properties:
@@ -97,7 +98,10 @@ class GluuUpdater:
         if not os.path.exists(self.app_dir):
             os.mkdir(self.app_dir)
 
+        
+
     def download_ces(self):
+        
         if not os.path.exists(self.ces_dir):
             ces_url = 'https://github.com/GluuFederation/community-edition-setup/archive/version_{}.zip'.format(self.up_version)
             print "Downloading Community Edition Setup {}".format(self.up_version)
@@ -110,23 +114,42 @@ class GluuUpdater:
         open(os.path.join(self.ces_dir, '__init__.py'),'w').close()
         sys.path.append('ces_current')
 
+        global Properties
         from ces_current import setup
         from ces_current.pylib.cbm import CBM
-        
+        from pylib import Properties
+
         self.cbm_obj = CBM
         self.setup = setup
         self.setupObj = self.setup.Setup(self.ces_dir)
         self.setupObj.log = os.path.join(self.ces_dir, 'update.log')
         self.setupObj.logError = os.path.join(self.ces_dir, 'update_error.log')
         self.setup.attribDataTypes.startup(self.ces_dir)
+        self.setupObj.os_type, self.setupObj.os_version = self.setupObj.detect_os_type()
+        self.setupObj.os_initdaemon = self.setupObj.detect_initd()
+
+        self.setup_prop = get_properties(setup_properties_fn)
 
     def determine_persistence_type(self):        
+        self.cb_buckets = []
         gluu_prop = get_properties(self.setupObj.gluu_properties_fn)
         self.persistence_type = gluu_prop['persistence.type']
-        getattr(self, 'db_connection_'+self.persistence_type)()
+        self.default_storage = self.persistence_type
+
+        if self.persistence_type == 'hybrid':
+            hybrid_prop = get_properties(self.setupObj.gluu_hybrid_roperties)    
+            self.default_storage = hybrid_prop['storage.default']
+
+        if self.persistence_type == 'ldap':
+            self.db_connection_ldap()
+        elif self.persistence_type == 'couchbase':
+            self.db_connection_couchbase()
+        elif self.persistence_type == 'hybrid':
+            self.db_connection_ldap()
+            self.db_connection_couchbase()
 
     def update_persistence_data(self):
-        getattr(self, 'update_'+self.persistence_type)()
+        getattr(self, 'update_' + self.default_storage)()
 
     def checkRemoteSchema(self):
 
@@ -142,14 +165,25 @@ class GluuUpdater:
         gluu_cb_prop = get_properties(self.setupObj.gluuCouchebaseProperties)
         cb_serevr = gluu_cb_prop['servers'].split(',')[0].strip()
         cb_admin = gluu_cb_prop['auth.userName']
-        cb_passwd = unobscure(gluu_cb_prop['auth.userPassword'])
+        self.encoded_cb_password = gluu_cb_prop['auth.userPassword']
+        cb_passwd = unobscure(self.encoded_cb_password)
 
         self.cbm = self.cbm_obj(cb_serevr, cb_admin, cb_passwd)
 
-        self.cb_buckets = [ b.strip() for b in gluu_cb_prop['buckets'].split(',') ]
-        
-        self.cb_indexes()
-        
+        for p in ('couchbase_hostname', 'couchebaseClusterAdmin', 
+                    'encoded_cb_password',
+                    'encoded_couchbaseTrustStorePass'):
+            
+            setattr(self.setupObj, p, self.setup_prop[p])
+
+        gluu_cb_prop = get_properties(self.setupObj.gluuCouchebaseProperties)
+        cb_passwd = gluu_cb_prop['auth.userPassword']
+        self.setupObj.mappingLocations = json.loads(self.setup_prop['mappingLocations'])
+        self.setupObj.encoded_cb_password = self.encoded_cb_password
+
+        self.setupObj.couchbaseBuckets = [ b.strip() for b in gluu_cb_prop['buckets'].split(',') ]
+
+
     def drop_index(self, bucket, index_name):
         cmd = 'DROP INDEX `{}`.`{}` USING GSI'.format(bucket, index_name)
         print "Removing index", index_name
@@ -199,7 +233,7 @@ class GluuUpdater:
                     else:
                         self.drop_index(bucket, ind['name'])
 
-        for bucket in self.cb_buckets:
+        for bucket in self.setupObj.couchbaseBuckets:
             for ind in new_indexes[bucket]['attributes']:
                 new_index_key = make_key(ind)
                 for cur_inds in current_indexes:
@@ -231,7 +265,9 @@ class GluuUpdater:
             self.cbm.exec_query(cmd)
 
     def update_couchbase(self):
-
+        
+        self.cb_indexes()
+        
         for n, k in (('oxAuthConfDynamic', 'configuration_oxauth'), ('oxTrustConfApplication', 'configuration_oxtrust')):
             result = self.cbm.exec_query('SELECT {} FROM `gluu` USE KEYS "{}"'.format(n,k))
             result_json = result.json()
@@ -240,6 +276,13 @@ class GluuUpdater:
             self.apply_persist_changes(js_conf, n)
 
             result = self.cbm.exec_query('update `gluu` USE KEYS "{}" set gluu.{}={}'.format(k, n, json.dumps(js_conf)))
+
+        #self.update_gluu_couchbase()
+
+
+    def update_gluu_couchbase(self):        
+        self.setupObj.couchbaseProperties()
+
 
     def db_connection_ldap(self):
         gluu_ldap_prop = get_properties(self.setupObj.ox_ldap_properties)
@@ -342,22 +385,29 @@ class GluuUpdater:
         self.setupObj.distAppFolder = distAppFolder
 
     def update_scripts(self):
+        print "Updating Scripts"
         self.setupObj.prepare_base64_extension_scripts()
         self.setupObj.renderTemplate(self.setupObj.ldif_scripts)
         self.ldif_scripts_fn = os.path.join(self.setupObj.outputFolder, os.path.basename(self.setupObj.ldif_scripts))
-        getattr(self, 'update_scripts_'+self.persistence_type)()
+        getattr(self, 'update_scripts_' + self.default_storage)()
 
     def update_scripts_couchbase(self):
+        
         documents = self.setup.get_documents_from_ldif(self.ldif_scripts_fn)
         scr_keys = [ 'scripts_{}'.format(inum) for inum in self.scripts_inum ]
 
         for k, doc in documents:
             if k in scr_keys:                
                 query = 'UPSERT INTO `gluu` (KEY, VALUE) VALUES ("%s", %s)' % (k, json.dumps(doc))
+                print "Updating script:", k
                 result = self.cbm.exec_query(query)
-                print result.json()
+                result_data = result.json()
+                print "Result", result_data['status']
 
     def update_scripts_ldap(self):
+        
+        self.db_connection_ldap()
+        
         parser = self.setup.myLdifParser(self.ldif_scripts_fn)
         parser.parse()
         
@@ -368,6 +418,83 @@ class GluuUpdater:
                 except Exception as e:
                     ldif = modlist.addModlist(entry)
                     self.conn.add_s(dn, ldif)
+
+    def update_apache_conf(self):
+        print "Updating Apache Configuration"
+
+        self.setupObj.outputFolder = os.path.join(self.ces_dir, 'output')
+        self.setupObj.templateFolder = os.path.join(self.ces_dir, 'templates')
+
+        self.setupObj.apache2_conf = os.path.join(self.ces_dir, 'output', os.path.basename(self.setupObj.apache2_conf))
+        self.setupObj.apache2_ssl_conf = os.path.join(self.ces_dir, 'output', os.path.basename(self.setupObj.apache2_ssl_conf))
+        self.setupObj.apache2_24_conf = os.path.join(self.ces_dir, 'output', os.path.basename(self.setupObj.apache2_24_conf))
+        self.setupObj.apache2_ssl_24_conf = os.path.join(self.ces_dir, 'output', os.path.basename(self.setupObj.apache2_ssl_24_conf))
+
+        apache_templates = {
+                             self.setupObj.apache2_conf: False,
+                             self.setupObj.apache2_ssl_conf: False,
+                             self.setupObj.apache2_24_conf: False,
+                             self.setupObj.apache2_ssl_24_conf: False,
+                            }
+
+        self.setupObj.render_templates(apache_templates)
+        self.setupObj.configure_httpd()
+
+    def render_template(self, tmp_file):
+        data_dict = self.setupObj.__dict__
+        data_dict.update(self.setupObj.templateRenderingDict)
+        
+        temp = self.setupObj.readFile(tmp_file)
+        temp = self.setupObj.fomatWithDict(temp,  data_dict)
+        
+        return temp
+
+    def update_shib(self):
+
+        saml_meta_data_fn = '/opt/shibboleth-idp/metadata/idp-metadata.xml'
+
+        if not os.path.exists(saml_meta_data_fn):
+            return
+
+        print "Updadting shibboleth-idp"
+
+        print "Backing up ..."
+        self.setupObj.run(['cp', '-r', '/opt/shibboleth-idp', '/opt/shibboleth-idp.back'])
+        print "Updating idp-metadata.xml"
+        self.setupObj.templateRenderingDict['idp3SigningCertificateText'] = open('/etc/certs/idp-signing.crt').read().replace('-----BEGIN CERTIFICATE-----','').replace('-----END CERTIFICATE-----','')
+        self.setupObj.templateRenderingDict['idp3EncryptionCertificateText'] = open('/etc/certs/idp-encryption.crt').read().replace('-----BEGIN CERTIFICATE-----','').replace('-----END CERTIFICATE-----','')
+
+        self.setupObj.backupFile(saml_meta_data_fn)
+
+        os.chdir('/opt')
+        self.setupObj.run(['/opt/jre/bin/jar', 'xf', os.path.join(self.app_dir,'shibboleth-idp.jar')])
+        self.setupObj.run(['rm', '-r', '/opt/META-INF'])
+        
+        idp_tmp_dir = '/tmp/{0}'.format(str(int(time.time()*1000)))
+        self.setupObj.run(['mkdir','-p', idp_tmp_dir])
+        
+        os.chdir(idp_tmp_dir)
+
+        self.setupObj.run(['/opt/jre/bin/jar', 'xf', os.path.join(self.app_dir, 'idp.war')])
+        self.setupObj.run(['rm', '-f', '/opt/shibboleth-idp/webapp/WEB-INF/lib/*'])
+        self.setupObj.run(['cp', '-r', os.path.join(idp_tmp_dir, 'WEB-INF/'), '/opt/shibboleth-idp/webapp'])
+
+        #Recreate idp-metadata.xml with new format
+        temp_fn = os.path.join(self.ces_dir, 'static/idp3/metadata/idp-metadata.xml')
+        new_saml_meta_data = self.render_template(temp_fn)
+        self.setupObj.writeFile(saml_meta_data_fn, new_saml_meta_data)
+
+        for prop_fn in ('idp.properties', 'ldap.properties', 'services.properties','saml-nameid.properties'):
+            print "Updating", prop_fn
+            properties = self.render_template(os.path.join(self.ces_dir, 'static/idp3/conf', prop_fn))
+            self.setupObj.writeFile(os.path.join('/opt/shibboleth-idp/conf', prop_fn), properties)
+
+        self.setupObj.run(['cp', '-f', '{}/app/saml-nameid.properties.vm'.format(cur_dir), '/opt/gluu/jetty/identity/conf/shibboleth3/idp/'])
+        self.setupObj.run(['chown', '-R', 'jetty:jetty', '/opt/shibboleth-idp'])
+        self.setupObj.run(['rm', '-r', '-f', idp_tmp_dir])
+
+        os.chdir(cur_dir)
+
 
 updaterObj = GluuUpdater()
 
@@ -381,3 +508,8 @@ updaterObj.download_apps()
 updaterObj.update_jetty()
 updaterObj.update_war_files()
 updaterObj.update_scripts()
+updaterObj.setupObj.load_properties(setup_properties_fn)
+updaterObj.update_apache_conf()
+updaterObj.update_shib()
+
+print "Please logout from container and restart Gluu Server"
