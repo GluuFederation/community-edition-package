@@ -13,7 +13,6 @@ cur_dir = os.path.dirname(os.path.realpath(__file__))
 
 # TODO: 
 # 1. casa upgrade
-# 2. oxd upgrade
 
 if not os.path.exists('/etc/gluu/conf'):
     sys.exit('Please run this script inside Gluu container.')
@@ -379,8 +378,12 @@ class GluuUpdater:
                     ('https://ox.gluu.org/maven/org/gluu/super-gluu-radius-server/{0}{1}/super-gluu-radius-server-{0}{1}.jar'.format(self.up_version, self.build_tag), os.path.join(self.app_dir, 'super-gluu-radius-server.jar')),
                     ]
 
-        for download_link, out_file in downloads:
+        if os.path.exists('/opt/oxd-server'):
+            downloads += [
+                    ('https://ox.gluu.org/maven/org/gluu/oxd-server/{0}{1}/oxd-server-{0}{1}.jar'.format(self.up_version, self.build_tag), os.path.join(self.app_dir, 'oxd-server.jar')),
+                    ]
 
+        for download_link, out_file in downloads:
             print "Downloading", download_link
             self.setupObj.run(['wget', '-nv', download_link, '-O', out_file])
 
@@ -528,7 +531,13 @@ class GluuUpdater:
 
         self.setupObj.copyFile(os.path.join(self.ces_dir, 'static/radius/etc/default/gluu-radius'), self.setupObj.osDefault)
             
-            
+    def update_oxd(self):
+        print "Updating oxd Server"
+        self.setupObj.copyFile(
+                    os.path.join(self.app_dir, 'oxd-server.jar'),
+                    '/opt/oxd-server/lib'
+                    )
+        
 
 updaterObj = GluuUpdater()
 
@@ -544,5 +553,6 @@ updaterObj.setupObj.load_properties(setup_properties_fn)
 updaterObj.update_apache_conf()
 updaterObj.update_shib()
 updaterObj.update_radius()
+updaterObj.update_oxd()
 
 print "Please logout from container and restart Gluu Server"
