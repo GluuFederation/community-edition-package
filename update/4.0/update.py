@@ -1942,11 +1942,16 @@ if __name__ == '__main__':
 
     sdb_files = []
 
+
+    sdb_tmp_dir = os.path.join(cur_dir, 'sdb_tmp')
+    if not os.path.exists(sdb_tmp_dir):
+        os.mkdir(sdb_tmp_dir)
+
     class MyLDIF(LDIFParser):
         def __init__(self, input_fd):
             LDIFParser.__init__(self, input_fd)
             self.DNs = []
-            fn = '/tmp/{}.sdb'.format(str(uuid.uuid4()))
+            fn = os.path.join(sdb_tmp_dir, '{}.sdb'.format(str(uuid.uuid4())))
             sdb_files.append(fn)
             self.entries = shelve.open(fn)
             self.inumOrg = None
@@ -1986,7 +1991,7 @@ if __name__ == '__main__':
         def __init__(self, input_fd):
             LDIFParser.__init__(self, input_fd)
             self.DNs = []
-            fn = '/tmp/{}.sdb'.format(str(uuid.uuid4()))
+            fn = os.path.join(sdb_tmp_dir, '{}.sdb'.format(str(uuid.uuid4())))
             sdb_files.append(fn)
             self.entries = shelve.open(fn)
 
