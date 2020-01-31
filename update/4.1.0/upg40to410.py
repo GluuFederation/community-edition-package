@@ -8,11 +8,10 @@ import ldap
 import pyDes
 import base64
 import ldap.modlist as modlist
+import glob
+import zipfile
 
 cur_dir = os.path.dirname(os.path.realpath(__file__))
-
-# TODO: 
-# 1. casa upgrade
 
 if not os.path.exists('/etc/gluu/conf'):
     sys.exit('Please run this script inside Gluu container.')
@@ -93,10 +92,15 @@ class GluuUpdater:
 
         self.scripts_inum = ['2DAF-BA90', '2FDB-CF02', 'D40C-1CA4', '09A0-93D7', '92F0-BF9E', '09A0-93D6', '2124-0CF1', '2DAF-BA91']
 
+        self.casa_plugins = {
+            'strong-authn-settings': 'https://ox.gluu.org/maven/org/gluu/casa/plugins/strong-authn-settings/{0}{1}/strong-authn-settings-{0}{1}-jar-with-dependencies.jar',
+            'account-linking': 'https://ox.gluu.org/maven/org/gluu/casa/plugins/account-linking/{0}{1}/account-linking-{0}{1}-jar-with-dependencies.jar',
+            'authorized-clients': 'https://ox.gluu.org/maven/org/gluu/casa/plugins/authorized-clients/{0}{1}/authorized-clients-{0}{1}-jar-with-dependencies.jar',
+            'custom-branding': 'https://ox.gluu.org/maven/org/gluu/casa/plugins/custom-branding/{0}{1}/custom-branding-{0}{1}-jar-with-dependencies.jar',
+            }
+
         if not os.path.exists(self.app_dir):
             os.mkdir(self.app_dir)
-
-        
 
     def download_ces(self):
         
@@ -383,6 +387,19 @@ class GluuUpdater:
                     ('https://ox.gluu.org/maven/org/gluu/oxd-server/{0}{1}/oxd-server-{0}{1}.jar'.format(self.up_version, self.build_tag), os.path.join(self.app_dir, 'oxd-server.jar')),
                     ]
 
+        if os.path.exists('/opt/gluu/jetty/casa'):
+            downloads += [
+                    ('https://ox.gluu.org/maven/org/gluu/casa/{0}{1}/casa-{0}{1}.war'.format(self.up_version, self.build_tag), os.path.join(self.app_dir, 'casa.war')),
+                    ('https://raw.githubusercontent.com/GluuFederation/community-edition-setup/version_{0}/static/casa/scripts/casa-external_smpp.py'.format(self.up_version), '/opt/gluu/python/libs/casa-external_smpp.py'),
+                    ]
+            for p in self.casa_plugins:
+                downloads.append((self.casa_plugins[p].format(self.up_version, self.build_tag), os.path.join(self.app_dir, p + '.jar')))
+
+            downloads += [
+                    ('https://github.com/GluuFederation/casa/raw/version_{}/plugins/account-linking/extras/casa.xhtml'.format(self.up_version), os.path.join(self.app_dir, 'casa.xhtml')),
+                    ('https://raw.githubusercontent.com/GluuFederation/casa/version_4.1.0/plugins/account-linking/extras/casa.py', os.path.join(self.app_dir, 'casa.py')),
+                    ]
+
         for download_link, out_file in downloads:
             print "Downloading", download_link
             self.setupObj.run(['wget', '-nv', download_link, '-O', out_file])
@@ -406,30 +423,24 @@ class GluuUpdater:
         print "Updating Scripts"
         self.setupObj.prepare_base64_extension_scripts()
         self.setupObj.renderTemplate(self.setupObj.ldif_scripts)
-        self.ldif_scripts_fn = os.path.join(self.setupObj.outputFolder, os.path.basename(self.setupObj.ldif_scripts))
+        ldif_scripts_fn = os.path.join(self.setupObj.outputFolder, os.path.basename(self.setupObj.ldif_scripts))
+        self.parser = self.setup.myLdifParser(ldif_scripts_fn)
+        self.parser.parse()
+        
         getattr(self, 'update_scripts_' + self.default_storage)()
 
     def update_scripts_couchbase(self):
-        
-        documents = self.setup.get_documents_from_ldif(self.ldif_scripts_fn)
-        scr_keys = [ 'scripts_{}'.format(inum) for inum in self.scripts_inum ]
-
-        for k, doc in documents:
-            if k in scr_keys:                
-                query = 'UPSERT INTO `gluu` (KEY, VALUE) VALUES ("%s", %s)' % (k, json.dumps(doc))
-                print "Updating script:", k
-                result = self.cbm.exec_query(query)
+        for dn, entry in self.parser.entries:
+            if entry['inum'][0] in self.scripts_inum:
+                scr_key = 'scripts_{}'.format(entry['inum'][0])
+                print "Updating script:", scr_key
+                result = self.cbm.exec_query('UPDATE `gluu` USE KEYS "{}" SET oxScript={}'.format(scr_key, json.dumps(entry['oxScript'][0])))
                 result_data = result.json()
                 print "Result", result_data['status']
-
+ 
     def update_scripts_ldap(self):
-        
         self.db_connection_ldap()
-        
-        parser = self.setup.myLdifParser(self.ldif_scripts_fn)
-        parser.parse()
-        
-        for dn, entry in parser.entries:
+        for dn, entry in self.parser.entries:
             if entry['inum'][0] in self.scripts_inum:
                 try:
                     self.conn.modify_s(dn, [( ldap.MOD_REPLACE, 'oxScript',  entry['oxScript'][0])])
@@ -530,22 +541,64 @@ class GluuUpdater:
         self.setupObj.copyFile(radius_jar, radius_dir)
 
         self.setupObj.copyFile(os.path.join(self.ces_dir, 'static/radius/etc/default/gluu-radius'), self.setupObj.osDefault)
-            
+
+
     def update_oxd(self):
         print "Updating oxd Server"
         self.setupObj.copyFile(
                     os.path.join(self.app_dir, 'oxd-server.jar'),
                     '/opt/oxd-server/lib'
                     )
+
+
+    def update_casa(self):
+        print "Updating casa"
+        casa_base_dir = os.path.join(self.setupObj.jetty_base, 'casa')
+        casa_plugins_dir = os.path.join(casa_base_dir, 'plugins')
+        self.setupObj.run_service_command('casa', 'stop')
         
+        self.setupObj.run(['cp', '-f', os.path.join(self.app_dir, 'casa.war'),
+                                    os.path.join(casa_base_dir, 'webapps')])
+
+        account_linking = None
+        
+        # update plugins
+        for plugin in glob.glob(os.path.join(casa_plugins_dir,'*.jar')):
+            plugin_zip = zipfile.ZipFile(plugin, "r")
+            menifest = plugin_zip.read('META-INF/MANIFEST.MF')
+            for l in menifest.splitlines():
+                ls = l.strip()
+                if ls.startswith('Plugin-Id'):
+                    n = ls.find(':')
+                    pid = ls[n+1:].strip()
+                    if pid in self.casa_plugins:
+                        jar_fn = os.path.join(self.app_dir, pid + '.jar')
+                        self.setupObj.run(['rm', '-f', plugin])
+                        self.setupObj.run(['cp', '-f', jar_fn, casa_plugins_dir])
+                    if pid == 'account-linking':
+                        account_linking = True
+
+        if account_linking:
+            self.setupObj.copyFile(
+                    os.path.join(self.app_dir, 'casa.xhtml'),
+                    os.path.join(self.setupObj.jetty_base, 'oxauth/custom/pages')
+                    )
+            
+            scr = self.setupObj.readFile(os.path.join(self.app_dir, 'casa.py'))
+
+            if self.default_storage == 'couchbase':
+                result = self.cbm.exec_query('UPDATE `gluu` USE KEYS "scripts_BABA-CACA" SET oxScript={}'.format(json.dumps(scr)))
+            elif self.default_storage == 'ldap':
+                self.conn.modify_s('inum=BABA-CACA,ou=scripts,o=gluu', [( ldap.MOD_REPLACE, 'oxScript',  scr)])
+            
+            
 
 updaterObj = GluuUpdater()
-
 updaterObj.download_ces()
-
+updaterObj.download_apps()
 updaterObj.determine_persistence_type()
 updaterObj.update_persistence_data()
-updaterObj.download_apps()
+updaterObj.update_scripts()
 updaterObj.update_jetty()
 updaterObj.update_war_files()
 updaterObj.update_scripts()
@@ -554,5 +607,6 @@ updaterObj.update_apache_conf()
 updaterObj.update_shib()
 updaterObj.update_radius()
 updaterObj.update_oxd()
+updaterObj.update_casa()
 
 print "Please logout from container and restart Gluu Server"
