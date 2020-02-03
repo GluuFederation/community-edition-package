@@ -525,11 +525,12 @@ class GluuUpdater:
         os.chdir(cur_dir)
 
     def update_radius(self):
-        print "Updating Gluu Radius Server"
-
+        
         radius_dir = '/opt/gluu/radius'
         if not os.path.exists(radius_dir):
             return
+        
+        print "Updating Gluu Radius Server"
         
         self.setupObj.copyFile(os.path.join(self.ces_dir, 'static/radius/etc/init.d/gluu-radius'), '/etc/init.d')
         self.setupObj.run(['chmod', '+x', '/etc/init.d/gluu-radius'])
@@ -552,8 +553,13 @@ class GluuUpdater:
 
 
     def update_casa(self):
-        print "Updating casa"
         casa_base_dir = os.path.join(self.setupObj.jetty_base, 'casa')
+        
+        if not os.path.exists(casa_base_dir):
+            return
+        
+        print "Updating casa"
+        
         casa_plugins_dir = os.path.join(casa_base_dir, 'plugins')
         self.setupObj.run_service_command('casa', 'stop')
         
