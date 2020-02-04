@@ -9,6 +9,11 @@ import os
 import re
 import zipfile
 
+# exit codes
+# 0: no new version is available
+# 200: new version is available
+# 1: an error occurred. error will be written to stderr
+
 os_name, os_version, os_ditro = platform.dist()
 
 os_major = os_version.split('.')[0]
@@ -64,7 +69,9 @@ def get_max_deb_version(os_name, os_ditro):
         elif ls.startswith('Version:') and package_name:
             n=ls.find(':')
             vt =ls[n+1:].strip()
-            v, t = vt.split('~')
+            vn = vt.find('-')
+            v = vt[:vn]
+            t = vt[vn+1:]
             versions.append((v,t))
 
     return max(versions)
@@ -120,17 +127,39 @@ def get_oxauth_version():
                 version = '.'.join(tmp_l[:-1])
             return version
 
-if os_name in ('debian', 'ubuntu'):
-    latest_repo_version = get_max_deb_version(os_name, os_ditro)
+def get_release_version():
 
-elif os_name in ('rhel', 'centos'):
-    latest_repo_version = get_max_rpm_version(os_name, os_major)
+    with open('/etc/gluu_release') as f:
+        gluu_release = f.read().strip()
+    
+    n = gluu_release.find('-')
+    ver = gluu_release[:n]
+    rel = gluu_release[n+1:]
+
+    return (ver, rel)
 
 
-current_version = get_oxauth_version()
+try:
 
-print "Latest Repo Version", latest_repo_version
-print "Current Version", current_version
+    if os_name in ('debian', 'ubuntu'):
+        latest_repo_version = get_max_deb_version(os_name, os_ditro)
 
-if latest_repo_version[0] > current_version:
-    print "New version is available", latest_repo_version[0]
+    elif os_name in ('rhel', 'centos'):
+        latest_repo_version = get_max_rpm_version(os_name, os_major)
+
+    new_version_available = 0
+
+    current_version = get_release_version()
+
+    sys.stderr.write("Current Version: {}\n".format(current_version))
+    sys.stderr.write("Latest Version: {}\n".format(latest_repo_version))
+
+    if latest_repo_version > current_version:
+        new_version_available = 200
+        print "{} ({})".format(latest_repo_version[0],  latest_repo_version[1])
+
+    sys.exit(new_version_available)
+
+except Exception as e:
+    sys.stderr.write("ERROR: {}\n".format(e))
+    sys.exit(1)
