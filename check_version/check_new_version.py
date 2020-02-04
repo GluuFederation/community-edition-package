@@ -55,7 +55,7 @@ def get_max_deb_version(os_name, os_ditro):
             n=ls.find(':')
             vt =ls[n+1:].strip()
             v, t = vt.split('~')
-            versions.append(v)
+            versions.append((v,t))
 
     return max(versions)
 
@@ -87,7 +87,9 @@ def get_max_rpm_version(os_name, os_major):
                 package_name = name_element.text
                 if package_name == 'gluu-server':
                     version_element = child.find(ns+'version')
-                    versions.append(version_element.get('ver'))
+                    ver = version_element.get('ver')
+                    rel = version_element.get('rel')
+                    versions.append((ver, rel))
 
     return max(versions)
 
