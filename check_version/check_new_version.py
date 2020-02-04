@@ -1,3 +1,4 @@
+import sys
 import StringIO
 import urllib2
 import ssl
@@ -6,6 +7,7 @@ import platform
 import xml.etree.ElementTree as ET
 import os
 import re
+import zipfile
 
 os_name, os_version, os_ditro = platform.dist()
 
@@ -28,7 +30,14 @@ os_name = os_name.lower()
 
 def get_max_deb_version(os_name, os_ditro):
 
-    distro_path = os_ditro if os_name == 'ubuntu' else os_ditro+'-stable'
+    if os_name == 'ubuntu':
+        distro_path = os_ditro
+        if '--testing' in sys.argv:
+            distro_path += '-devel'
+    else:
+        distro_path = os_ditro
+        if not '--testing' in sys.argv:
+            distro_path += '-stable'
     
     packages_url = 'https://repo.gluu.org/{}/dists/{}/main/binary-amd64/Packages.gz'.format(os_name, distro_path)
 
@@ -62,8 +71,11 @@ def get_max_deb_version(os_name, os_ditro):
 
 
 def get_max_rpm_version(os_name, os_major):
-    repodata_base_url = 'https://repo.gluu.org/{}/{}/'.format(os_name, os_major)
+    if '--testing' in sys.argv:
+            os_major += '-testing'
     
+    repodata_base_url = 'https://repo.gluu.org/{}/{}/'.format(os_name, os_major)
+
     response = urllib2.urlopen(os.path.join(repodata_base_url, 'repodata/repomd.xml'), context=ssl._create_unverified_context())
     root = ET.fromstring(response.read())
     ns = re.match(r'{.*}', root.tag).group(0)
@@ -94,11 +106,31 @@ def get_max_rpm_version(os_name, os_major):
     return max(versions)
 
 
+def get_oxauth_version():
+    war_zip = zipfile.ZipFile('/opt/gluu/jetty/oxauth/webapps/oxauth.war', "r")
+    menifest = war_zip.read('META-INF/MANIFEST.MF')
+
+    for l in menifest.split('\n'):
+        ls = l.strip()
+        if ls.startswith('Implementation-Version'):
+            n = ls.find(':')
+            version = ls[n+1:].strip()
+            tmp_l = version.split('.')
+            if tmp_l[-1].lower() in ['final']:
+                version = '.'.join(tmp_l[:-1])
+            return version
 
 if os_name in ('debian', 'ubuntu'):
-    max_version = get_max_deb_version(os_name, os_ditro)
+    latest_repo_version = get_max_deb_version(os_name, os_ditro)
 
 elif os_name in ('rhel', 'centos'):
-    max_version = get_max_rpm_version(os_name, os_major)
+    latest_repo_version = get_max_rpm_version(os_name, os_major)
 
-print max_version
+
+current_version = get_oxauth_version()
+
+print "Latest Repo Version", latest_repo_version
+print "Current Version", current_version
+
+if latest_repo_version[0] > current_version:
+    print "New version is available", latest_repo_version[0]
