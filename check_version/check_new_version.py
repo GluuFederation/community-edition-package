@@ -1,5 +1,6 @@
 import StringIO
-import requests
+import urllib2
+import ssl
 import gzip
 import platform
 import xml.etree.ElementTree as ET
@@ -31,9 +32,9 @@ def get_max_deb_version(os_name, os_ditro):
     
     packages_url = 'https://repo.gluu.org/{}/dists/{}/main/binary-amd64/Packages.gz'.format(os_name, distro_path)
 
-    response = requests.get(packages_url)
+    response = urllib2.urlopen(packages_url, context=ssl._create_unverified_context())
 
-    strio = StringIO.StringIO(response.content)
+    strio = StringIO.StringIO(response.read())
 
     gzip_file = gzip.GzipFile(fileobj=strio)
 
@@ -63,9 +64,8 @@ def get_max_deb_version(os_name, os_ditro):
 def get_max_rpm_version(os_name, os_major):
     repodata_base_url = 'https://repo.gluu.org/{}/{}/'.format(os_name, os_major)
     
-    result = requests.get(os.path.join(repodata_base_url, 'repodata/repomd.xml'))
-    repmod_xml = result.content
-    root = ET.fromstring(repmod_xml)
+    response = urllib2.urlopen(os.path.join(repodata_base_url, 'repodata/repomd.xml'), context=ssl._create_unverified_context())
+    root = ET.fromstring(response.read())
     ns = re.match(r'{.*}', root.tag).group(0)
 
     versions = ['0']
@@ -74,8 +74,8 @@ def get_max_rpm_version(os_name, os_major):
         if child.get('type') == 'primary':
             element = child.find(ns+'location')
             primary_xml_url = os.path.join(repodata_base_url, element.get('href'))
-            response = requests.get(primary_xml_url)
-            strio = StringIO.StringIO(response.content)
+            response = urllib2.urlopen(primary_xml_url, context=ssl._create_unverified_context())
+            strio = StringIO.StringIO(response.read())
             gzip_file = gzip.GzipFile(fileobj=strio)
             primary_xml = gzip_file.read()
             
