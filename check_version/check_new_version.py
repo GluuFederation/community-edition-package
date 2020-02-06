@@ -8,11 +8,12 @@ import xml.etree.ElementTree as ET
 import os
 import re
 import zipfile
+import json
 
-# exit codes
-# 0: no new version is available
-# 200: new version is available
-# 1: an error occurred. error will be written to stderr
+
+
+newVersionAvailable = False
+version = ""
 
 os_name, os_version, os_ditro = platform.dist()
 
@@ -147,19 +148,14 @@ try:
     elif os_name in ('rhel', 'centos'):
         latest_repo_version = get_max_rpm_version(os_name, os_major)
 
-    new_version_available = 0
-
     current_version = get_release_version()
 
-    sys.stderr.write("Current Version: {}\n".format(current_version))
-    sys.stderr.write("Latest Version: {}\n".format(latest_repo_version))
-
     if latest_repo_version > current_version:
-        new_version_available = 200
-        print "{} ({})".format(latest_repo_version[0],  latest_repo_version[1])
+        newVersionAvailable = True
+        version = "{} ({})".format(latest_repo_version[0],  latest_repo_version[1])
 
-    sys.exit(new_version_available)
 
-except Exception as e:
-    sys.stderr.write("ERROR: {}\n".format(e))
-    sys.exit(1)
+except:
+    pass
+
+print json.dumps({"newVersionAvailable":newVersionAvailable, "version": version})
