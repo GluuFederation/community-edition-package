@@ -12,6 +12,7 @@ import glob
 import zipfile
 
 cur_dir = os.path.dirname(os.path.realpath(__file__))
+properties_password = None
 
 if not os.path.exists('/etc/gluu/conf'):
     sys.exit('Please run this script inside Gluu container.')
@@ -20,11 +21,24 @@ from pyDes import *
 
 ldap.set_option(ldap.OPT_X_TLS_REQUIRE_CERT, ldap.OPT_X_TLS_ALLOW)
 
-
-setup_properties_fn = '/install/community-edition-setup/setup.properties.last'
+setup_properties_fn = '/install/community-edition-setup/setup.properties'
 
 if not os.path.exists(setup_properties_fn):
-    print "Setup Properties File {} not found".format(setup_properties_fn)
+    setup_properties_fn += '.last'
+    
+    if not os.path.exists(setup_properties_fn):
+        setup_properties_fn += '.enc'
+
+    if not os.path.exists(setup_properties_fn):
+        setup_properties_fn = None
+
+if setup_properties_fn and setup_properties_fn.endswith('.enc'):
+    properties_password = raw_input('Password for {}: '.format(setup_properties_fn))
+    if not properties_password:
+        print "Can't continue without password. Exiting ..."
+
+if not setup_properties_fn:
+    print "Setup Properties file was not found"
     print "Can't continue. Exiting ..."
     sys.exit()
 
@@ -129,8 +143,8 @@ class GluuUpdater:
         self.setup.attribDataTypes.startup(self.ces_dir)
         self.setupObj.os_type, self.setupObj.os_version = self.setupObj.detect_os_type()
         self.setupObj.os_initdaemon = self.setupObj.detect_initd()
-
-        self.setup_prop = get_properties(setup_properties_fn)
+        self.setupObj.properties_password = properties_password
+        self.setup_prop = self.setupObj.load_properties(setup_properties_fn)
 
     def determine_persistence_type(self):        
         self.cb_buckets = []
