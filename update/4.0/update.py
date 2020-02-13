@@ -1938,6 +1938,8 @@ if __name__ == '__main__':
                                         'jre_version',
                                         'java_type',
                                         'jreDestinationPath',
+                                        'ldif_site',
+                                        'ldif_metric',
                                         ]
                                 )
 
