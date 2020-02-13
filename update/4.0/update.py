@@ -819,7 +819,7 @@ class GluuUpdater:
 
                 oxIDPAuthentication = json.loads(new_entry['oxIDPAuthentication'][0])
                 oxIDPAuthentication_config = json.loads(oxIDPAuthentication['config'])
-                oxIDPAuthentication_config['baseDNs'][0] = 'ou=people,o=gluu'
+                
 
                 if setupObject.persistence_type == 'couchbase':
                     oxIDPAuthentication_config['enabled'] = False
@@ -827,6 +827,7 @@ class GluuUpdater:
                 if self.ldap_type == 'openldap':
                     if oxIDPAuthentication_config['servers'][0]=='localhost:1636' and oxIDPAuthentication_config['bindDN'].lower()=='cn=directory manager,o=gluu':
                         oxIDPAuthentication_config['bindDN'] = 'cn=Directory Manager'
+                        oxIDPAuthentication_config['baseDNs'][0] = 'ou=people,o=gluu'
 
                 oxIDPAuthentication['config'] = json.dumps(oxIDPAuthentication_config)
                 new_entry['oxIDPAuthentication'][0] = json.dumps(oxIDPAuthentication, indent=2)
@@ -1652,7 +1653,8 @@ class GluuUpdater:
         print "Importing processed ldif"
         
         ldif2import = [ ('o=gluu', 'userRoot', os.path.join(cur_dir, 'gluu_noinum.ldif')), 
-                        ('o=metric', 'metric',setupObject.ldif_metric),
+                        ('o=metric', 'metric', setupObject.ldif_metric),
+                        ('o=site', 'site', setupObject.ldif_site),
                       ]
 
         for includeBranch, backendID, ldifFile in ldif2import:
