@@ -1585,6 +1585,8 @@ class GluuUpdater:
 
                         new_provider['options'][key] = val
 
+
+
                 providers.append(new_provider)
 
                 provider_mapping_fn = provider+'.js'
@@ -1604,15 +1606,17 @@ class GluuUpdater:
                         newMappings.append( '               {}: profile["{}"]'.format(local_key, passport_saml_config[provider]['reverseMapping'][remote_key]))
 
 
-                setupObject.writeFile(
-                                os.path.join(self.temp_dir, provider_mapping_fn),
-                                mappings_file_content_tmp % ',\n'.join(newMappings)
-                                )
+                if os.path.exists(setupObject.gluu_passport_base, 'server/mappings'):
 
-                setupObject.copyFile(
-                            os.path.join(self.temp_dir, provider_mapping_fn),
-                            os.path.join(setupObject.gluu_passport_base, 'server/mappings')
-                            )
+                    setupObject.writeFile(
+                                    os.path.join(self.temp_dir, provider_mapping_fn),
+                                    mappings_file_content_tmp % ',\n'.join(newMappings)
+                                    )
+
+                    setupObject.copyFile(
+                                os.path.join(self.temp_dir, provider_mapping_fn),
+                                os.path.join(setupObject.gluu_passport_base, 'server/mappings')
+                                )
             
             if not passport_saml_config_fn.endswith('~'):
                 setupObject.backupFile(passport_saml_config_fn)
