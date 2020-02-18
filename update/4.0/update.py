@@ -817,19 +817,26 @@ class GluuUpdater:
                 new_entry['ou'] = ['configuration']
                 new_entry.pop('inum')
 
-                oxIDPAuthentication = json.loads(new_entry['oxIDPAuthentication'][0])
-                oxIDPAuthentication_config = json.loads(oxIDPAuthentication['config'])
-                
+                oxIDPAuthentication = {
+                                        'config': {'baseDNs': ['ou=people,o=gluu'],
+                                                     'bindDN': 'cn=directory manager',
+                                                     'bindPassword': setupObject.obscure(setupObject.ldapPass),
+                                                     'configId': 'auth_ldap_server',
+                                                     'enabled': False,
+                                                     'localPrimaryKey': 'uid',
+                                                     'maxConnections': 1000,
+                                                     'primaryKey': 'uid',
+                                                     'servers': ['localhost:1636'],
+                                                     'useAnonymousBind': False,
+                                                     'useSSL': 'true'},
+                                         'enabled': False,
+                                         'level': 0,
+                                         'name': None,
+                                         'priority': 1,
+                                         'type': 'auth',
+                                         'version': 0
+                                        }
 
-                if setupObject.persistence_type == 'couchbase':
-                    oxIDPAuthentication_config['enabled'] = False
-
-                if self.ldap_type == 'openldap':
-                    if oxIDPAuthentication_config['servers'][0]=='localhost:1636' and oxIDPAuthentication_config['bindDN'].lower()=='cn=directory manager,o=gluu':
-                        oxIDPAuthentication_config['bindDN'] = 'cn=Directory Manager'
-                        oxIDPAuthentication_config['baseDNs'][0] = 'ou=people,o=gluu'
-
-                oxIDPAuthentication['config'] = json.dumps(oxIDPAuthentication_config)
                 new_entry['oxIDPAuthentication'][0] = json.dumps(oxIDPAuthentication, indent=2)
 
                 for bool_attr in (
@@ -1129,12 +1136,8 @@ class GluuUpdater:
             if 'ou=configuration,o=gluu' == new_dn:
 
                 # we need to set authentication mode to ldap or couchbase
-                if setupObject.persistence_type == 'couchbase':
-                    new_entry['oxAuthenticationMode'] = ['simple_password_auth']
-                    new_entry['oxTrustAuthenticationMode'] = ['simple_password_auth']
-                else:
-                    new_entry['oxAuthenticationMode'] =  ['auth_ldap_server']
-                    new_entry['oxTrustAuthenticationMode'] = ['auth_ldap_server']
+                new_entry['oxAuthenticationMode'] =  ['simple_password_auth']
+                new_entry['oxTrustAuthenticationMode'] = ['simple_password_auth']
 
                 if not 'oxCacheConfiguration' in new_entry:
                     continue
@@ -2037,12 +2040,14 @@ if __name__ == '__main__':
 
     updaterObj.update_default_settings()
 
+
     if not argsp.remote_couchbase:
         updaterObj.install_opendj()
         updaterObj.update_schema()
     else:
         setupObject.remoteCouchbase=True
         setupObject.persistence_type='couchbase'
+
 
     updaterObj.parse_current_ldif()
     updaterObj.process_ldif()
