@@ -1953,6 +1953,7 @@ if __name__ == '__main__':
                                         'jreDestinationPath',
                                         'ldif_site',
                                         'ldif_metric',
+                                        'extensionFolder',
                                         ]
                                 )
 

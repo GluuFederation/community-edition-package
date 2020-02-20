@@ -82,6 +82,34 @@ def flatten(k):
 def make_key(l):
     return [ flatten(u'{}'.format(k)) for k in l ]
 
+
+no_update = [
+        'install_dir',
+        'node_version',
+        'jetty_version',
+        'jetty_dist',
+        'outputFolder',
+        'templateFolder',
+        'staticFolder',
+        'openDjIndexJson',
+        'openDjSchemaFolder',
+        'openDjschemaFiles',
+        'opendj_init_file',
+        'opendj_service_centos7',
+        'log',
+        'logError',
+        'passport_initd_script',
+        'node_initd_script',
+        'jre_version',
+        'java_type',
+        'jreDestinationPath',
+        'ldif_site',
+        'ldif_metric',
+        'ox_ldap_properties',
+        'extensionFolder',
+        ]
+                                        
+
 class GluuUpdater:
     def __init__(self):
         self.ces_dir = os.path.join(cur_dir, 'ces_current')
@@ -144,9 +172,9 @@ class GluuUpdater:
         self.setupObj.os_type, self.setupObj.os_version = self.setupObj.detect_os_type()
         self.setupObj.os_initdaemon = self.setupObj.detect_initd()
         self.setupObj.properties_password = properties_password
-        self.setup_prop = self.setupObj.load_properties(setup_properties_fn)
+        self.setup_prop = self.setupObj.load_properties(setup_properties_fn, no_update=no_update)
 
-    def determine_persistence_type(self):        
+    def determine_persistence_type(self):
         self.cb_buckets = []
         gluu_prop = get_properties(self.setupObj.gluu_properties_fn)
         self.persistence_type = gluu_prop['persistence.type']
@@ -622,7 +650,7 @@ updaterObj.update_scripts()
 updaterObj.update_jetty()
 updaterObj.update_war_files()
 updaterObj.update_scripts()
-updaterObj.setupObj.load_properties(setup_properties_fn)
+updaterObj.setupObj.load_properties(setup_properties_fn, no_update=no_update)
 updaterObj.update_apache_conf()
 updaterObj.update_shib()
 updaterObj.update_radius()
