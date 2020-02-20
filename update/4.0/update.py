@@ -202,6 +202,12 @@ class GluuUpdater:
 
         self.update_casa_script = os.path.join(cur_dir,'update_casa.py')
 
+
+        if not argsp.online:
+            if (not os.path.exists(os.path.join(self.war_dir, 'oxauth.war'))) and (not os.path.exists(os.path.join(self.app_dir, 'opendj-server-legacy-{0}.zip'.format(self.wrends_version_number)))):
+                print "Required files are not found. Please run with -o argument"
+                sys.exit(1)
+
     def get_first_backup(self, fn):
         file_list = glob.glob(fn+'.gluu-{0}-*~'.format(setupObject.currentGluuVersion))
 
@@ -2019,6 +2025,10 @@ if __name__ == '__main__':
     setupObject.os_type, setupObject.os_version = setupObject.detect_os_type()
     setupObject.os_initdaemon = setupObject.detect_initd()
     setupObject.calculate_selected_aplications_memory()
+
+    for service in os.listdir(setupObject.jetty_base):
+        print "Stopping", service
+        setupObject.run_service_command(service, 'stop')
 
     updaterObj.update_java()
     updaterObj.upgrade_jetty()
