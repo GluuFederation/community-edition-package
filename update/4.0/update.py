@@ -26,13 +26,6 @@ cur_dir = os.path.dirname(os.path.realpath(__file__))
 sys.path.append(cur_dir)
 
 package_type = None
-setup_properties_fn = '/install/community-edition-setup/setup.properties.last'
-
-
-if not os.path.exists(setup_properties_fn):
-    print "Upgrade script needs {0}.\nCan't continue without {0}.\nPlease put {0} and\nre-run upgrade script. Exiting for now...".format(setup_properties_fn)
-    sys.exit()
-    
 
 if os.path.exists('/etc/yum.repos.d/'):
     package_type = 'rpm'
@@ -84,16 +77,19 @@ if missing_packages:
 
 
 if not os.path.exists(os.path.join(cur_dir, 'jsonmerge')):
-    os.system('wget https://github.com/avian2/jsonmerge/archive/master.zip -O /tmp/jsonmerge-master.zip')
+    os.system('wget -nv https://github.com/avian2/jsonmerge/archive/master.zip -O /tmp/jsonmerge-master.zip')
     os.system('unzip -qo /tmp/jsonmerge-master.zip -d /tmp')
     os.system('cp -r /tmp/jsonmerge-master/jsonmerge ' + cur_dir)
 
 
 if not os.path.exists(os.path.join(cur_dir, 'setup')):
-    os.system('wget https://github.com/GluuFederation/community-edition-setup/archive/version_{}.zip -O /tmp/community-edition-setup-master.zip'.format(upg_ver))
+    os.system('wget -nv https://github.com/GluuFederation/community-edition-setup/archive/version_{}.zip -O /tmp/community-edition-setup-master.zip'.format(upg_ver))
     os.system('unzip -qo /tmp/community-edition-setup-master.zip -d /tmp')
     os.system('mv /tmp/community-edition-setup-version_{} {}/setup'.format(upg_ver, cur_dir))
-    os.system('touch setup/__init__.py')
+    os.system('wget -nv https://raw.githubusercontent.com/GluuFederation/community-edition-setup/master/pylib/cbm.py -O {}'.format(os.path.join(cur_dir, 'setup', 'pylib', 'cbm.py')))
+    os.system('wget -nv https://raw.githubusercontent.com/GluuFederation/community-edition-setup/master/pylib/generate_properties.py -O {}'.format(os.path.join(cur_dir, 'setup', 'pylib', 'generate_properties.py')))
+    open(os.path.join(cur_dir, 'setup','__init__.py'), 'w').close()
+
 
 
 if needs_restart:
@@ -201,7 +197,6 @@ class GluuUpdater:
         self.script_config_properties = {}
 
         self.update_casa_script = os.path.join(cur_dir,'update_casa.py')
-
 
         if not argsp.online:
             if (not os.path.exists(os.path.join(self.war_dir, 'oxauth.war'))) and (not os.path.exists(os.path.join(self.app_dir, 'opendj-server-legacy-{0}.zip'.format(self.wrends_version_number)))):
@@ -544,7 +539,7 @@ class GluuUpdater:
         #add Passport IDP-Initated flow Client if not exists
 
         
-        if not setup_porperties['passport_rp_ii_client_id']:
+        if not 'passport_rp_ii_client_id' in setup_porperties:
             setupObject.passport_rp_ii_client_id = '1503.'  + str(uuid.uuid4())
             print "Adding Passport IDP-Initated flow Client with inum", setupObject.passport_rp_ii_client_id
 
@@ -1913,11 +1908,22 @@ if __name__ == '__main__':
     from setup.setup import *
     from ldap.dn import explode_dn, str2dn, dn2str
     from setup.pylib.Properties import Properties
+    from setup.pylib.generate_properties import generate_properties
 
+    json_prop = os.path.join(cur_dir, 'setup_prop.json')
 
-    setup_porperties = Properties()
-    with open(setup_properties_fn) as f:
-        setup_porperties.load(f)
+    if not os.path.exists(json_prop):
+        print "Collecting properties"
+        setup_porperties = generate_properties(True)
+
+        print "Dumping properties to", json_prop
+        with open(json_prop,'w') as w:
+            json.dump(setup_porperties, w, indent=2)
+    else:
+        print "Loading", json_prop
+        with open(json_prop) as f:
+            setup_porperties = json.load(f)
+        setup_porperties['encode_salt'] = str(setup_porperties['encode_salt'])
 
     updaterObj = GluuUpdater()
     updaterObj.determine_ldap_type()
@@ -1929,40 +1935,13 @@ if __name__ == '__main__':
     setupObject.log = os.path.join(setup_install_dir, 'update.log')
     setupObject.logError = os.path.join(setup_install_dir, 'update_error.log')
 
-
-    setupObject.load_properties(setup_properties_fn,
-                                no_update = [
-                                        'install_dir',
-                                        'node_version',
-                                        'jetty_version',
-                                        'jetty_dist',
-                                        'outputFolder',
-                                        'templateFolder',
-                                        'staticFolder',
-                                        'openDjIndexJson',
-                                        'openDjSchemaFolder',
-                                        'openDjschemaFiles',
-                                        'opendj_init_file',
-                                        'opendj_service_centos7',
-                                        'log',
-                                        'logError',
-                                        'passport_initd_script',
-                                        'node_initd_script',
-                                        'jre_version',
-                                        'java_type',
-                                        'jreDestinationPath',
-                                        'ldif_site',
-                                        'ldif_metric',
-                                        'extensionFolder',
-                                        ]
-                                )
-
+    for setup_key in setup_porperties:
+        setattr(setupObject, setup_key, setup_porperties[setup_key])
 
     if argsp.online or not os.path.exists('setup'):
         updaterObj.download_apps()
 
     sdb_files = []
-
 
     sdb_tmp_dir = os.path.join(cur_dir, 'sdb_tmp')
     if not os.path.exists(sdb_tmp_dir):
@@ -2021,7 +2000,6 @@ if __name__ == '__main__':
             self.entries[str(dn)] = entry
 
     setupObject.check_properties()
-    setupObject.backupFile(setup_properties_fn)
 
     setupObject.os_type, setupObject.os_version = setupObject.detect_os_type()
     setupObject.os_initdaemon = setupObject.detect_initd()
@@ -2119,8 +2097,6 @@ if __name__ == '__main__':
         if os.path.exists(sdbf):
             os.remove(sdbf)
 
-    setupObject.save_properties(setup_properties_fn)
-
     print
     if hasattr(setupObject, 'print_post_messages'):
         setupObject.print_post_messages()
@@ -2132,6 +2108,8 @@ if __name__ == '__main__':
 
     print "Please logout from container and restart Gluu Server"
     print "Notes:"
+    print " * Collected properties was dumped to {}. It contains clear text password.".format(json_prop)
+    print "   Please remove {} after you confirmed upgrade was successfull".format(json_prop)
     print " * Default authentication mode was set to auth_ldap_server"
     print " * Cache provider configuration was set to 4.0 defaults"
     print " * Reconfigure your logo and favicon"
