@@ -21,26 +21,6 @@ from pyDes import *
 
 ldap.set_option(ldap.OPT_X_TLS_REQUIRE_CERT, ldap.OPT_X_TLS_ALLOW)
 
-setup_properties_fn = '/install/community-edition-setup/setup.properties'
-
-if not os.path.exists(setup_properties_fn):
-    setup_properties_fn += '.last'
-    
-    if not os.path.exists(setup_properties_fn):
-        setup_properties_fn += '.enc'
-
-    if not os.path.exists(setup_properties_fn):
-        setup_properties_fn = None
-
-if setup_properties_fn and setup_properties_fn.endswith('.enc'):
-    properties_password = raw_input('Password for {}: '.format(setup_properties_fn))
-    if not properties_password:
-        print "Can't continue without password. Exiting ..."
-
-if not setup_properties_fn:
-    print "Setup Properties file was not found"
-    print "Can't continue. Exiting ..."
-    sys.exit()
 
 result = raw_input("Starting upgrade. CONTINUE? (y|N): ")
 if not result.strip() or (result.strip() and result.strip().lower()[0] != 'y'):
@@ -82,34 +62,6 @@ def flatten(k):
 def make_key(l):
     return [ flatten(u'{}'.format(k)) for k in l ]
 
-
-no_update = [
-        'install_dir',
-        'node_version',
-        'jetty_version',
-        'jetty_dist',
-        'outputFolder',
-        'templateFolder',
-        'staticFolder',
-        'openDjIndexJson',
-        'openDjSchemaFolder',
-        'openDjschemaFiles',
-        'opendj_init_file',
-        'opendj_service_centos7',
-        'log',
-        'logError',
-        'passport_initd_script',
-        'node_initd_script',
-        'jre_version',
-        'java_type',
-        'jreDestinationPath',
-        'ldif_site',
-        'ldif_metric',
-        'ox_ldap_properties',
-        'extensionFolder',
-        ]
-                                        
-
 class GluuUpdater:
     def __init__(self):
         self.ces_dir = os.path.join(cur_dir, 'ces_current')
@@ -149,11 +101,14 @@ class GluuUpdater:
         if not os.path.exists(self.ces_dir):
             ces_url = 'https://github.com/GluuFederation/community-edition-setup/archive/version_{}.zip'.format(self.up_version)
             print "Downloading Community Edition Setup {}".format(self.up_version)
-            os.system('wget -q {} -O version_{}.zip'.format(ces_url, self.up_version))
+            target_fn = os.path.join(cur_dir, 'version_{}.zip'.format(self.up_version))
+            os.system('wget -q {} -O {}'.format(ces_url, target_fn))
             print "Extracting CES package"
-            os.system('unzip -o -qq version_{}.zip'.format(self.up_version))
-            os.system('mv community-edition-setup-version_{} ces_current'.format(self.up_version))
-            os.system('rm version_{}.zip'.format(self.up_version))
+            os.system('unzip -o -qq {}'.format(target_fn))
+            extracted_path = os.path.join(cur_dir, 'community-edition-setup-version_{}'.format(self.up_version))
+            os.system('mv {} {}'.format(extracted_path, self.ces_dir))
+            os.system('wget -nv https://raw.githubusercontent.com/GluuFederation/community-edition-setup/master/pylib/generate_properties.py -O {}'.format(os.path.join(self.ces_dir, 'pylib', 'generate_properties.py')))
+            os.system('rm ' + target_fn)
 
         open(os.path.join(self.ces_dir, '__init__.py'),'w').close()
         sys.path.append('ces_current')
@@ -162,7 +117,8 @@ class GluuUpdater:
         from ces_current import setup
         from ces_current.pylib.cbm import CBM
         from ces_current.pylib import Properties
-        
+        from ces_current.pylib.generate_properties import generate_properties
+
         self.cbm_obj = CBM
         self.setup = setup
         self.setupObj = self.setup.Setup(self.ces_dir)
@@ -172,7 +128,18 @@ class GluuUpdater:
         self.setupObj.os_type, self.setupObj.os_version = self.setupObj.detect_os_type()
         self.setupObj.os_initdaemon = self.setupObj.detect_initd()
         self.setupObj.properties_password = properties_password
-        self.setup_prop = self.setupObj.load_properties(setup_properties_fn, no_update=no_update)
+
+        print "Collecting properties"
+        self.setup_prop = generate_properties(True)
+
+        for setup_key in self.setup_prop:
+            setattr(self.setupObj, setup_key, self.setup_prop[setup_key])
+
+        self.setupObj.ldapCertFn = self.setupObj.opendj_cert_fn
+        self.setupObj.ldapTrustStoreFn = self.setupObj.opendj_p12_fn
+
+        self.setupObj.encode_passwords()
+        
 
     def determine_persistence_type(self):
         self.cb_buckets = []
@@ -650,7 +617,6 @@ updaterObj.update_scripts()
 updaterObj.update_jetty()
 updaterObj.update_war_files()
 updaterObj.update_scripts()
-updaterObj.setupObj.load_properties(setup_properties_fn, no_update=no_update)
 updaterObj.update_apache_conf()
 updaterObj.update_shib()
 updaterObj.update_radius()
