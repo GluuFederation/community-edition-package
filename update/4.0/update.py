@@ -838,7 +838,7 @@ class GluuUpdater:
                                          'version': 0
                                         }
 
-                new_entry['oxIDPAuthentication'][0] = json.dumps(oxIDPAuthentication, indent=2)
+                new_entry['oxIDPAuthentication'] = [json.dumps(oxIDPAuthentication, indent=2)]
 
                 for bool_attr in (
                                 #'gluuPassportEnabled',
