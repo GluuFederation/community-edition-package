@@ -1134,6 +1134,15 @@ class GluuUpdater:
                 new_entry['oxIDPAuthentication'][0] = json.dumps(oxIDPAuthentication, indent=2)
 
 
+            elif 'gluuContainerFederation' in new_entry:
+                for i, gf in enumerate(new_entry['gluuContainerFederation'][:]):
+                    gf_dn = explode_dn(new_entry['gluuContainerFederation'][i])
+
+                    if 'ou=appliances' in gf_dn:
+                        gf_dn.remove('ou=appliances')
+
+                    new_entry['gluuContainerFederation'][i] = ','.join(gf_dn)
+
             if 'ou=configuration,o=gluu' == new_dn:
 
                 # we need to set authentication mode to ldap or couchbase
@@ -1278,11 +1287,16 @@ class GluuUpdater:
                                     new_entry['gluuPassportConfiguration'][0]
                                 )
                 try:
+                
                     self.fix_passport_config(new_dn, new_entry)
+                
                 except Exception as e:
-                    print "ERROR fixing passport", e
+                    err_str = "ERROR fixing passport: " + e
+                    print err_str
+                    setupObject.logIt(err_str, True)
+                    
                 continue
-            
+
             elif 'gluuSAMLconfig' in  new_entry['objectClass']:
                 new_entry['o'] = ['o=gluu']
 
@@ -1589,8 +1603,6 @@ class GluuUpdater:
 
                         new_provider['options'][key] = val
 
-
-
                 providers.append(new_provider)
 
                 provider_mapping_fn = provider+'.js'
@@ -1610,7 +1622,7 @@ class GluuUpdater:
                         newMappings.append( '               {}: profile["{}"]'.format(local_key, passport_saml_config[provider]['reverseMapping'][remote_key]))
 
 
-                if os.path.exists(setupObject.gluu_passport_base, 'server/mappings'):
+                if os.path.exists(os.path.join(setupObject.gluu_passport_base, 'server/mappings')):
 
                     setupObject.writeFile(
                                     os.path.join(self.temp_dir, provider_mapping_fn),
@@ -1936,7 +1948,10 @@ if __name__ == '__main__':
     setupObject.logError = os.path.join(setup_install_dir, 'update_error.log')
 
     for setup_key in setup_porperties:
-        setattr(setupObject, setup_key, setup_porperties[setup_key])
+        setup_val = setup_porperties[setup_key]
+        if isinstance(setup_val, unicode):
+            setup_val = str(setup_val)
+        setattr(setupObject, setup_key, setup_val)
 
     if argsp.online or not os.path.exists('setup'):
         updaterObj.download_apps()
@@ -2009,15 +2024,20 @@ if __name__ == '__main__':
         print "Stopping", service
         setupObject.run_service_command(service, 'stop')
 
+
     updaterObj.update_java()
     updaterObj.upgrade_jetty()
     updaterObj.update_war()
     updaterObj.update_node()
 
+
     setupObject.ldapCertFn = setupObject.opendj_cert_fn
     setupObject.generate_oxtrust_api_configuration()
-
+    
+    
     setupObject.encode_passwords()
+
+
     setupObject.createLdapPw()
 
 
@@ -2037,7 +2057,7 @@ if __name__ == '__main__':
         setupObject.remoteCouchbase=True
         setupObject.persistence_type='couchbase'
 
-
+    
     updaterObj.parse_current_ldif()
     updaterObj.process_ldif()
 
