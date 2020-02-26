@@ -1143,6 +1143,13 @@ class GluuUpdater:
 
                     new_entry['gluuContainerFederation'][i] = ','.join(gf_dn)
 
+            elif 'oxRegistrationConfiguration' in new_entry:
+                oxRegistrationConfiguration = json.loads(new_entry['oxRegistrationConfiguration'][0])
+                if 'additionalAttributes' in oxRegistrationConfiguration:
+                    for i, reg_attr in enumerate(oxRegistrationConfiguration['additionalAttributes'][:]):
+                        oxRegistrationConfiguration['additionalAttributes'][i] = self.inum2uuid(reg_attr)
+                    new_entry['oxRegistrationConfiguration'] = [json.dumps(oxRegistrationConfiguration)]
+
             if 'ou=configuration,o=gluu' == new_dn:
 
                 # we need to set authentication mode to ldap or couchbase
