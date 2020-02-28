@@ -83,6 +83,8 @@ class GluuUpdater:
                             ('useLocalCache', 'add', 'entry', True),
                             ]
                 }
+                
+        self.delete_from_configuration = ['gluuFreeDiskSpace', 'gluuFreeMemory', 'gluuFreeSwap', 'gluuGroupCount', 'gluuIpAddress', 'gluuPersonCount', 'gluuSystemUptime']
 
         self.scripts_inum = ['2DAF-BA90', '2FDB-CF02', 'D40C-1CA4', '09A0-93D7', '92F0-BF9E', '09A0-93D6', '2124-0CF1', '2DAF-BA91']
 
@@ -189,7 +191,7 @@ class GluuUpdater:
 
         gluu_cb_prop = get_properties(self.setupObj.gluuCouchebaseProperties)
         cb_passwd = gluu_cb_prop['auth.userPassword']
-        self.setupObj.mappingLocations = json.loads(self.setup_prop['mappingLocations'])
+        self.setupObj.mappingLocations = self.setup_prop['mappingLocations']
         self.setupObj.encoded_cb_password = self.encoded_cb_password
 
         self.setupObj.couchbaseBuckets = [ b.strip() for b in gluu_cb_prop['buckets'].split(',') ]
@@ -286,7 +288,14 @@ class GluuUpdater:
 
             self.apply_persist_changes(js_conf, n)
 
-            result = self.cbm.exec_query('update `gluu` USE KEYS "{}" set gluu.{}={}'.format(k, n, json.dumps(js_conf)))
+            n1ql = 'UPDATE `gluu` USE KEYS "{}" SET gluu.{}={}'.format(k, n, json.dumps(js_conf))
+            print "Executing", n1ql
+            result = self.cbm.exec_query(n1ql)
+
+        for k in self.delete_from_configuration:
+            n1ql = 'UPDATE `gluu` USE KEYS "configuration" UNSET {}'.format(k)
+            print "Executing", n1ql
+            result = self.cbm.exec_query(n1ql)
 
         #self.update_gluu_couchbase()
 
@@ -339,21 +348,30 @@ class GluuUpdater:
 
     def update_ldap(self):
 
+        dn = 'ou=configuration,o=gluu'
+
         for config_element in self.persist_changes:
             print "Updating", config_element
             ldap_filter = '({0}=*)'.format(config_element)
-            result = self.conn.search_s('ou=configuration,o=gluu',ldap.SCOPE_SUBTREE, ldap_filter, [config_element])
 
-            dn = result[0][0]
+            result = self.conn.search_s(dn, ldap.SCOPE_SUBTREE, ldap_filter, [config_element])
 
+            sdn = result[0][0]
             js_conf = json.loads(result[0][1][config_element][0])
-
             self.apply_persist_changes(js_conf, config_element)
-
             new_conf = json.dumps(js_conf,indent=4)
-            self.conn.modify_s(dn, [( ldap.MOD_REPLACE, config_element,  new_conf)])
 
-        
+            self.conn.modify_s(sdn, [( ldap.MOD_REPLACE, config_element,  new_conf)])
+
+        result = self.conn.search_s(dn, ldap.SCOPE_BASE,  attrlist=self.delete_from_configuration)
+        remove_list = []
+
+        for k in result[0][1]:
+            if result[0][1][k]:
+                remove_list.append(( ldap.MOD_DELETE, k, result[0][1][k]))
+
+        self.conn.modify_s(dn, remove_list)
+
         # update opendj schema and restart
         self.setupObj.run(['cp', '-f', 
                             os.path.join(self.ces_dir, 'static/opendj/101-ox.ldif'),
