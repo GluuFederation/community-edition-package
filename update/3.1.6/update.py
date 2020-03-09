@@ -17,10 +17,7 @@ import string
 
 import xml.etree.ElementTree as ET
 
-
 cur_dir=os.path.dirname(os.path.realpath(__file__))
-
-
 
 up_version = '3.1.6-sp1'
 
@@ -274,6 +271,7 @@ class GluuUpdater:
         
         if not os.path.exists(self.backup_folder):
             os.mkdir(self.backup_folder)
+
 
     def checkRemoteSchema(self):
 
@@ -1154,7 +1152,7 @@ class GluuUpdater:
                                                                 'authenticatorCertsFolder':'{0}/authenticator_cert'.format(self.fido2ConfigFolder),
                                                                 'mdsCertsFolder':'{0}/mds/cert'.format(self.fido2ConfigFolder),
                                                                 'mdsTocsFolder':'{0}/mds/toc'.format(self.fido2ConfigFolder),
-                                                                'serverMetadataFolder':'{0}/server_metadata',
+                                                                'serverMetadataFolder':'{0}/server_metadata'.format(self.fido2ConfigFolder),
                                                                 'userAutoEnrollment':False,
                                                                 'unfinishedRequestExpiration':120,
                                                                 'authenticationHistoryExpiration':1296000,
@@ -1304,6 +1302,9 @@ class GluuUpdater:
         self.setup_properties['idp3SigningCertificateText'] = open('/etc/certs/idp-signing.crt').read().replace('-----BEGIN CERTIFICATE-----','').replace('-----END CERTIFICATE-----','')
         self.setup_properties['idp3EncryptionCertificateText'] = open('/etc/certs/idp-encryption.crt').read().replace('-----BEGIN CERTIFICATE-----','').replace('-----END CERTIFICATE-----','')
 
+        os.system('mkdir -p /etc/gluu/conf/fido2/authenticator_cert')
+        os.system('mkdir -p /etc/gluu/conf/fido2/mds/toc')
+
         shutil.copy(self.saml_meta_data, self.backup_folder)
 
         temp_fn = os.path.join(self.update_temp_dir, 'idp3/metadata/idp-metadata.xml')
@@ -1316,11 +1317,22 @@ class GluuUpdater:
         with open(self.saml_meta_data,'w') as f:
             f.write(new_saml_meta_data)
 
+        if self.ldap_bind_dn.lower() == 'cn=directory manager':
+            ldap_cert_file = '/etc/certs/opendj.crt'
+        else:
+            ldap_cert_file = '/etc/certs/ openldap.crt'
 
         changes = (('/opt/shibboleth-idp/conf/ldap.properties', [('idp.attribute.resolver.LDAP.searchFilter', '(|(uid=$requestContext.principalName)(mail=$requestContext.principalName))'),
+                                                                 ('idp.authn.LDAP.trustCertificates', ldap_cert_file),
+                                                                 ('idp.authn.LDAP.bindDN', self.ldap_bind_dn),
                                                                 ]),
                     ('/opt/shibboleth-idp/conf/idp.properties', [
                                                                 ('idp.authn.flows', 'oxAuth'),
+                                                                ('idp.session.StorageService','shibboleth.StorageService'),
+                                                                ('idp.session.trackSPSessions','true'),
+                                                                ('idp.session.secondaryServiceIndex', 'true'),
+                                                                ('idp.session.defaultSPlifetime', 'PT8H'),
+                                                                ('idp.logout.authenticated', None),
                                                                 ]),
                     )
         
@@ -1333,8 +1345,12 @@ class GluuUpdater:
                     ls = l.split('=')
                     if ls:
                         for change in change_list:
-                            if ls[0].strip() == change[0]:
-                                f[i] = ' = '.join(change) + '\n'
+                            if change[1]:
+                                if ls[0].strip() == change[0]:
+                                    f[i] = ' = '.join(change) + '\n'
+                                else:
+                                    f[i] = '#'+ls+'\n'
+
                 with open(prop_file,'w') as w:
                     w.write(''.join(f))
 
@@ -1362,6 +1378,11 @@ class GluuUpdater:
         os.system('chmod u=rw,g=r,o=r /opt/shibboleth-idp/conf/saml-nameid.xml.vm')
 
         os.system('rm -r -f '+ idp_tmp_dir)
+
+        shutil.copy("%s/app/fido2/authenticator_cert/yubico-u2f-ca-certs.crt" % self.update_dir, "%s/%s" % (self.fido2ConfigFolder, '/authenticator_cert'))
+        shutil.copy("%s/app/fido2/authenticator_cert/yubico-u2f-ca-certs.txt" % self.update_dir, "%s/%s" % (self.fido2ConfigFolder, '/authenticator_cert'))
+        shutil.copy("%s/app/fido2/authenticator_cert/yubico-u2f-ca-certs.json" % self.update_dir, "%s/%s" % (self.fido2ConfigFolder, '/authenticator_cert'))
+        os.system("chown -R root:gluu " + self.fido2ConfigFolder)
 
     def replace_scripts(self):
 
