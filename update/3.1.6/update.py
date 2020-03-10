@@ -1295,6 +1295,7 @@ class GluuUpdater:
         if not os.path.exists(self.saml_meta_data):
             return
 
+        print "Updadting shibboleth-idp"
 
         print "Backing up /opt/shibboleth-idp to", self.backup_folder
         os.system('cp -r /opt/shibboleth-idp '+self.backup_folder)
@@ -1322,40 +1323,49 @@ class GluuUpdater:
         else:
             ldap_cert_file = '/etc/certs/ openldap.crt'
 
-        changes = (('/opt/shibboleth-idp/conf/ldap.properties', [('idp.attribute.resolver.LDAP.searchFilter', '(|(uid=$requestContext.principalName)(mail=$requestContext.principalName))'),
-                                                                 ('idp.authn.LDAP.trustCertificates', ldap_cert_file),
-                                                                 ('idp.authn.LDAP.bindDN', self.ldap_bind_dn),
-                                                                ]),
-                    ('/opt/shibboleth-idp/conf/idp.properties', [
-                                                                ('idp.authn.flows', 'oxAuth'),
-                                                                ('idp.session.StorageService','shibboleth.StorageService'),
-                                                                ('idp.session.trackSPSessions','true'),
-                                                                ('idp.session.secondaryServiceIndex', 'true'),
-                                                                ('idp.session.defaultSPlifetime', 'PT8H'),
-                                                                ('idp.logout.authenticated', None),
-                                                                ]),
+        changes = (('/opt/shibboleth-idp/conf/ldap.properties', {
+                                                'idp.attribute.resolver.LDAP.searchFilter': '(|(uid=$requestContext.principalName)(mail=$requestContext.principalName))',
+                                                'idp.authn.LDAP.trustCertificates': ldap_cert_file,
+                                                'idp.authn.LDAP.bindDN': self.ldap_bind_dn,
+                                               })
+                                                ,
+                    ('/opt/shibboleth-idp/conf/idp.properties', {
+                                                'idp.authn.flows': 'oxAuth',
+                                                'idp.session.StorageService': 'shibboleth.StorageService',
+                                                'idp.session.trackSPSessions': 'true',
+                                                'idp.session.secondaryServiceIndex': 'true',
+                                                'idp.session.defaultSPlifetime': 'PT8H',
+                                                'idp.logout.authenticated': None,
+                                                }),
                     )
         
         for prop_file, change_list in changes:
-        
             if os.path.exists(prop_file):
-                f=open(prop_file).readlines()
-                for i in range(len(f)):
-                    l = f[i]
-                    ls = l.split('=')
-                    if ls:
-                        for change in change_list:
-                            if change[1]:
-                                if ls[0].strip() == change[0]:
-                                    f[i] = ' = '.join(change) + '\n'
-                                else:
-                                    f[i] = '#'+ls+'\n'
+                with open(prop_file) as f:
+                    f_content = f.readlines()
+                
+                for i, l in enumerate(f_content[:]):
+                    l = l.lstrip('#').strip()
+                    if '=' in l:
+                        n = l.find('=')
+                        p_key = l[:n].strip()                        
+                        if p_key in change_list:
+                            if change_list[p_key]:    
+                                f_content[i] = ' = '.join((p_key.ljust(n-1), change_list[p_key])) + '\n'
+                            else:
+                                f_content[i] = '#'+l.strip()+'\n'
 
+                            change_list.pop(p_key)
+
+                for p_key in change_list:
+                    if change_list[p_key]:
+                        f_content.append('{} = {}\n'.format(p_key, change_list[p_key]))
+
+                self.backupFile(prop_file)
                 with open(prop_file,'w') as w:
-                    w.write(''.join(f))
+                    w.write(''.join(f_content))
 
 
-        print "Updadting shibboleth-idp"
         os.chdir('/opt')
         os.system('/opt/jre/bin/jar xf {0}'.format(os.path.join(self.app_dir,'shibboleth-idp.jar')))
         os.system('rm -r /opt/META-INF')
@@ -1365,6 +1375,7 @@ class GluuUpdater:
         
         os.chdir(idp_tmp_dir)
         
+        print "Unpacking idp"
         os.system('/opt/jre/bin/jar xf {0}'.format(os.path.join(self.update_dir, 'war/idp.war')))
 
         os.system('rm -f /opt/shibboleth-idp/webapp/WEB-INF/lib/*')
@@ -1374,8 +1385,10 @@ class GluuUpdater:
         os.system('chown -R jetty:jetty /opt/shibboleth-idp')
         #os.system('cp {0} /opt/shibboleth-idp/conf'.format(os.path.join(self.app_dir,'temp/metadata-providers.xml.vm')))
         #os.system('cp {0} /opt/shibboleth-idp/conf'.format(os.path.join(self.app_dir,'temp/saml-nameid.xml.vm')))
-        os.system('chmod u=rw,g=r,o=r /opt/shibboleth-idp/conf/metadata-providers.xml.vm')
-        os.system('chmod u=rw,g=r,o=r /opt/shibboleth-idp/conf/saml-nameid.xml.vm')
+        if os.path.exists('/opt/shibboleth-idp/conf/metadata-providers.xml.vm'):
+            os.system('chmod u=rw,g=r,o=r /opt/shibboleth-idp/conf/metadata-providers.xml.vm')
+        if os.path.exists('/opt/shibboleth-idp/conf/saml-nameid.xml.vm'):
+            os.system('chmod u=rw,g=r,o=r /opt/shibboleth-idp/conf/saml-nameid.xml.vm')
 
         os.system('rm -r -f '+ idp_tmp_dir)
 
