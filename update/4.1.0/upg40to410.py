@@ -1,5 +1,6 @@
 #!/usr/bin/python
 
+import re
 import os
 import sys
 import time
@@ -67,6 +68,7 @@ class GluuUpdater:
         self.ces_dir = os.path.join(cur_dir, 'ces_current')
         self.up_version = '4.1.0'
         self.build_tag = '.Final'
+        self.backup_time = time.strftime('%Y-%m-%d.%H:%M:%S')
         self.app_dir = os.path.join(cur_dir, 'app')
         self.persist_changes = { 'oxAuthConfDynamic': [
 
@@ -370,7 +372,8 @@ class GluuUpdater:
             if result[0][1][k]:
                 remove_list.append(( ldap.MOD_DELETE, k, result[0][1][k]))
 
-        self.conn.modify_s(dn, remove_list)
+        if remove_list:
+            self.conn.modify_s(dn, remove_list)
 
         # update opendj schema and restart
         self.setupObj.run(['cp', '-f', 
@@ -624,7 +627,52 @@ class GluuUpdater:
             elif self.default_storage == 'ldap':
                 self.conn.modify_s('inum=BABA-CACA,ou=scripts,o=gluu', [( ldap.MOD_REPLACE, 'oxScript',  scr)])
             
-            
+    def update_passport(self):
+
+        if not os.path.exists(self.setupObj.gluu_passport_base):
+            return
+
+
+        backup_folder = self.setupObj.gluu_passport_base + '_' + self.backup_time
+
+        self.setupObj.run(['mv', self.setupObj.gluu_passport_base, backup_folder])
+
+        print "Updating Passport"
+        
+        print "Stopping passport server"
+        
+        self.setupObj.run_service_command('passport', 'stop')
+
+        self.setupObj.run(['mkdir', '-p', self.setupObj.gluu_passport_base])
+
+        print "Extracting passport.tgz into " + self.setupObj.gluu_passport_base 
+        self.setupObj.run(['tar', '--strip', '1', '-xzf', os.path.join(cur_dir, 'app', 'passport.tgz'),
+                         '-C', '/opt/gluu/node/passport', '--no-xattrs', '--no-same-owner', '--no-same-permissions'])
+    
+        print "Extracting passport node modules"
+        modules_dir = '/opt/gluu/node/passport/node_modules'
+
+        if not os.path.exists(modules_dir):
+            self.setupObj.run(['mkdir', '-p', modules_dir])
+
+        self.setupObj.run(['tar', '--strip', '1', '-xzf', os.path.join(cur_dir, 'app', 'passport-node_modules.tar.gz'),
+                         '-C', modules_dir, '--no-xattrs', '--no-same-owner', '--no-same-permissions'])
+
+        log_dir = '/opt/gluu/node/passport/server/logs'
+
+        if not os.path.exists(log_dir): 
+            self.setupObj.run(['mkdir',log_dir])
+
+        # copy mappings
+        for m_path in glob.glob(os.path.join(backup_folder, 'server/mappings/*.js')):
+            with open(m_path) as f:
+                fc = f.read()
+                if re.search('profile["[\s\S]*"]', fc):
+                    mfn = os.path.basename(m_path)
+                    if not os.path.exists(os.path.join(self.setupObj.gluu_passport_base, 'server/mappings', mfn)):
+                        self.setupObj.copyFile(m_path, os.path.join(self.setupObj.gluu_passport_base, 'server/mappings'))
+
+        self.setupObj.run(['chown', '-R', 'node:node', '/opt/gluu/node/passport/'])
 
 updaterObj = GluuUpdater()
 updaterObj.download_ces()
@@ -637,6 +685,7 @@ updaterObj.update_war_files()
 updaterObj.update_scripts()
 updaterObj.update_apache_conf()
 updaterObj.update_shib()
+updaterObj.update_passport()
 updaterObj.update_radius()
 updaterObj.update_oxd()
 updaterObj.update_casa()

@@ -2044,7 +2044,6 @@ if __name__ == '__main__':
     
     setupObject.encode_passwords()
 
-
     setupObject.createLdapPw()
 
 
