@@ -372,9 +372,9 @@ class GluuUpdater:
             if result[0][1][k]:
                 remove_list.append(( ldap.MOD_DELETE, k, result[0][1][k]))
 
-        if remove_list:
-            self.conn.modify_s(dn, remove_list)
-
+        for entry in remove_list:
+            self.conn.modify_s(dn, [entry])
+    
         # update opendj schema and restart
         self.setupObj.run(['cp', '-f', 
                             os.path.join(self.ces_dir, 'static/opendj/101-ox.ldif'),
