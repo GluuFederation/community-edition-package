@@ -250,7 +250,7 @@ class GluuUpdater:
 
 
     def fix_https_gluu_conf(self):
-        https_conf_fn = os.path.exists('/etc/httpd/conf.d/https_gluu.conf') else '/etc/apache2/sites-available/https_gluu.conf'
+        https_conf_fn = '/etc/httpd/conf.d/https_gluu.conf' if os.path.exists('/etc/httpd/conf.d/https_gluu.conf') else '/etc/apache2/sites-available/https_gluu.conf'
 
         with open(https_conf_fn, 'r') as f:
             https_conf = f.read()
