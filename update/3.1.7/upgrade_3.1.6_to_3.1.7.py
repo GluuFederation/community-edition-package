@@ -249,6 +249,17 @@ class GluuUpdater:
             self.run(['/opt/jre/bin/keytool', '-import', '-alias', alias, '-file', crt_file, '-keystore', '/opt/jre/jre/lib/security/cacerts', '-storepass', 'changeit', '-noprompt', '-trustcacerts'])
 
 
+    def fix_https_gluu_conf(self):
+        https_conf_fn = os.path.exists('/etc/httpd/conf.d/https_gluu.conf') else '/etc/apache2/sites-available/https_gluu.conf'
+
+        with open(https_conf_fn, 'r') as f:
+            https_conf = f.read()
+
+        https_conf = https_conf.replace('Header edit Set-Cookie ^((?!session_state).*)$ $1;HttpOnly', 'Header edit Set-Cookie ^((?!opbs|session_state).*)$ $1;HttpOnly')
+
+        with open(https_conf_fn, 'w') as w:
+            w.write(https_conf)
+
 parser = argparse.ArgumentParser(description="This script upgrades OpenDJ gluu-servers (>3.0) to 4.0")
 parser.add_argument('-o', '--online', help="online installation", action='store_true')
 argsp = parser.parse_args()
@@ -257,6 +268,7 @@ updaterObject = GluuUpdater()
 updaterObject.download_apps()
 updaterObject.updateWar()
 updaterObject.updateLdapConfig()
+updaterObject.fix_https_gluu_conf()
 
 update_java = raw_input("Do you want to replace java with {} [Y/n] ".format(updaterObject.jreArchive))
 
