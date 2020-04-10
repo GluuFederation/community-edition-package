@@ -95,7 +95,7 @@ class GluuUpdater:
         
         self.gluu_app_dir = '/opt/gluu/jetty'
         self.backup_time = time.strftime('%Y-%m-%d.%H:%M:%S')
-        self.update_version = '3.1.8'
+        self.update_version = '3.1.7'
         self.update_base_dir = '/opt/upd/{}-sp1-upg'.format(self.update_version)
         self.backup_folder = '{0}/backup_{1}'.format(self.update_base_dir, self.backup_time)
         self.app_dir = os.path.join(self.update_base_dir,'app')
