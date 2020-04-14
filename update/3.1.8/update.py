@@ -21,7 +21,7 @@ import xml.etree.ElementTree as ET
 
 cur_dir = os.path.dirname(os.path.realpath(__file__))
 
-up_version = '3.1.7'
+up_version = '3.1.8'
 
 if not os.path.exists('/etc/gluu/conf'):
     sys.exit('Please run this script inside Gluu container.')
