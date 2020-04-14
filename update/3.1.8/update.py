@@ -1812,7 +1812,7 @@ update_java = raw_input("Do you want to replace java with {} [Y/n] ".format(upda
 if not (update_java and update_java[0].lower() == 'n'):
     updaterObj.updateJava()
 
-#./makeself.sh --target /opt/upd/3.1.7-upg/  /opt/upd/3.1.7-upg/ 3-1-7-upg.sh  "Gluu Updater Package 3.1.7-upg" /opt/upd/3.1.7-upg/bin/update.py
+#./makeself.sh --target /opt/upd/3.1.8-upg/  /opt/upd/3.1.8-upg/ 3-1-8-upg.sh  "Gluu Updater Package 3.1.8-upg" /opt/upd/3.1.8-upg/bin/update.py
 
 print """
 \033[;1mPlease Note:\033[0;0m oxAuthenticationMode and oxTrustAuthenticationMode was
