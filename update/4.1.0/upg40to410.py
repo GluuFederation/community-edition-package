@@ -132,9 +132,13 @@ class GluuUpdater:
         self.setupObj.os_type, self.setupObj.os_version = self.setupObj.detect_os_type()
         self.setupObj.os_initdaemon = self.setupObj.detect_initd()
         self.setupObj.properties_password = properties_password
+        
 
         print "Collecting properties"
         self.setup_prop = generate_properties(True)
+        
+        if not 'oxtrust_admin_password' in self.setup_prop:
+            self.setup_prop['oxtrust_admin_password'] = self.setup_prop['ldapPass']
 
         for setup_key in self.setup_prop:
             setattr(self.setupObj, setup_key, self.setup_prop[setup_key])
@@ -575,6 +579,9 @@ class GluuUpdater:
 
 
     def update_oxd(self):
+        if not os.path.exists('/opt/oxd-server'):
+            return
+
         print "Updating oxd Server"
         self.setupObj.copyFile(
                     os.path.join(self.app_dir, 'oxd-server.jar'),
