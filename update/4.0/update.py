@@ -1905,6 +1905,7 @@ if __name__ == '__main__':
     
     parser = argparse.ArgumentParser(description="This script upgrades OpenDJ gluu-servers (>3.0) to 4.0")
     parser.add_argument('-o', '--online', help="online installation", action='store_true')
+    parser.add_argument('--cluster-node', help="Use this if you are upgrading non-primary cluster node", action='store_true')
     parser.add_argument('--remote-couchbase', help="Enables using remote couchbase server", action='store_true')
     argsp = parser.parse_args()
 
@@ -2040,14 +2041,13 @@ if __name__ == '__main__':
 
     setupObject.ldapCertFn = setupObject.opendj_cert_fn
     setupObject.generate_oxtrust_api_configuration()
-    
-    
+
     setupObject.encode_passwords()
 
     setupObject.createLdapPw()
 
-
-    updaterObj.dump_current_db()
+    if not argsp.cluster_node:
+        updaterObj.dump_current_db()
 
     updaterObj.update_apache_conf()
     updaterObj.update_passport()
@@ -2063,9 +2063,9 @@ if __name__ == '__main__':
         setupObject.remoteCouchbase=True
         setupObject.persistence_type='couchbase'
 
-    
-    updaterObj.parse_current_ldif()
-    updaterObj.process_ldif()
+    if not argsp.cluster_node:
+        updaterObj.parse_current_ldif()
+        updaterObj.process_ldif()
 
     if argsp.remote_couchbase:
         print "Stopping WrenDS"
@@ -2105,7 +2105,8 @@ if __name__ == '__main__':
             print "If you defined all custom schemas in 77-customAttributes.ldif you can continue with pressing \033[92mc\033[0m"
             c = raw_input('Continue ? ')
 
-        updaterObj.import_ldif2ldap()
+        if not argsp.cluster_node:
+            updaterObj.import_ldif2ldap()
     
     updaterObj.update_conf_files()
 
