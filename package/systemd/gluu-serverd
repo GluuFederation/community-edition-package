@@ -29,6 +29,10 @@ wait_stop() {
     return 1
 }
 
+show_version() {
+/usr/sbin/chroot /opt/gluu-server su - root -c '/opt/gluu/bin/show_version.py'
+}
+
 case "$1" in
         start)
             systemctl start systemd-nspawn@gluu-server.service
@@ -67,7 +71,12 @@ case "$1" in
 	    systemctl disable systemd-nspawn@gluu-server.service
             systemctl disable machines.target
             ;; 
-	*)
-            echo $"Usage: $0 {enable|start|restart|ready|login|stop|disable|status}"
+
+	version)
+            show_version
+            ;;
+
+	 *)
+            echo $"Usage: $0 {enable|start|restart|ready|login|stop|disable|status|version}"
             exit 1
 esac
