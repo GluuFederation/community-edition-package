@@ -162,6 +162,7 @@ class GluuUpdater:
         self.backup_folder = os.path.join(cur_dir, 'backup_{}'.format(self.backup_time))
         self.temp_dir = os.path.join(cur_dir, 'temp')
         self.services_dir = os.path.join(cur_dir, 'services')
+        self.cache_refresh_baseDNs = []
 
         if not os.path.exists(self.backup_folder) and not dev_env:
             os.mkdir(self.backup_folder)
@@ -285,7 +286,7 @@ class GluuUpdater:
         setupObject.opendj_type = 'wrends'
         setupObject.extractOpenDJ()
         setupObject.opendj_version = setupObject.determineOpenDJVersion()
-        
+
         print "Installing WrenDS"
         setupObject.install_opendj()
         setupObject.prepare_opendj_schema()
@@ -297,6 +298,7 @@ class GluuUpdater:
         setupObject.export_opendj_public_cert()
         print "Setting Up WrenDS Indexes (this may take several minutes)"
         setupObject.index_opendj()
+
 
     def dump_current_db(self):
         print "Dumping ldap to gluu.ldif"
@@ -1032,6 +1034,9 @@ class GluuUpdater:
                 
 
             elif 'oxTrustConfApplication' in new_entry:
+                oxTrustConfCacheRefresh = json.loads(new_entry['oxTrustConfCacheRefresh'][0])
+                self.cache_refresh_baseDNs = oxTrustConfCacheRefresh['inumConfig']['baseDNs']
+
                 oxTrustConfApplication = json.loads(new_entry['oxTrustConfApplication'][0])
 
                 oxTrustConfApplication_config_changes = [
@@ -1163,7 +1168,7 @@ class GluuUpdater:
                     oxCacheConfiguration_new = {'cacheProviderType': 'IN_MEMORY', 'nativePersistenceConfiguration': {'defaultPutExpiration': 60, 'defaultCleanupBatchSize': 25}, 'redisConfiguration': {'useSSL': False, 'defaultPutExpiration': 60, 'servers': 'localhost:6379', 'sslTrustStoreFilePath': '', 'decryptedPassword': None, 'password': None, 'redisProviderType': 'STANDALONE'}, 'memcachedConfiguration': {'servers': 'localhost:11211', 'defaultPutExpiration': 60, 'bufferSize': 32768, 'maxOperationQueueLength': 100000, 'connectionFactoryType': 'DEFAULT'}, 'inMemoryConfiguration': {'defaultPutExpiration': 60}}
                     oxCacheConfiguration = jsonmerge.merge(oxCacheConfiguration_new, oxCacheConfiguration_cur)
                     new_entry['oxCacheConfiguration'] = [ json.dumps(oxCacheConfiguration) ]
-                        
+
 
             for p in ('oxAuthClaim', 'owner', 'oxAssociatedClient', 
                         'oxAuthUmaScope', 'gluuManagerGroup', 'member', 
@@ -1678,7 +1683,28 @@ class GluuUpdater:
         setupObject.run_service_command('opendj', 'stop')
 
         print "Importing processed ldif"
+
+        #fix cache refrash dns
+        missing_site_dns = []
+        with open(setupObject.ldif_site) as ldif_site_file:
+            ldif_site_parser = pureLDIFParser(ldif_site_file)
+            ldif_site_parser.parse()
         
+        for site_dn in self.cache_refresh_baseDNs:
+            if not site_dn in ldif_site_parser.DNs:
+                missing_site_dns.append(site_dn)
+
+        if missing_site_dns:
+            with open(setupObject.ldif_site, 'w') as ldif_site_file_w:
+                site_dif_writer = LDIFWriter(ldif_site_file_w)
+                for cur_site_dn in ldif_site_parser.DNs:
+                    site_dif_writer.unparse(cur_site_dn, ldif_site_parser.entries[str(cur_site_dn)])
+
+                for new_site_dn in missing_site_dns:
+                    new_site_dn_dn = str2dn(new_site_dn)
+
+                    site_dif_writer.unparse(new_site_dn, {'objectClass': ['top', 'organizationalUnit'], new_site_dn_dn[0][0][0]: [new_site_dn_dn[0][0][1]]})
+
         ldif2import = [ ('o=gluu', 'userRoot', os.path.join(cur_dir, 'gluu_noinum.ldif')), 
                         ('o=metric', 'metric', setupObject.ldif_metric),
                         ('o=site', 'site', setupObject.ldif_site),
@@ -2033,6 +2059,7 @@ if __name__ == '__main__':
         setupObject.run_service_command(service, 'stop')
 
 
+
     updaterObj.update_java()
     updaterObj.upgrade_jetty()
     updaterObj.update_war()
@@ -2048,6 +2075,7 @@ if __name__ == '__main__':
 
     if not argsp.cluster_node:
         updaterObj.dump_current_db()
+
 
     updaterObj.update_apache_conf()
     updaterObj.update_passport()
@@ -2066,6 +2094,7 @@ if __name__ == '__main__':
     if not argsp.cluster_node:
         updaterObj.parse_current_ldif()
         updaterObj.process_ldif()
+
 
     if argsp.remote_couchbase:
         print "Stopping WrenDS"
@@ -2107,7 +2136,7 @@ if __name__ == '__main__':
 
         if not argsp.cluster_node:
             updaterObj.import_ldif2ldap()
-    
+
     updaterObj.update_conf_files()
 
     updaterObj.update_shib()
