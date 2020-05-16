@@ -1,5 +1,5 @@
 [Unit]
-Description=Identity service
+Description=oxAuth RP service
 After=identity.service
 
 
