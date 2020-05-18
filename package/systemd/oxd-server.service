@@ -1,0 +1,14 @@
+[Unit]
+Description=oxd-server daemon
+After=network.target
+
+[Service]
+Type=forking
+ExecStart=/opt/oxd-server/bin/oxd-server start
+ExecStop=/opt/oxd-server/bin/oxd-server stop
+RemainAfterExit=yes
+User=jetty
+Group=jetty
+
+[Install]
+WantedBy=multi-user.target
