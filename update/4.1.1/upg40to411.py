@@ -168,6 +168,8 @@ class GluuUpdater:
         elif self.persistence_type == 'hybrid':
             self.db_connection_ldap()
             self.db_connection_couchbase()
+            if 'people' in hybrid_prop['storage.couchbase.mapping']:
+                self.user_location = 'couchbase'
             
 
     def update_persistence_data(self):
@@ -306,22 +308,6 @@ class GluuUpdater:
             print "Executing", n1ql
             result = self.cbm.exec_query(n1ql)
 
-        result = self.cbm.exec_query('SELECT META().id AS docid, * from `gluu_user` WHERE `objectClass`="oxDeviceRegistration"')
-        if result.ok:
-            data = result.json()
-            if data.get('results'):
-                print "Populating personInum for fido2 entries. Number of entries: {}".format(len(data['results']))
-                for user_entry in data['results']:
-                    doc = user_entry.get('gluu_user')
-                    if doc and not 'personInum' in doc:
-                        dn = doc['dn']
-                        for dnr in ldap.dn.str2dn(dn):
-                            if dnr[0][0] == 'inum':
-                                print(user_entry['docid'])
-                                n1ql = 'UPDATE `gluu_user` USE KEYS "{}" SET `personInum`="{}"'.format(user_entry['docid'], dnr[0][1])
-                                self.cbm.exec_query(n1ql)
-                                break
-
         #self.update_gluu_couchbase()
 
 
@@ -409,18 +395,6 @@ class GluuUpdater:
         self.setupObj.run_service_command('opendj', 'start')
 
         self.db_connection_ldap()
-
-        result = self.conn.search_s('ou=people,o=gluu', ldap.SCOPE_SUBTREE, '(objectclass=oxDeviceRegistration)', ['*'])
-        if result:
-            print "Populating personInum for fido2 entries. Number of entries: {}".format(len(result))
-            for entry in result:
-                dn = entry[0]
-                if not 'personInum' in entry[1]:
-                    for dnr in ldap.dn.str2dn(dn):
-                        if dnr[0][0] == 'inum':
-                            inum = dnr[0][1]
-                            self.conn.modify_s(dn, [(ldap.MOD_ADD, 'personInum', [bytes(inum)])])
-                            break
 
 
     def download_apps(self):
@@ -741,6 +715,38 @@ class GluuUpdater:
         elif self.persistence_type == 'couchbase':
             pass
 
+    def add_personInum_fido2(self):
+
+        if self.user_location == 'couchbase':
+            result = self.cbm.exec_query('SELECT META().id AS docid, * from `gluu_user` WHERE `objectClass`="oxDeviceRegistration"')
+            if result.ok:
+                data = result.json()
+                if data.get('results'):
+                    print "Populating personInum for fido2 entries. Number of entries: {}".format(len(data['results']))
+                    for user_entry in data['results']:
+                        doc = user_entry.get('gluu_user')
+                        if doc and not 'personInum' in doc:
+                            dn = doc['dn']
+                            for dnr in ldap.dn.str2dn(dn):
+                                if dnr[0][0] == 'inum':
+                                    print(user_entry['docid'])
+                                    n1ql = 'UPDATE `gluu_user` USE KEYS "{}" SET `personInum`="{}"'.format(user_entry['docid'], dnr[0][1])
+                                    self.cbm.exec_query(n1ql)
+                                    break
+
+        else:
+            result = self.conn.search_s('ou=people,o=gluu', ldap.SCOPE_SUBTREE, '(objectclass=oxDeviceRegistration)', ['*'])
+            if result:
+                print "Populating personInum for fido2 entries. Number of entries: {}".format(len(result))
+                for entry in result:
+                    dn = entry[0]
+                    if not 'personInum' in entry[1]:
+                        for dnr in ldap.dn.str2dn(dn):
+                            if dnr[0][0] == 'inum':
+                                inum = dnr[0][1]
+                                self.conn.modify_s(dn, [(ldap.MOD_ADD, 'personInum', [bytes(inum)])])
+                                break
+
 updaterObj = GluuUpdater()
 updaterObj.download_ces()
 updaterObj.download_apps()
@@ -757,5 +763,6 @@ updaterObj.update_radius()
 updaterObj.update_oxd()
 updaterObj.update_casa()
 updaterObj.add_oxAuthUserId_pairwiseIdentifier()
+updaterObj.add_personInum_fido2()
 
 print "Please logout from container and restart Gluu Server"
