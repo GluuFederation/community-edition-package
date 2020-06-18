@@ -696,13 +696,13 @@ class GluuUpdater:
         print "Adding oxAuthUserId to pairwiseIdentifier."
         print "This may take several minutes depending on your user number"
 
-        if self.persistence_type == 'ldap':
+        if self.user_location == 'ldap':
 
             result = self.conn.search_s(
                             'ou=people,o=gluu',
                             ldap.SCOPE_SUBTREE, 
                             '(objectClass=pairwiseIdentifier)', 
-                            ['oxAuthUserId']
+                            ['*']
                             )
 
             for e in result:
@@ -712,12 +712,38 @@ class GluuUpdater:
                             oxAuthUserId =  dne[0][1]
                             self.conn.modify_s(e[0], [(ldap.MOD_ADD, 'oxAuthUserId', oxAuthUserId)])
 
-        elif self.persistence_type == 'couchbase':
-            pass
+        else:
+            result = self.cbm.exec_query('SELECT META().id AS docid, * from `gluu_user` WHERE `objectClass`="pairwiseIdentifier"')
+            if result.ok:
+                data = result.json()
+                if data.get('results'):
+                    print "Populating oxAuthUserId for pairwiseIdentifier entries. Number of entries: {}".format(len(data['results']))
+                    for user_entry in data['results']:
+                        doc = user_entry.get('gluu_user')
+                        if doc and not 'oxAuthUserId' in doc:
+                            dn = doc['dn']
+                            for dnr in ldap.dn.str2dn(dn):
+                                if dnr[0][0] == 'inum':
+                                    n1ql = 'UPDATE `gluu_user` USE KEYS "{}" SET `oxAuthUserId`="{}"'.format(user_entry['docid'], dnr[0][1])
+                                    self.cbm.exec_query(n1ql)
+                                    break
 
     def add_personInum_fido2(self):
 
-        if self.user_location == 'couchbase':
+        if self.user_location == 'ldap':
+            result = self.conn.search_s('ou=people,o=gluu', ldap.SCOPE_SUBTREE, '(objectclass=oxDeviceRegistration)', ['*'])
+            if result:
+                print "Populating personInum for fido2 entries. Number of entries: {}".format(len(result))
+                for entry in result:
+                    dn = entry[0]
+                    if not 'personInum' in entry[1]:
+                        for dnr in ldap.dn.str2dn(dn):
+                            if dnr[0][0] == 'inum':
+                                inum = dnr[0][1]
+                                self.conn.modify_s(dn, [(ldap.MOD_ADD, 'personInum', [bytes(inum)])])
+                                break
+
+        else:
             result = self.cbm.exec_query('SELECT META().id AS docid, * from `gluu_user` WHERE `objectClass`="oxDeviceRegistration"')
             if result.ok:
                 data = result.json()
@@ -734,18 +760,7 @@ class GluuUpdater:
                                     self.cbm.exec_query(n1ql)
                                     break
 
-        else:
-            result = self.conn.search_s('ou=people,o=gluu', ldap.SCOPE_SUBTREE, '(objectclass=oxDeviceRegistration)', ['*'])
-            if result:
-                print "Populating personInum for fido2 entries. Number of entries: {}".format(len(result))
-                for entry in result:
-                    dn = entry[0]
-                    if not 'personInum' in entry[1]:
-                        for dnr in ldap.dn.str2dn(dn):
-                            if dnr[0][0] == 'inum':
-                                inum = dnr[0][1]
-                                self.conn.modify_s(dn, [(ldap.MOD_ADD, 'personInum', [bytes(inum)])])
-                                break
+
 
 updaterObj = GluuUpdater()
 updaterObj.download_ces()
