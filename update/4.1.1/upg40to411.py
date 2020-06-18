@@ -151,6 +151,7 @@ class GluuUpdater:
 
     def determine_persistence_type(self):
         self.cb_buckets = []
+        self.user_location = 'ldap'
         gluu_prop = get_properties(self.setupObj.gluu_properties_fn)
         self.persistence_type = gluu_prop['persistence.type']
         self.default_storage = self.persistence_type
@@ -163,9 +164,11 @@ class GluuUpdater:
             self.db_connection_ldap()
         elif self.persistence_type == 'couchbase':
             self.db_connection_couchbase()
+            self.user_location = 'couchbase'
         elif self.persistence_type == 'hybrid':
             self.db_connection_ldap()
             self.db_connection_couchbase()
+            
 
     def update_persistence_data(self):
         getattr(self, 'update_' + self.default_storage)()
@@ -286,7 +289,7 @@ class GluuUpdater:
     def update_couchbase(self):
         
         self.cb_indexes()
-        
+
         for n, k in (('oxAuthConfDynamic', 'configuration_oxauth'), ('oxTrustConfApplication', 'configuration_oxtrust')):
             result = self.cbm.exec_query('SELECT {} FROM `gluu` USE KEYS "{}"'.format(n,k))
             result_json = result.json()
@@ -302,6 +305,22 @@ class GluuUpdater:
             n1ql = 'UPDATE `gluu` USE KEYS "configuration" UNSET {}'.format(k)
             print "Executing", n1ql
             result = self.cbm.exec_query(n1ql)
+
+        result = self.cbm.exec_query('SELECT META().id AS docid, * from `gluu_user` WHERE `objectClass`="oxDeviceRegistration"')
+        if result.ok:
+            data = result.json()
+            if data.get('results'):
+                print "Populating personInum for fido2 entries. Number of entries: {}".format(len(data['results']))
+                for user_entry in data['results']:
+                    doc = user_entry.get('gluu_user')
+                    if doc and not 'personInum' in doc:
+                        dn = doc['dn']
+                        for dnr in ldap.dn.str2dn(dn):
+                            if dnr[0][0] == 'inum':
+                                print(user_entry['docid'])
+                                n1ql = 'UPDATE `gluu_user` USE KEYS "{}" SET `personInum`="{}"'.format(user_entry['docid'], dnr[0][1])
+                                self.cbm.exec_query(n1ql)
+                                break
 
         #self.update_gluu_couchbase()
 
@@ -327,7 +346,6 @@ class GluuUpdater:
                 time.sleep(5)
                 
         sys.exit("Max retry reached. Exiting...")
-
 
     def apply_persist_changes(self, js_conf, config_element):
         for key, change_type, how_change, value in self.persist_changes[config_element]:
@@ -379,13 +397,30 @@ class GluuUpdater:
         for entry in remove_list:
             self.conn.modify_s(dn, [entry])
     
+        self.conn.unbind()
+    
         # update opendj schema and restart
         self.setupObj.run(['cp', '-f', 
                             os.path.join(self.ces_dir, 'static/opendj/101-ox.ldif'),
                             self.setupObj.openDjSchemaFolder
                             ])
+        print "Restarting OpenDJ ..."
         self.setupObj.run_service_command('opendj', 'stop')
         self.setupObj.run_service_command('opendj', 'start')
+
+        self.db_connection_ldap()
+
+        result = self.conn.search_s('ou=people,o=gluu', ldap.SCOPE_SUBTREE, '(objectclass=oxDeviceRegistration)', ['*'])
+        if result:
+            print "Populating personInum for fido2 entries. Number of entries: {}".format(len(result))
+            for entry in result:
+                dn = entry[0]
+                if not 'personInum' in entry[1]:
+                    for dnr in ldap.dn.str2dn(dn):
+                        if dnr[0][0] == 'inum':
+                            inum = dnr[0][1]
+                            self.conn.modify_s(dn, [(ldap.MOD_ADD, 'personInum', [bytes(inum)])])
+                            break
 
 
     def download_apps(self):
@@ -687,20 +722,24 @@ class GluuUpdater:
         print "Adding oxAuthUserId to pairwiseIdentifier."
         print "This may take several minutes depending on your user number"
 
-        result = self.conn.search_s(
-                        'ou=people,o=gluu',
-                        ldap.SCOPE_SUBTREE, 
-                        '(objectClass=pairwiseIdentifier)', 
-                        ['oxAuthUserId']
-                        )
+        if self.persistence_type == 'ldap':
 
-        for e in result:
-            if not 'oxAuthUserId' in e[1]:
-                for dne in ldap.dn.str2dn(e[0]):
-                    if dne[0][0] == 'inum':
-                        oxAuthUserId =  dne[0][1]
-                        self.conn.modify_s(e[0], [( ldap.MOD_ADD, 'oxAuthUserId', oxAuthUserId)])
+            result = self.conn.search_s(
+                            'ou=people,o=gluu',
+                            ldap.SCOPE_SUBTREE, 
+                            '(objectClass=pairwiseIdentifier)', 
+                            ['oxAuthUserId']
+                            )
 
+            for e in result:
+                if not 'oxAuthUserId' in e[1]:
+                    for dne in ldap.dn.str2dn(e[0]):
+                        if dne[0][0] == 'inum':
+                            oxAuthUserId =  dne[0][1]
+                            self.conn.modify_s(e[0], [(ldap.MOD_ADD, 'oxAuthUserId', oxAuthUserId)])
+
+        elif self.persistence_type == 'couchbase':
+            pass
 
 updaterObj = GluuUpdater()
 updaterObj.download_ces()
