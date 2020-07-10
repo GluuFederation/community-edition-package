@@ -321,6 +321,7 @@ class GluuUpdater:
         cb_passwd = unobscure(self.encoded_cb_password)
 
         self.cbm = self.cbm_obj(cb_serevr, cb_admin, cb_passwd)
+        self.setupObj.cbm = self.cbm
 
         for p in ('couchbase_hostname', 'couchebaseClusterAdmin', 
                     'encoded_cb_password',
@@ -451,6 +452,8 @@ class GluuUpdater:
         self.ldap_bind_dn = gluu_ldap_prop['bindDN']
         self.ldap_bind_pw = unobscure(gluu_ldap_prop['bindPassword'])
 
+        self.setupObj.createLdapPw()
+
         for i in range(5):
             
             ldap_server = ldap3.Server(self.ldap_host, port=int(self.ldap_port), use_ssl=True)
@@ -548,8 +551,6 @@ class GluuUpdater:
         self.conn.unbind()
     
         # we need to delete index oxAuthExpiration before restarting opendj
-        self.setupObj.createLdapPw()
-        
         cmd = '{} list-backend-indexes --port {} --hostname {} --bindDN "{}" -j /home/ldap/.pw --backend-name userRoot  --trustAll --no-prompt'.format(self.setupObj.ldapDsconfigCommand, self.setupObj.ldap_admin_port, self.ldap_host, self.ldap_bind_dn)
         result = self.setupObj.run(cmd, shell=True, get_stderr=False)
         
@@ -557,8 +558,6 @@ class GluuUpdater:
             if l.strip().startswith('oxAuthExpiration'):
                 cmd = '{} delete-backend-index --port {} --hostname {} --bindDN "{}" -j /home/ldap/.pw --backend-name userRoot --index-name oxAuthExpiration --trustAll --no-prompt'.format(self.setupObj.ldapDsconfigCommand, self.setupObj.ldap_admin_port, self.ldap_host, self.ldap_bind_dn)
                 self.setupObj.run(cmd, shell=True, get_stderr=False)
-
-        self.setupObj.deleteLdapPw()
 
         # update opendj schema and restart
         self.setupObj.run(['cp', '-f', 
@@ -920,7 +919,34 @@ class GluuUpdater:
 
     def fix_fido2(self):
 
-        #TODO: create ou=fido2,ou=configuration,o=gluu
+        self.setupObj.renderTemplate(self.setupObj.fido2_dynamic_conf_json)
+        self.setupObj.renderTemplate(self.setupObj.fido2_static_conf_json)
+
+        self.setupObj.templateRenderingDict['fido2_dynamic_conf_base64'] = self.setupObj.generate_base64_ldap_file(self.setupObj.fido2_dynamic_conf_json)
+        self.setupObj.templateRenderingDict['fido2_static_conf_base64'] = self.setupObj.generate_base64_ldap_file(self.setupObj.fido2_static_conf_json)
+        self.setupObj.renderTemplate(self.setupObj.ldif_fido2)
+
+        self.setupObj.run(['cp', self.setupObj.ldif_fido2, '/tmp'])
+        ldif_fido2 = os.path.join('/tmp', os.path.basename(self.setupObj.ldif_fido2))
+
+        if self.default_storage == 'ldap':
+            self.conn.search(
+                    search_base='ou=fido2,ou=configuration,o=gluu', 
+                    search_scope=ldap3.BASE, 
+                    search_filter='(objectClass=*)', 
+                    attributes=['*']
+                    )
+            if not self.conn.response:
+                print("Importing fido2 configuration ldif")
+                self.setupObj.import_ldif_opendj([ldif_fido2])
+
+        else:
+            result = cbm.exec_query('SELECT gluuConfStatic FROM `{}` USE KEYS "configuration_fido2"'.format(self.setupObj.couchbase_bucket_prefix))
+            if result.ok:
+                data = result.json()
+                if not data.get('results'):
+                    print("Importing fido2 configuration ldif")
+                    self.setupObj.import_ldif_couchebase([ldif_fido2])
 
         if self.user_location == 'ldap':
             self.conn.search(
@@ -931,7 +957,6 @@ class GluuUpdater:
                         )
 
             result = self.conn.response
-
             if result:
                 print("Populating personInum for fido2 entries. Number of entries: {}".format(len(result)))
                 for entry in result:
@@ -1049,6 +1074,8 @@ updaterObj.update_oxd()
 updaterObj.update_casa()
 updaterObj.add_oxAuthUserId_pairwiseIdentifier()
 updaterObj.fix_fido2()
+
+updaterObj.setupObj.deleteLdapPw()
 
 print("Please logout from container and restart Gluu Server")
 

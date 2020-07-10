@@ -1,6 +1,7 @@
 # Eclipse project files
 .project
 .pydevproject
+.bak
 
 # IntelliJ IDEA project files
 .idea
