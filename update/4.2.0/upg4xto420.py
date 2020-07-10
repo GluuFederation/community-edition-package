@@ -615,17 +615,15 @@ class GluuUpdater:
                 downloads.append((self.casa_plugins[p].format(self.up_version, self.build_tag), os.path.join(self.app_dir, p + '.jar')))
 
             downloads += [
-                    ('https://github.com/GluuFederation/casa/raw/version_{}/plugins/account-linking/extras/casa.xhtml'.format(self.up_version), os.path.join(self.app_dir, 'casa.xhtml')),
-                    ('https://raw.githubusercontent.com/GluuFederation/casa/version_4.1.0/plugins/account-linking/extras/casa.py', os.path.join(self.app_dir, 'casa.py')),
+                    ('https://raw.githubusercontent.com/GluuFederation/casa/master/plugins/account-linking/extras/casa.xhtml', os.path.join(self.app_dir, 'casa.xhtml')),
+                    ('https://raw.githubusercontent.com/GluuFederation/casa/master/plugins/account-linking/extras/casa.py', os.path.join(self.app_dir, 'casa.py')),
                     ]
 
         for download_link, out_file in downloads:
             print("Downloading", download_link)
             self.setupObj.run(['wget', '-nv', download_link, '-O', out_file])
 
-
-        self.setupObj.run(['chmod'+ '+x', '/usr/bin/facter'])
-
+        self.setupObj.run(['chmod', '+x', '/usr/bin/facter'])
 
     def update_war_files(self):
         for service in self.setupObj.jetty_app_configuration:
@@ -785,9 +783,21 @@ class GluuUpdater:
         
         if not os.path.exists(casa_base_dir):
             return
-        
+
         print("Updating casa")
-        
+        casa_config_json = {}
+        casa_cors_domains_fn = os.path.join(casa_base_dir, 'casa-cors-domains')
+        casa_config_json_fn = os.path.join(self.setupObj.configFolder, 'casa.json')
+
+        if os.path.exists(casa_config_json_fn):
+            casa_config_json_s = self.setupObj.readFile(casa_config_json_fn)
+            casa_config_json = json.loads(casa_config_json_s)
+
+            if os.path.exists(casa_cors_domains_fn):
+                casa_cors_domains = self.setupObj.readFile(casa_cors_domains_fn)
+                casa_cors_domains_list = [l.strip() for l in casa_cors_domains.splitlines()]
+                casa_config_json['allowed_cors_domains'] = casa_cors_domains_list
+
         casa_plugins_dir = os.path.join(casa_base_dir, 'plugins')
         self.setupObj.run_service_command('casa', 'stop')
         
@@ -801,7 +811,7 @@ class GluuUpdater:
             plugin_zip = zipfile.ZipFile(plugin, "r")
             menifest = plugin_zip.read('META-INF/MANIFEST.MF')
             for l in menifest.splitlines():
-                ls = l.strip()
+                ls = l.decode().strip()
                 if ls.startswith('Plugin-Id'):
                     n = ls.find(':')
                     pid = ls[n+1:].strip()
@@ -828,12 +838,59 @@ class GluuUpdater:
                         {'oxScript':  [ldap3.MODIFY_REPLACE, scr]}
                         )
 
+            if casa_config_json:
+                casa_config_json['basic_2fa_settings'] = {
+                                    'autoEnable': False,
+                                    'allowSelfEnableDisable': True,
+                                    'min_creds': casa_config_json['min_creds_2FA']
+                                    }
+
+                casa_config_json['plugins_settings'] = {
+                                    'strong-authn-settings': {
+                                        'policy_2fa' : casa_config_json.get('policy_2fa',''),
+                                        'trusted_dev_settings': casa_config_json.get('trusted_dev_settings', {}),
+                                        'basic_2fa_settings': casa_config_json['basic_2fa_settings']
+                                        }
+                                    }
+
+
+        if casa_config_json:
+
+            casa_config_json_s = json.dumps(casa_config_json, indent=2)
+
+            if self.default_storage == 'ldap':
+
+                dn = 'ou=casa,ou=configuration,o=gluu'
+                self.conn.search(
+                                search_base=dn,
+                                search_scope=ldap3.BASE, 
+                                search_filter='(objectClass=oxApplicationConfiguration)', 
+                                attributes=['oxConfApplication']
+                                )
+
+                entry = {'objectClass': ['top', 'oxApplicationConfiguration'], 'ou': ['casa'], 'oxConfApplication': casa_config_json_s}
+
+                if not self.conn.response:
+                    print("Importing casa configuration ldif")
+                    self.conn.add(dn, attributes=entry)
+                else:
+                    print("Modifying casa configuration ldif")
+                    self.conn.modify(
+                            dn, 
+                            {'oxConfApplication':  [ldap3.MODIFY_REPLACE, casa_config_json_s]}
+                            )
+
+            else:
+                pass
+                #TODO: implement for couchbase
+
+            self.setupObj.backupFile(casa_config_json_fn)
+            #self.setupObj.run(['rm', '-f', casa_config_json_fn])
 
     def update_passport(self):
 
         if not os.path.exists(self.setupObj.gluu_passport_base):
             return
-
 
         backup_folder = self.setupObj.gluu_passport_base + '_' + self.backup_time
 
