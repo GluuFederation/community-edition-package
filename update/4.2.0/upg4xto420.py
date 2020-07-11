@@ -581,6 +581,7 @@ class GluuUpdater:
                     ('https://ox.gluu.org/maven/org/gluu/oxauth-rp/{0}{1}/oxauth-rp-{0}{1}.war'.format(self.up_version, self.build_tag), os.path.join(self.app_dir, 'oxauth-rp.war')),
                     ('https://repo1.maven.org/maven2/org/eclipse/jetty/jetty-distribution/{0}/jetty-distribution-{0}.tar.gz'.format(self.setupObj.jetty_version), os.path.join(self.app_dir, 'jetty-distribution-{0}.tar.gz'.format(self.setupObj.jetty_version))),
                     ('https://corretto.aws/downloads/latest/amazon-corretto-11-x64-linux-jdk.tar.gz', os.path.join(self.app_dir, 'amazon-corretto-11-x64-linux-jdk.tar.gz')),
+                    ('https://repo1.maven.org/maven2/org/python/jython-installer/2.7.2/jython-installer-2.7.2.jar', os.path.join(self.app_dir, 'jython-installer-2.7.2.jar')),
                     ('https://raw.githubusercontent.com/GluuFederation/gluu-snap/master/facter/facter', '/usr/bin/facter'),
                     ]
 
@@ -662,7 +663,7 @@ class GluuUpdater:
         if os.path.islink('/opt/jre'):
             self.setupObj.run(['unlink', '/opt/jre'])
 
-        print("Installin Java")
+        print("Installing Java")
         self.setupObj.installJRE()
 
         print("Importing cacerts")
@@ -675,6 +676,28 @@ class GluuUpdater:
 
             self.setupObj.run(['/opt/jre/bin/keytool', '-import', '-alias', alias, '-file', crt_file, '-keystore', '/opt/jre/jre/lib/security/cacerts', '-storepass', 'changeit', '-noprompt', '-trustcacerts'])
 
+    def update_jython(self):
+
+        print ("Upgrading Jython")
+
+        for jython in glob.glob(os.path.join(self.setupObj.distAppFolder,'jython-installer-*')):
+            if os.path.isfile(jython):
+                print("Deleting", jython)
+                self.setupObj.run(['rm', '-r', jython])
+                
+
+        self.setupObj.run(['cp', '-f', os.path.join(self.app_dir, 'jython-installer-2.7.2.jar'), self.setupObj.distAppFolder])
+ 
+        for cur_version in glob.glob('/opt/jython-2*'):
+            if os.path.isdir(cur_version):
+                print("Deleting", cur_version)
+                self.setupObj.run(['rm', '-r', cur_version])
+
+        if os.path.islink('/opt/jython'):
+            self.setupObj.run(['unlink', '/opt/jython'])
+        
+        print("Installing Jython")
+        self.setupObj.installJython()
 
     def update_war_files(self):
         for service in self.setupObj.jetty_app_configuration:
@@ -1164,8 +1187,9 @@ class GluuUpdater:
 updaterObj = GluuUpdater()
 updaterObj.download_ces()
 updaterObj.prepare_persist_changes()
-updaterObj.update_java()
 updaterObj.download_apps()
+updaterObj.update_java()
+updaterObj.update_jython()
 updaterObj.determine_persistence_type()
 updaterObj.update_scopes()
 updaterObj.updateAttributes()
