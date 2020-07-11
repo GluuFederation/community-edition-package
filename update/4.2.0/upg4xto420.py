@@ -423,18 +423,18 @@ class GluuUpdater:
         self.cb_indexes()
 
         for n, k in (('oxAuthConfDynamic', 'configuration_oxauth'), ('oxTrustConfApplication', 'configuration_oxtrust')):
-            result = self.cbm.exec_query('SELECT {} FROM `gluu` USE KEYS "{}"'.format(n,k))
+            result = self.cbm.exec_query('SELECT {} FROM `{}` USE KEYS "{}"'.format(n, self.setupObj.couchbase_bucket_prefix, k))
             result_json = result.json()
             js_conf = result_json['results'][0][n]
 
             self.apply_persist_changes(js_conf, n)
 
-            n1ql = 'UPDATE `gluu` USE KEYS "{}" SET gluu.{}={}'.format(k, n, json.dumps(js_conf))
+            n1ql = 'UPDATE `{}` USE KEYS "{}" SET {}.{}={}'.format(self.setupObj.couchbase_bucket_prefix, k, self.setupObj.couchbase_bucket_prefix, n, json.dumps(js_conf))
             print("Executing", n1ql)
             result = self.cbm.exec_query(n1ql)
 
         for k in self.delete_from_configuration:
-            n1ql = 'UPDATE `gluu` USE KEYS "configuration" UNSET {}'.format(k)
+            n1ql = 'UPDATE `{}` USE KEYS "configuration" UNSET {}'.format(self.setupObj.couchbase_bucket_prefix, k)
             print("Executing", n1ql)
             result = self.cbm.exec_query(n1ql)
 
@@ -729,7 +729,7 @@ class GluuUpdater:
             if entry['inum'][0] in self.scripts_inum:
                 scr_key = 'scripts_{}'.format(entry['inum'][0])
                 print("Updating script:", scr_key)
-                result = self.cbm.exec_query('UPDATE `gluu` USE KEYS "{}" SET oxScript={}'.format(scr_key, json.dumps(entry['oxScript'][0])))
+                result = self.cbm.exec_query('UPDATE `{}` USE KEYS "{}" SET oxScript={}'.format(self.setupObj.couchbase_bucket_prefix, scr_key, json.dumps(entry['oxScript'][0])))
                 result_data = result.json()
                 print("Result", result_data['status'])
  
@@ -905,7 +905,7 @@ class GluuUpdater:
             scr = self.setupObj.readFile(os.path.join(self.app_dir, 'casa.py'))
 
             if self.default_storage == 'couchbase':
-                result = self.cbm.exec_query('UPDATE `gluu` USE KEYS "scripts_BABA-CACA" SET oxScript={}'.format(json.dumps(scr)))
+                result = self.cbm.exec_query('UPDATE `{}` USE KEYS "scripts_BABA-CACA" SET oxScript={}'.format(self.setupObj.couchbase_bucket_prefix, json.dumps(scr)))
             elif self.default_storage == 'ldap':
                 self.conn.modify(
                         'inum=BABA-CACA,ou=scripts,o=gluu', 
@@ -1005,6 +1005,10 @@ class GluuUpdater:
                     if not os.path.exists(os.path.join(self.setupObj.gluu_passport_base, 'server/mappings', mfn)):
                         self.setupObj.copyFile(m_path, os.path.join(self.setupObj.gluu_passport_base, 'server/mappings'))
 
+        #create empty log file
+        log_file = os.path.join(log_dir, 'start.log')
+        open(log_file,'w').close()
+
         self.setupObj.run(['chown', '-R', 'node:node', '/opt/gluu/node/passport/'])
 
 
@@ -1033,18 +1037,18 @@ class GluuUpdater:
                                     )
 
         else:
-            result = self.cbm.exec_query('SELECT META().id AS docid, * from `gluu_user` WHERE `objectClass`="pairwiseIdentifier"')
+            result = self.cbm.exec_query('SELECT META().id AS docid, * from `{}_user` WHERE `objectClass`="pairwiseIdentifier"'.format(self.setupObj.couchbase_bucket_prefix))
             if result.ok:
                 data = result.json()
                 if data.get('results'):
                     print("Populating oxAuthUserId for pairwiseIdentifier entries. Number of entries: {}".format(len(data['results'])))
                     for user_entry in data['results']:
-                        doc = user_entry.get('gluu_user')
+                        doc = user_entry.get(self.setupObj.couchbase_bucket_prefix+'_user')
                         if doc and not 'oxAuthUserId' in doc:
                             dn = doc['dn']
                             for dnr in dnutils.parse_dn(dn):
                                 if dnr[0] == 'inum':
-                                    n1ql = 'UPDATE `gluu_user` USE KEYS "{}" SET `oxAuthUserId`="{}"'.format(user_entry['docid'], dnr[1])
+                                    n1ql = 'UPDATE `{}_user` USE KEYS "{}" SET `oxAuthUserId`="{}"'.format(self.setupObj.couchbase_bucket_prefix, user_entry['docid'], dnr[1])
                                     self.cbm.exec_query(n1ql)
                                     break
 
@@ -1103,19 +1107,19 @@ class GluuUpdater:
                                 break
 
         else:
-            result = self.cbm.exec_query('SELECT META().id AS docid, * from `gluu_user` WHERE `objectClass`="oxDeviceRegistration"')
+            result = self.cbm.exec_query('SELECT META().id AS docid, * from `{}_user` WHERE `objectClass`="oxDeviceRegistration"'.format(self.setupObj.couchbase_bucket_prefix))
             if result.ok:
                 data = result.json()
                 if data.get('results'):
                     print("Populating personInum for fido2 entries. Number of entries: {}".format(len(data['results'])))
                     for user_entry in data['results']:
-                        doc = user_entry.get('gluu_user')
+                        doc = user_entry.get(self.setupObj.couchbase_bucket_prefix+'_user')
                         if doc and not 'personInum' in doc:
                             dn = doc['dn']
                             for dnr in dnutils.parse_dn(dn):
                                 if dnr[0][0] == 'inum':
                                     print((user_entry['docid']))
-                                    n1ql = 'UPDATE `gluu_user` USE KEYS "{}" SET `personInum`="{}"'.format(user_entry['docid'], dnr[1])
+                                    n1ql = 'UPDATE `{}_user` USE KEYS "{}" SET `personInum`="{}"'.format(self.setupObj.couchbase_bucket_prefix, user_entry['docid'], dnr[1])
                                     self.cbm.exec_query(n1ql)
                                     break
 
