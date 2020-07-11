@@ -133,9 +133,10 @@ class GluuUpdater:
         from ces_current.pylib import pyDes
         from ces_current.pylib.jproperties import Properties
         from ces_current.pylib.generate_properties import generate_properties
-        from ces_current.pylib.gluu_utils import myLdifParser
+        from ces_current.pylib.gluu_utils import myLdifParser, get_documents_from_ldif
         from ces_current.pylib.schema import ObjectClass
 
+        self.get_documents_from_ldif = get_documents_from_ldif
         self.cbm_obj = CBM
         self.setup = setup
         self.setupObj = self.setup.Setup(self.ces_dir)
@@ -1184,9 +1185,15 @@ class GluuUpdater:
                     print("Adding scope", dn)
                     self.conn.add(dn, attributes=entry)
         else:
-            # TOTO: implement for couchbase
-            pass
-
+            documents = self.get_documents_from_ldif(ldif_fn)
+            
+            
+            for k, doc in documents:
+                result = self.cbm.exec_query('SELECT inum FROM `{}` USE KEYS "{}"'.format(self.setupObj.couchbase_bucket_prefix, k))
+                if not result.json().get('results'):
+                    print("Adding scope", k)
+                    query = 'UPSERT INTO `%s` (KEY, VALUE) VALUES ("%s", %s)' % (self.setupObj.couchbase_bucket_prefix, k, json.dumps(doc))
+                    self.cbm.exec_query(query)
 
 updaterObj = GluuUpdater()
 updaterObj.download_ces()
