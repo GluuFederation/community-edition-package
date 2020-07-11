@@ -354,10 +354,13 @@ class GluuUpdater:
         self.cbm.exec_query(cmd)
 
     def cb_indexes(self):
+        print("Updating Couchbase indexes")
         self.new_cb_indexes = {}
         new_index_json_fn = os.path.join(self.ces_dir, 'static/couchbase/index.json')
-        new_indexes = json.loads(self.setupObj.readFile(new_index_json_fn))
-        
+        new_index_json_s = self.setupObj.readFile(new_index_json_fn)
+        new_index_json_s = new_index_json_s.replace('!bucket_prefix!', self.setupObj.couchbase_bucket_prefix)
+        new_indexes = json.loads(new_index_json_s)
+
         data_result = self.cbm.exec_query('SELECT * FROM system:indexes')
         current_indexes = data_result.json()['results']
 
