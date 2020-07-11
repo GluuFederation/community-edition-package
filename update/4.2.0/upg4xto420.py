@@ -355,6 +355,7 @@ class GluuUpdater:
 
     def cb_indexes(self):
         print("Updating Couchbase indexes")
+        return
         self.new_cb_indexes = {}
         new_index_json_fn = os.path.join(self.ces_dir, 'static/couchbase/index.json')
         new_index_json_s = self.setupObj.readFile(new_index_json_fn)
@@ -427,11 +428,11 @@ class GluuUpdater:
         self.cb_indexes()
 
         for n, k in (('oxAuthConfDynamic', 'configuration_oxauth'), ('oxTrustConfApplication', 'configuration_oxtrust')):
-            result = self.cbm.exec_query('SELECT {} FROM `{}` USE KEYS "{}"'.format(n, self.setupObj.couchbase_bucket_prefix, k))
+            result = self.cbm.exec_query('SELECT dn, {} FROM `{}` USE KEYS "{}"'.format(n, self.setupObj.couchbase_bucket_prefix, k))
             result_json = result.json()
             js_conf = result_json['results'][0][n]
 
-            self.apply_persist_changes(js_conf, n)
+            self.apply_persist_changes(js_conf, self.persist_changes[(n, result_json['results'][0]['dn'])])
 
             n1ql = 'UPDATE `{}` USE KEYS "{}" SET {}.{}={}'.format(self.setupObj.couchbase_bucket_prefix, k, self.setupObj.couchbase_bucket_prefix, n, json.dumps(js_conf))
             print("Executing", n1ql)
@@ -476,7 +477,6 @@ class GluuUpdater:
 
     def apply_persist_changes(self, js_conf, data):
         for key, change_type, how_change, value in data:
-
             if change_type == 'add':
                 if how_change == 'entry':
                     js_conf[key] = value
@@ -1215,13 +1215,13 @@ class GluuUpdater:
 updaterObj = GluuUpdater()
 updaterObj.download_ces()
 updaterObj.prepare_persist_changes()
-updaterObj.download_apps()
+#updaterObj.download_apps()
 updaterObj.determine_persistence_type()
-updaterObj.update_java()
-updaterObj.update_jython()
-updaterObj.update_scopes()
-updaterObj.updateAttributes()
-updaterObj.fix_gluu_config()
+#updaterObj.update_java()
+#updaterObj.update_jython()
+#updaterObj.update_scopes()
+#updaterObj.updateAttributes()
+#updaterObj.fix_gluu_config()
 updaterObj.update_persistence_data()
 updaterObj.update_scripts()
 updaterObj.update_jetty()
