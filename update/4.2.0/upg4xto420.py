@@ -1162,8 +1162,21 @@ class GluuUpdater:
                     self.conn.add(dn, attributes=entry)
 
         elif self.default_storage == 'couchbase':
-            # TOTO: implement for couchbase
-            pass
+            result = self.cbm.exec_query('SELECT oxAuthClaimName FROM `{}` USE KEYS "attributes_6049"'.format(self.setupObj.couchbase_bucket_prefix))
+            data = result.json()
+
+            if not 'user_permission' == data.get('results')[0].get('oxAuthClaimName',''):
+                n1ql = 'UPDATE `{0}` USE KEYS "attributes_6049" SET {0}.oxAuthClaimName="user_permission"'.format(self.setupObj.couchbase_bucket_prefix)
+                print("Executing", n1ql)
+                result = self.cbm.exec_query(n1ql)
+
+            documents = self.get_documents_from_ldif(attributes_ldif_fn)
+            for k, doc in documents:
+                result = self.cbm.exec_query('SELECT inum FROM `{}` USE KEYS "{}"'.format(self.setupObj.couchbase_bucket_prefix, k))
+                if not result.json().get('results'):
+                    print("Adding attribute", k)
+                    n1ql = 'UPSERT INTO `%s` (KEY, VALUE) VALUES ("%s", %s)' % (self.setupObj.couchbase_bucket_prefix, k, json.dumps(doc))
+                    self.cbm.exec_query(n1ql)
 
 
     def update_scopes(self):
@@ -1186,24 +1199,23 @@ class GluuUpdater:
                     self.conn.add(dn, attributes=entry)
         else:
             documents = self.get_documents_from_ldif(ldif_fn)
-            
-            
             for k, doc in documents:
                 result = self.cbm.exec_query('SELECT inum FROM `{}` USE KEYS "{}"'.format(self.setupObj.couchbase_bucket_prefix, k))
                 if not result.json().get('results'):
                     print("Adding scope", k)
-                    query = 'UPSERT INTO `%s` (KEY, VALUE) VALUES ("%s", %s)' % (self.setupObj.couchbase_bucket_prefix, k, json.dumps(doc))
-                    self.cbm.exec_query(query)
+                    n1ql = 'UPSERT INTO `%s` (KEY, VALUE) VALUES ("%s", %s)' % (self.setupObj.couchbase_bucket_prefix, k, json.dumps(doc))
+                    self.cbm.exec_query(n1ql)
 
 updaterObj = GluuUpdater()
 updaterObj.download_ces()
 updaterObj.prepare_persist_changes()
-updaterObj.download_apps()
-updaterObj.update_java()
-updaterObj.update_jython()
+#updaterObj.download_apps()
+#updaterObj.update_java()
+#updaterObj.update_jython()
 updaterObj.determine_persistence_type()
 updaterObj.update_scopes()
 updaterObj.updateAttributes()
+sys.exit()
 updaterObj.fix_gluu_config()
 updaterObj.update_persistence_data()
 updaterObj.update_scripts()
