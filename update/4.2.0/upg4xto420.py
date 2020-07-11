@@ -1083,7 +1083,7 @@ class GluuUpdater:
                 self.setupObj.import_ldif_opendj([ldif_fido2])
 
         else:
-            result = cbm.exec_query('SELECT gluuConfStatic FROM `{}` USE KEYS "configuration_fido2"'.format(self.setupObj.couchbase_bucket_prefix))
+            result = self.cbm.exec_query('SELECT gluuConfStatic FROM `{}` USE KEYS "configuration_fido2"'.format(self.setupObj.couchbase_bucket_prefix))
             if result.ok:
                 data = result.json()
                 if not data.get('results'):
@@ -1215,13 +1215,13 @@ class GluuUpdater:
 updaterObj = GluuUpdater()
 updaterObj.download_ces()
 updaterObj.prepare_persist_changes()
-#updaterObj.download_apps()
+updaterObj.download_apps()
 updaterObj.determine_persistence_type()
-#updaterObj.update_java()
-#updaterObj.update_jython()
-#updaterObj.update_scopes()
-#updaterObj.updateAttributes()
-#updaterObj.fix_gluu_config()
+updaterObj.update_java()
+updaterObj.update_jython()
+updaterObj.update_scopes()
+updaterObj.updateAttributes()
+updaterObj.fix_gluu_config()
 updaterObj.update_persistence_data()
 updaterObj.update_scripts()
 updaterObj.update_jetty()
