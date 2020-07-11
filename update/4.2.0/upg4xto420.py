@@ -956,8 +956,11 @@ class GluuUpdater:
                             )
 
             else:
-                pass
-                #TODO: implement for couchbase
+                k = 'configuration_casa'
+                doc = {'objectClass': 'oxApplicationConfiguration', 'ou': 'casa', 'oxConfApplication': casa_config_json}
+                print("Upserting casa configuration document")
+                n1ql = 'UPSERT INTO `%s` (KEY, VALUE) VALUES ("%s", %s)' % (self.setupObj.couchbase_bucket_prefix, k, json.dumps(doc))
+                self.cbm.exec_query(n1ql)
 
             self.setupObj.backupFile(casa_config_json_fn)
             #self.setupObj.run(['rm', '-f', casa_config_json_fn])
@@ -1210,9 +1213,9 @@ updaterObj = GluuUpdater()
 updaterObj.download_ces()
 updaterObj.prepare_persist_changes()
 updaterObj.download_apps()
+updaterObj.determine_persistence_type()
 updaterObj.update_java()
 updaterObj.update_jython()
-updaterObj.determine_persistence_type()
 updaterObj.update_scopes()
 updaterObj.updateAttributes()
 updaterObj.fix_gluu_config()
