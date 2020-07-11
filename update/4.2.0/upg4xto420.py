@@ -133,10 +133,11 @@ class GluuUpdater:
         from ces_current.pylib import pyDes
         from ces_current.pylib.jproperties import Properties
         from ces_current.pylib.generate_properties import generate_properties
-        from ces_current.pylib.gluu_utils import myLdifParser, get_documents_from_ldif
+        from ces_current.pylib.gluu_utils import myLdifParser, get_documents_from_ldif, get_key_from
         from ces_current.pylib.schema import ObjectClass
 
         self.get_documents_from_ldif = get_documents_from_ldif
+        self.get_key_from = get_key_from
         self.cbm_obj = CBM
         self.setup = setup
         self.setupObj = self.setup.Setup(self.ces_dir)
@@ -427,12 +428,13 @@ class GluuUpdater:
         
         self.cb_indexes()
 
-        for n, k in (('oxAuthConfDynamic', 'configuration_oxauth'), ('oxTrustConfApplication', 'configuration_oxtrust')):
-            result = self.cbm.exec_query('SELECT dn, {} FROM `{}` USE KEYS "{}"'.format(n, self.setupObj.couchbase_bucket_prefix, k))
+        for n, dn in self.persist_changes:
+            k = self.get_key_from(dn)
+            result = self.cbm.exec_query('SELECT {} FROM `{}` USE KEYS "{}"'.format(n, self.setupObj.couchbase_bucket_prefix, k))
             result_json = result.json()
             js_conf = result_json['results'][0][n]
 
-            self.apply_persist_changes(js_conf, self.persist_changes[(n, result_json['results'][0]['dn'])])
+            self.apply_persist_changes(js_conf, self.persist_changes[(n, dn)])
 
             n1ql = 'UPDATE `{}` USE KEYS "{}" SET {}.{}={}'.format(self.setupObj.couchbase_bucket_prefix, k, self.setupObj.couchbase_bucket_prefix, n, json.dumps(js_conf))
             print("Executing", n1ql)
