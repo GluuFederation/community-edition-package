@@ -145,6 +145,7 @@ class GluuUpdater:
         self.setupObj.os_initdaemon = self.setupObj.detect_initd()
         self.setupObj.properties_password = properties_password
         self.setupObj.jetty_version = '9.4.26.v20200117'
+        self.setupObj.jre_version='11.0.7.10.1'
         self.myLdifParser = myLdifParser
 
         print("Collecting properties")
@@ -158,7 +159,7 @@ class GluuUpdater:
 
         self.setupObj.ldapCertFn = self.setupObj.opendj_cert_fn
         self.setupObj.ldapTrustStoreFn = self.setupObj.opendj_p12_fn
-
+        self.setupObj.calculate_selected_aplications_memory()
         self.setupObj.encode_passwords()
 
     def prepare_persist_changes(self):
@@ -252,7 +253,7 @@ class GluuUpdater:
                     hybrid_prop.store(w, timestamp=False)
 
     def fix_gluu_config(self):
-        
+        print("Fixing Gluu configuration files")
         with open(self.setupObj.gluu_properties_fn) as f:
             gluu_prop = f.readlines()
 
@@ -286,7 +287,7 @@ class GluuUpdater:
 
                     options += ' -Dpython.home=' + self.setupObj.jython_home
                     idp_default[i] = 'JAVA_OPTIONS="{}"\n'.format(options)
-                    self.setupObj.writeFile(idp_default_fn, ''.join(gluu_prop))
+                    self.setupObj.writeFile(idp_default_fn, ''.join(idp_default))
 
         passport_default_fn = '/etc/default/passport'
         if os.path.exists(passport_default_fn):
@@ -565,7 +566,7 @@ class GluuUpdater:
                             self.setupObj.openDjSchemaFolder
                             ])
 
-        print("Restarting OpenDJ ...")
+        print("Restarting WrenDS ...")
         self.setupObj.run_service_command('opendj', 'stop')
         self.setupObj.run_service_command('opendj', 'start')
 
@@ -579,6 +580,7 @@ class GluuUpdater:
                     ('https://ox.gluu.org/maven/org/gluu/oxauth-server/{0}{1}/oxauth-server-{0}{1}.war'.format(self.up_version, self.build_tag), os.path.join(self.app_dir, 'oxauth.war')),
                     ('https://ox.gluu.org/maven/org/gluu/oxauth-rp/{0}{1}/oxauth-rp-{0}{1}.war'.format(self.up_version, self.build_tag), os.path.join(self.app_dir, 'oxauth-rp.war')),
                     ('https://repo1.maven.org/maven2/org/eclipse/jetty/jetty-distribution/{0}/jetty-distribution-{0}.tar.gz'.format(self.setupObj.jetty_version), os.path.join(self.app_dir, 'jetty-distribution-{0}.tar.gz'.format(self.setupObj.jetty_version))),
+                    ('https://corretto.aws/downloads/latest/amazon-corretto-11-x64-linux-jdk.tar.gz', os.path.join(self.app_dir, 'amazon-corretto-11-x64-linux-jdk.tar.gz')),
                     ('https://raw.githubusercontent.com/GluuFederation/gluu-snap/master/facter/facter', '/usr/bin/facter'),
                     ]
 
@@ -624,6 +626,55 @@ class GluuUpdater:
             self.setupObj.run(['wget', '-nv', download_link, '-O', out_file])
 
         self.setupObj.run(['chmod', '+x', '/usr/bin/facter'])
+
+
+    def update_java(self):
+        print ("Upgrading Java")
+
+        cacerts = []
+
+        print("Extracting current cacerts")
+        #get host specific certs in current cacerts
+        cmd =[self.setupObj.cmd_keytool, '-list', '-keystore', '/opt/jre/jre/lib/security/cacerts', '-storepass', 'changeit']
+        result = self.setupObj.run(cmd)
+        for l in result.split('\n'):
+            if self.setupObj.hostname in l:
+                ls=l.split(', ')
+                if ls and (self.setupObj.hostname in ls[0]) and (not 'opendj' in l):
+                    alias = ls[0]
+                    crt_file = os.path.join(cur_dir, ls[0]+'.crt')
+                    self.setupObj.run(['/opt/jre/bin/keytool', '-export', '-alias', alias, '-file', crt_file, '-keystore', '/opt/jre/jre/lib/security/cacerts', '-storepass', 'changeit'])
+                    cacerts.append((alias, crt_file))
+
+        for corretto in glob.glob(os.path.join(self.setupObj.distAppFolder,'amazon-corretto-*')):
+            if os.path.isfile(corretto):
+                print("Deleting", corretto)
+                self.setupObj.run(['rm', '-r', corretto])
+                
+
+        self.setupObj.run(['cp', '-f', os.path.join(self.app_dir, 'amazon-corretto-11-x64-linux-jdk.tar.gz'), self.setupObj.distAppFolder])
+ 
+        for cur_version in glob.glob('/opt/amazon-corretto*'):
+            if os.path.isdir(cur_version):
+                print("Deleting", cur_version)
+                self.setupObj.run(['rm', '-r', cur_version])
+
+        if os.path.islink('/opt/jre'):
+            self.setupObj.run(['unlink', '/opt/jre'])
+
+        print("Installin Java")
+        self.setupObj.installJRE()
+
+        print("Importing cacerts")
+        #import certs        
+        for alias, crt_file in cacerts:
+            #ensure cert is not exists in keystore
+            result = self.setupObj.run(['/opt/jre/bin/keytool', '-list', '-alias', alias, '-keystore', '/opt/jre/jre/lib/security/cacerts', '-storepass', 'changeit', '-noprompt'])
+            if 'trustedCertEntry' in result:
+                self.setupObj.run(['/opt/jre/bin/keytool', '-delete ', '-alias', alias, '-keystore', '/opt/jre/jre/lib/security/cacerts', '-storepass', 'changeit', '-noprompt'])
+
+            self.setupObj.run(['/opt/jre/bin/keytool', '-import', '-alias', alias, '-file', crt_file, '-keystore', '/opt/jre/jre/lib/security/cacerts', '-storepass', 'changeit', '-noprompt', '-trustcacerts'])
+
 
     def update_war_files(self):
         for service in self.setupObj.jetty_app_configuration:
@@ -1113,6 +1164,7 @@ class GluuUpdater:
 updaterObj = GluuUpdater()
 updaterObj.download_ces()
 updaterObj.prepare_persist_changes()
+updaterObj.update_java()
 updaterObj.download_apps()
 updaterObj.determine_persistence_type()
 updaterObj.update_scopes()
