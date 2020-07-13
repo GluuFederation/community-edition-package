@@ -9,6 +9,7 @@ import json
 import base64
 import glob
 import zipfile
+import csv
 
 
 if sys.version_info.major < 3:
@@ -24,16 +25,54 @@ if sys.version_info.major < 3:
     print("This script runs on python 3")
     sys.exit()
 
+
+os_type, os_version = '', ''
+with open("/etc/os-release") as f:
+    reader = csv.reader(f, delimiter="=")
+    for row in reader:
+        if row:
+            if row[0] == 'ID':
+                os_type = row[1].lower()
+                if os_type == 'rhel':
+                    os_type = 'redhat'
+            elif row[0] == 'VERSION_ID':
+                os_version = row[1].split('.')[0]
+
+missing_packages = []
+
 try:
     import ldap3
 except:
-    print("This script requires python3-ldap3")
-    cmd = installer +' install -y python3-ldap3'
+    missing_packages.append('ldap3')
+
+try:
+    import ruamel.yaml
+except:
+    if installer == 'apt':
+        missing_packages.append('python3-ruamel.yaml')
+    elif installer.endswith('yum') and os_version == '7':
+        missing_packages.append('python36-ruamel-yaml')
+    else:
+        missing_packages.append('python3-ruamel-yaml')
+    
+packages = ' '.join(missing_packages)
+
+if packages:
+    print("This script requires", packages)
+    cmd = installer +' install -y ' + packages
     prompt = input("Install with command {}? [Y/n] ".format(cmd))
     if not prompt.strip() or prompt[0].lower() == 'y':
+        if installer.endswith('apt'):
+            cmd_up = 'apt-get -y update'
+            print("Executing", cmd_up)
+            os.system(cmd_up)
         os.system(cmd)
+    else:
+        print("Can't continue without installing packages. Exiting ...")
+        sys.exit()
 
 import ldap3
+import ruamel.yaml
 from ldap3.utils import dn as dnutils
 
 cur_dir = os.path.dirname(os.path.realpath(__file__))
@@ -91,8 +130,6 @@ class GluuUpdater:
 
 
         self.delete_from_configuration = ['gluuFreeDiskSpace', 'gluuFreeMemory', 'gluuFreeSwap', 'gluuGroupCount', 'gluuIpAddress', 'gluuPersonCount', 'gluuSystemUptime']
-
-        self.scripts_inum = ['2DAF-BA90', '2FDB-CF02', 'D40C-1CA4', '09A0-93D7', '92F0-BF9E', '09A0-93D6', '2124-0CF1', '2DAF-BA91']
 
         self.casa_plugins = {
             'strong-authn-settings': 'https://ox.gluu.org/maven/org/gluu/casa/plugins/strong-authn-settings/{0}{1}/strong-authn-settings-{0}{1}-jar-with-dependencies.jar',
@@ -170,6 +207,8 @@ class GluuUpdater:
         self.setupObj.ldapTrustStoreFn = self.setupObj.opendj_p12_fn
         self.setupObj.calculate_selected_aplications_memory()
         self.setupObj.encode_passwords()
+
+        self.casa_base_dir = os.path.join(self.setupObj.jetty_base, 'casa')
 
     def prepare_persist_changes(self):
         self.persist_changes = { 
@@ -758,28 +797,36 @@ class GluuUpdater:
         self.parser = self.myLdifParser(ldif_scripts_fn)
         self.parser.parse()
 
+        if os.path.exists(self.casa_base_dir):
+            self.setupObj.renderTemplate(self.setupObj.ldif_scripts_casa)
+            ldif_casa_scripts_fn = os.path.join(self.setupObj.outputFolder, os.path.basename(self.setupObj.ldif_scripts_casa))
+            casa_scripts_parser = self.myLdifParser(ldif_casa_scripts_fn)
+            casa_scripts_parser.parse()
+            for e in casa_scripts_parser.entries:
+                print("Adding casa script", e[0])
+                self.parser.entries.append(e)
+
         getattr(self, 'update_scripts_' + self.default_storage)()
 
     def update_scripts_couchbase(self):
         for dn, entry in self.parser.entries:
-            if entry['inum'][0] in self.scripts_inum:
-                scr_key = 'scripts_{}'.format(entry['inum'][0])
-                print("Updating script:", scr_key)
-                result = self.cbm.exec_query('UPDATE `{}` USE KEYS "{}" SET oxScript={}'.format(self.setupObj.couchbase_bucket_prefix, scr_key, json.dumps(entry['oxScript'][0])))
-                result_data = result.json()
-                print("Result", result_data['status'])
+            scr_key = 'scripts_{}'.format(entry['inum'][0])
+            print("Updating script:", scr_key)
+            result = self.cbm.exec_query('UPDATE `{}` USE KEYS "{}" SET oxScript={}'.format(self.setupObj.couchbase_bucket_prefix, scr_key, json.dumps(entry['oxScript'][0])))
+            result_data = result.json()
+            print("Result", result_data['status'])
  
     def update_scripts_ldap(self):
         self.db_connection_ldap()
         for dn, entry in self.parser.entries:
-            if entry['inum'][0] in self.scripts_inum:
-                try:
-                    self.conn.modify(
-                        dn, 
-                        {'oxScript': [ldap3.MODIFY_REPLACE, entry['oxScript'][0]]}
-                        )
-                except Exception as e:
-                    self.conn.add(dn, attributes=entry)
+            print("Updating script", dn)
+            try:
+                self.conn.modify(
+                    dn, 
+                    {'oxScript': [ldap3.MODIFY_REPLACE, entry['oxScript'][0]]}
+                    )
+            except Exception as e:
+                self.conn.add(dn, attributes=entry)
 
     def update_apache_conf(self):
         print("Updating Apache Configuration")
@@ -878,7 +925,8 @@ class GluuUpdater:
 
 
     def update_oxd(self):
-        if not os.path.exists('/opt/oxd-server'):
+        oxd_root = '/opt/oxd-server/'
+        if not os.path.exists(oxd_root):
             return
 
         print("Updating oxd Server")
@@ -887,16 +935,94 @@ class GluuUpdater:
                     '/opt/oxd-server/lib'
                     )
 
+        oxd_server_yml_fn = os.path.join(oxd_root, 'conf/oxd-server.yml')
+        yml_str = self.setupObj.readFile(oxd_server_yml_fn)
+        oxd_yaml = ruamel.yaml.load(yml_str, ruamel.yaml.RoundTripLoader)
+
+        ip = self.setupObj.detect_ip()
+
+        if os.path.exists(self.casa_base_dir) and self.casa_oxd_host in (self.setup_prop['hostname'], ip):
+
+            write_oxd_yaml = False
+            if 'bind_ip_addresses' in oxd_yaml:
+                if not ip in oxd_yaml['bind_ip_addresses']:
+                    oxd_yaml['bind_ip_addresses'].append(ip)
+                    write_oxd_yaml = True
+            else:
+                for i, k in enumerate(oxd_yaml):
+                    if k == 'storage':
+                        break
+                else:
+                    i = 1
+                oxd_yaml.insert(i, 'bind_ip_addresses',  [ip])
+                write_oxd_yaml = True
+
+            if write_oxd_yaml:
+                yml_str = ruamel.yaml.dump(oxd_yaml, Dumper=ruamel.yaml.RoundTripDumper)
+                self.setupObj.writeFile(oxd_server_yml_fn, yml_str)
+
+
+        #create oxd certificate if not CN=hostname
+        r = os.popen('/opt/jre/bin/keytool -list -v -keystore {}  -storepass {} | grep Owner'.format(oxd_yaml['server']['applicationConnectors'][0]['keyStorePath'], oxd_yaml['server']['applicationConnectors'][0]['keyStorePassword'])).read()
+        for l in r.splitlines():
+            res = re.search('CN=(.*?.),', l)
+            if res:
+                cert_cn = res.groups()[0]
+                if cert_cn != self.setup_prop['hostname']:
+                    self.setupObj.run([
+                        self.setupObj.opensslCommand,
+                        'req', '-x509', '-newkey', 'rsa:4096', '-nodes',
+                        '-out', '/tmp/oxd.crt',
+                        '-keyout', '/tmp/oxd.key',
+                        '-days', '3650',
+                        '-subj', '/C={}/ST={}/L={}/O={}/CN={}/emailAddress={}'.format(self.setupObj.countryCode, self.setupObj.state, self.setupObj.city, self.setupObj.orgName, self.setupObj.hostname, self.setupObj.admin_email),
+                        ])
+
+                    self.setupObj.run([
+                        self.setupObj.opensslCommand,
+                        'pkcs12', '-export',
+                        '-in', '/tmp/oxd.crt',
+                        '-inkey', '/tmp/oxd.key',
+                        '-out', '/tmp/oxd.p12',
+                        '-name', self.setupObj.hostname,
+                        '-passout', 'pass:example'
+                        ])
+
+                    self.setupObj.run([
+                        self.setupObj.cmd_keytool,
+                        '-importkeystore',
+                        '-deststorepass', 'example',
+                        '-destkeypass', 'example',
+                        '-destkeystore', '/tmp/oxd.keystore',
+                        '-srckeystore', '/tmp/oxd.p12',
+                        '-srcstoretype', 'PKCS12',
+                        '-srcstorepass', 'example',
+                        '-alias', self.setupObj.hostname,
+                        ])
+
+                    self.setupObj.backupFile(oxd_yaml['server']['applicationConnectors'][0]['keyStorePath'])
+                    self.setupObj.run(['cp', '-f', '/tmp/oxd.keystore', oxd_yaml['server']['applicationConnectors'][0]['keyStorePath']])
+                    self.setupObj.run(['chown', 'jetty:jetty', oxd_yaml['server']['applicationConnectors'][0]['keyStorePath']])
+
+                    for f in ('/tmp/oxd.crt', '/tmp/oxd.key', '/tmp/oxd.p12', '/tmp/oxd.keystore'):
+                        self.setupObj.run(['rm', '-f', f])
+                    
+                    print("Restarting oxd-server")
+                    self.setupObj.run_service_command('oxd-server', 'stop')
+                    self.setupObj.run_service_command('oxd-server', 'start')
+
+        print("Importing oxd certificate to cacerts")        
+        self.setupObj.import_oxd_certificate()
 
     def update_casa(self):
-        casa_base_dir = os.path.join(self.setupObj.jetty_base, 'casa')
         
-        if not os.path.exists(casa_base_dir):
+        if not os.path.exists(self.casa_base_dir):
             return
 
         print("Updating casa")
+        casa_config_dn = 'ou=casa,ou=configuration,o=gluu'
         casa_config_json = {}
-        casa_cors_domains_fn = os.path.join(casa_base_dir, 'casa-cors-domains')
+        casa_cors_domains_fn = os.path.join(self.casa_base_dir, 'casa-cors-domains')
         casa_config_json_fn = os.path.join(self.setupObj.configFolder, 'casa.json')
 
         if os.path.exists(casa_config_json_fn):
@@ -908,11 +1034,11 @@ class GluuUpdater:
                 casa_cors_domains_list = [l.strip() for l in casa_cors_domains.splitlines()]
                 casa_config_json['allowed_cors_domains'] = casa_cors_domains_list
 
-        casa_plugins_dir = os.path.join(casa_base_dir, 'plugins')
+        casa_plugins_dir = os.path.join(self.casa_base_dir, 'plugins')
         self.setupObj.run_service_command('casa', 'stop')
         
         self.setupObj.run(['cp', '-f', os.path.join(self.app_dir, 'casa.war'),
-                                    os.path.join(casa_base_dir, 'webapps')])
+                                    os.path.join(self.casa_base_dir, 'webapps')])
 
         account_linking = None
         
@@ -963,16 +1089,15 @@ class GluuUpdater:
                                         }
                                     }
 
-
         if casa_config_json:
 
             casa_config_json_s = json.dumps(casa_config_json, indent=2)
 
             if self.default_storage == 'ldap':
 
-                dn = 'ou=casa,ou=configuration,o=gluu'
+                
                 self.conn.search(
-                                search_base=dn,
+                                search_base=casa_config_dn,
                                 search_scope=ldap3.BASE, 
                                 search_filter='(objectClass=oxApplicationConfiguration)', 
                                 attributes=['oxConfApplication']
@@ -982,11 +1107,11 @@ class GluuUpdater:
 
                 if not self.conn.response:
                     print("Importing casa configuration ldif")
-                    self.conn.add(dn, attributes=entry)
+                    self.conn.add(casa_config_dn, attributes=entry)
                 else:
                     print("Modifying casa configuration ldif")
                     self.conn.modify(
-                            dn, 
+                            casa_config_dn, 
                             {'oxConfApplication':  [ldap3.MODIFY_REPLACE, casa_config_json_s]}
                             )
 
@@ -999,6 +1124,53 @@ class GluuUpdater:
 
             self.setupObj.backupFile(casa_config_json_fn)
             #self.setupObj.run(['rm', '-f', casa_config_json_fn])
+
+
+        def fix_oxConfApplication(oxConfApplication):
+            if not oxConfApplication.get('oxd_config'):
+                oxConfApplication['oxd_config'] = {}
+                
+            oxConfApplication['oxd_config']['authz_redirect_uri'] = 'https://{}/casa'.format(self.setup_prop['hostname'])
+            oxConfApplication['oxd_config']['frontchannel_logout_uri'] = 'https://{}/casa/autologout'.format(self.setup_prop['hostname'])
+            oxConfApplication['oxd_config']['post_logout_uri'] = 'https://{}/casa/bye.zul'.format(self.setup_prop['hostname'])
+
+            
+            if not oxConfApplication['oxd_config'].get('port'):
+                oxConfApplication['oxd_config']['port'] = 8443
+            if not oxConfApplication['oxd_config'].get('host'):
+                oxConfApplication['oxd_config']['host'] = self.setup_prop['hostname']
+
+
+        if self.default_storage == 'ldap':
+            self.conn.search(
+                    search_base=casa_config_dn,
+                    search_scope=ldap3.BASE,
+                    search_filter='(objectclass=*)', attributes=['oxConfApplication']
+                )
+
+            result = self.conn.response
+
+            if result:
+                oxConfApplication = json.loads(result[0]['attributes']['oxConfApplication'][0])
+                fix_oxConfApplication(oxConfApplication)
+                self.conn.modify(
+                        casa_config_dn, 
+                        {'oxConfApplication':  [ldap3.MODIFY_REPLACE, json.dumps(oxConfApplication)]}
+                        )
+
+                self.casa_oxd_host = oxConfApplication['oxd_config']['host']
+
+        else:
+            result = self.cbm.exec_query('SELECT oxConfApplication FROM `{}` USE KEYS "configuration_casa"'.format(self.setupObj.couchbase_bucket_prefix))
+            if result.ok:
+                data = result.json()
+                oxConfApplication = data['results'][0]['oxConfApplication']
+                fix_oxConfApplication(oxConfApplication)
+                n1ql = 'UPDATE `{}` USE KEYS "configuration_casa" SET {}.oxConfApplication={}'.format(self.setupObj.couchbase_bucket_prefix, self.setupObj.couchbase_bucket_prefix, json.dumps(oxConfApplication))
+                print("Executing", n1ql)
+                self.cbm.exec_query(n1ql)
+
+        self.setupObj.oxd_server_https = 'https://{}:{}'.format(oxConfApplication['oxd_config']['host'], oxConfApplication['oxd_config']['port'])
 
     def update_passport(self):
 
@@ -1262,8 +1434,8 @@ updaterObj.update_apache_conf()
 updaterObj.update_shib()
 updaterObj.update_passport()
 updaterObj.update_radius()
-updaterObj.update_oxd()
 updaterObj.update_casa()
+updaterObj.update_oxd()
 updaterObj.add_oxAuthUserId_pairwiseIdentifier()
 updaterObj.fix_fido2()
 
