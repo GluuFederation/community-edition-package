@@ -302,17 +302,18 @@ class GluuUpdater:
             self.setupObj.writeFile(passport_default_fn, passport_default)
 
 
-        gluu_couchbase_prop_s = self.setupObj.readFile(self.setupObj.gluuCouchebaseProperties)
-        gluu_couchbase_prop = gluu_couchbase_prop_s.splitlines()
-        for i, l in enumerate(gluu_couchbase_prop[:]):
-            if l.startswith('bucket.gluu_token.mapping'):
-                n = l.find(':')
-                mapping = l[n+1:].strip()
-                mapping_list = [m.strip() for m in mapping.split(',')]
-                if not 'sessions' in mapping_list:
-                    mapping_list.append('sessions')
-                    gluu_couchbase_prop[i] = 'bucket.gluu_token.mapping: {}'.format(', '.join(mapping_list))
-                    self.setupObj.writeFile(self.setupObj.gluuCouchebaseProperties, '\n'.join(gluu_couchbase_prop))
+        if os.path.exists(self.setupObj.gluuCouchebaseProperties):
+            gluu_couchbase_prop_s = self.setupObj.readFile(self.setupObj.gluuCouchebaseProperties)
+            gluu_couchbase_prop = gluu_couchbase_prop_s.splitlines()
+            for i, l in enumerate(gluu_couchbase_prop[:]):
+                if l.startswith('bucket.gluu_token.mapping'):
+                    n = l.find(':')
+                    mapping = l[n+1:].strip()
+                    mapping_list = [m.strip() for m in mapping.split(',')]
+                    if not 'sessions' in mapping_list:
+                        mapping_list.append('sessions')
+                        gluu_couchbase_prop[i] = 'bucket.gluu_token.mapping: {}'.format(', '.join(mapping_list))
+                        self.setupObj.writeFile(self.setupObj.gluuCouchebaseProperties, '\n'.join(gluu_couchbase_prop))
 
 
     def update_persistence_data(self):
