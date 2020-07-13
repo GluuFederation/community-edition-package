@@ -616,6 +616,8 @@ class GluuUpdater:
                     ('https://ox.gluu.org/maven/org/gluu/oxshibbolethIdp/{0}{1}/oxshibbolethIdp-{0}{1}.war'.format(self.up_version, self.build_tag), os.path.join(self.app_dir, 'idp.war')),
                     ('https://ox.gluu.org/maven/org/gluu/oxShibbolethStatic/{0}{1}/oxShibbolethStatic-{0}{1}.jar'.format(self.up_version, self.build_tag), os.path.join(self.app_dir, 'shibboleth-idp.jar')),
                     ('https://ox.gluu.org/maven/org/gluu/oxShibbolethKeyGenerator/{0}{1}/oxShibbolethKeyGenerator-{0}{1}.jar'.format(self.up_version, self.build_tag), os.path.join(self.app_dir, 'idp3_cml_keygenerator.jar')),
+                    ('https://raw.githubusercontent.com/GluuFederation/oxTrust/master/configuration/src/main/resources/META-INF/shibboleth3/idp/saml-nameid.properties.vm', os.path.join(self.app_dir, 'saml-nameid.properties.vm')),
+                    
                     ]
 
         if os.path.exists('/opt/gluu/node/passport'):
@@ -1245,7 +1247,6 @@ updaterObj.update_scopes()
 updaterObj.updateAttributes()
 updaterObj.fix_gluu_config()
 updaterObj.update_persistence_data()
-updaterObj.update_scripts()
 updaterObj.update_jetty()
 updaterObj.update_war_files()
 updaterObj.update_scripts()
