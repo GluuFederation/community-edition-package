@@ -746,6 +746,11 @@ class GluuUpdater:
         self.setupObj.distAppFolder = distAppFolder
 
     def update_scripts(self):
+        if os.path.exists(self.setupObj.gluu_passport_base):
+        
+            self.setupObj.enable_scim_access_policy = 'true'
+        
+        
         print("Updating Scripts")
         self.setupObj.prepare_base64_extension_scripts()
         self.setupObj.renderTemplate(self.setupObj.ldif_scripts)
