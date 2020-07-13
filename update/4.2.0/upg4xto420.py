@@ -132,7 +132,7 @@ class GluuUpdater:
         global Properties
         global pyDes
         global ObjectClass
-        
+
         from ces_current import setup
         from ces_current.pylib.cbm import CBM
         from ces_current.pylib import pyDes
@@ -150,6 +150,8 @@ class GluuUpdater:
         self.setupObj.logError = os.path.join(self.ces_dir, 'update_error.log')
         self.setupObj.os_type, self.setupObj.os_version = self.setupObj.detect_os_type()
         self.setupObj.os_initdaemon = self.setupObj.detect_initd()
+        self.setupObj.apache_version = self.setupObj.determineApacheVersionForOS()
+
         self.setupObj.properties_password = properties_password
         self.setupObj.jetty_version = '9.4.26.v20200117'
         self.setupObj.jre_version='11.0.7.10.1'
@@ -623,7 +625,8 @@ class GluuUpdater:
         if os.path.exists('/opt/gluu/node/passport'):
             downloads += [
                     ('https://ox.gluu.org/npm/passport/passport-{}.tgz'.format(self.up_version), os.path.join(self.app_dir, 'passport.tgz')),
-                    ('https://ox.gluu.org/npm/passport/passport-version_{}-node_modules.tar.gz'.format(self.up_version), os.path.join(self.app_dir, 'passport-node_modules.tar.gz')),
+                    #('https://ox.gluu.org/npm/passport/passport-version_{}-node_modules.tar.gz'.format(self.up_version), os.path.join(self.app_dir, 'passport-node_modules.tar.gz')),
+                    ('https://ox.gluu.org/npm/passport/passport-master-node_modules.tar.gz', os.path.join(self.app_dir, 'passport-node_modules.tar.gz')),
                     ]
 
         if os.path.exists('/opt/gluu/radius'):
