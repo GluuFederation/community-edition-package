@@ -389,7 +389,6 @@ class GluuUpdater:
         current_indexes = data_result.json()['results']
 
         for inds in current_indexes:
-
             ind = inds['indexes']
             bucket = ind['keyspace_id']
 
@@ -577,16 +576,19 @@ class GluuUpdater:
                     {k: [ldap3.MODIFY_DELETE, result[0]['attributes'][k]]}
                     )
 
-        self.conn.unbind()
-    
         # we need to delete index oxAuthExpiration before restarting opendj
-        cmd = '{} list-backend-indexes --port {} --hostname {} --bindDN "{}" -j /home/ldap/.pw --backend-name userRoot  --trustAll --no-prompt'.format(self.setupObj.ldapDsconfigCommand, self.setupObj.ldap_admin_port, self.ldap_host, self.ldap_bind_dn)
-        result = self.setupObj.run(cmd, shell=True, get_stderr=False)
-        
-        for l in result.splitlines():
-            if l.strip().startswith('oxAuthExpiration'):
-                cmd = '{} delete-backend-index --port {} --hostname {} --bindDN "{}" -j /home/ldap/.pw --backend-name userRoot --index-name oxAuthExpiration --trustAll --no-prompt'.format(self.setupObj.ldapDsconfigCommand, self.setupObj.ldap_admin_port, self.ldap_host, self.ldap_bind_dn)
-                self.setupObj.run(cmd, shell=True, get_stderr=False)
+        oxAuthExpiration_index_dn = 'ds-cfg-attribute=oxAuthExpiration,cn=Index,ds-cfg-backend-id=userRoot,cn=Backends,cn=config'
+        self.conn.search(
+            search_base=oxAuthExpiration_index_dn, 
+            search_scope=ldap3.BASE, 
+            search_filter='(objectclass=*)', 
+            attributes=['ds-cfg-attribute']
+            )
+
+        if self.conn.response:        
+            self.conn.delete(oxAuthExpiration_index_dn)
+
+        self.conn.unbind()
 
         # update opendj schema and restart
         self.setupObj.run(['cp', '-f', 
@@ -746,18 +748,16 @@ class GluuUpdater:
         self.setupObj.distAppFolder = distAppFolder
 
     def update_scripts(self):
-        if os.path.exists(self.setupObj.gluu_passport_base):
-        
-            self.setupObj.enable_scim_access_policy = 'true'
-        
-        
         print("Updating Scripts")
+        if os.path.exists(self.setupObj.gluu_passport_base):
+            self.setupObj.enable_scim_access_policy = 'true'
+
         self.setupObj.prepare_base64_extension_scripts()
         self.setupObj.renderTemplate(self.setupObj.ldif_scripts)
         ldif_scripts_fn = os.path.join(self.setupObj.outputFolder, os.path.basename(self.setupObj.ldif_scripts))
         self.parser = self.myLdifParser(ldif_scripts_fn)
         self.parser.parse()
-        
+
         getattr(self, 'update_scripts_' + self.default_storage)()
 
     def update_scripts_couchbase(self):
@@ -858,11 +858,11 @@ class GluuUpdater:
         os.chdir(cur_dir)
 
     def update_radius(self):
-        
+
         radius_dir = '/opt/gluu/radius'
         if not os.path.exists(radius_dir):
             return
-        
+
         print("Updating Gluu Radius Server")
         
         self.setupObj.copyFile(os.path.join(self.ces_dir, 'static/radius/etc/init.d/gluu-radius'), '/etc/init.d')
