@@ -10,6 +10,11 @@ import base64
 import glob
 import zipfile
 
+
+if sys.version_info.major < 3:
+    print("This script runs under Python 3")
+    sys.exit()
+
 installer = shutil.which('yum') if shutil.which('yum') else shutil.which('apt')
 
 if not os.path.exists('/etc/gluu/conf'):
@@ -1006,7 +1011,7 @@ class GluuUpdater:
                          '-C', '/opt/gluu/node/passport', '--no-xattrs', '--no-same-owner', '--no-same-permissions'])
     
         print("Extracting passport node modules")
-        modules_dir = '/opt/gluu/node/passport/node_modules'
+        modules_dir = os.path.join(self.setupObj.gluu_passport_base, 'node_modules')
 
         if not os.path.exists(modules_dir):
             self.setupObj.run(['mkdir', '-p', modules_dir])
