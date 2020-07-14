@@ -942,7 +942,7 @@ class GluuUpdater:
 
         ip = self.setupObj.detect_ip()
 
-        if os.path.exists(self.casa_base_dir) and self.casa_oxd_host in (self.setup_prop['hostname'], ip):
+        if os.path.exists(self.casa_base_dir) and hasattr(self, 'casa_oxd_host') and getattr(self, 'casa_oxd_host') in (self.setup_prop['hostname'], ip):
 
             write_oxd_yaml = False
             if 'bind_ip_addresses' in oxd_yaml:
@@ -963,57 +963,57 @@ class GluuUpdater:
                 self.setupObj.writeFile(oxd_server_yml_fn, yml_str)
 
 
-        #create oxd certificate if not CN=hostname
-        r = os.popen('/opt/jre/bin/keytool -list -v -keystore {}  -storepass {} | grep Owner'.format(oxd_yaml['server']['applicationConnectors'][0]['keyStorePath'], oxd_yaml['server']['applicationConnectors'][0]['keyStorePassword'])).read()
-        for l in r.splitlines():
-            res = re.search('CN=(.*?.),', l)
-            if res:
-                cert_cn = res.groups()[0]
-                if cert_cn != self.setup_prop['hostname']:
-                    self.setupObj.run([
-                        self.setupObj.opensslCommand,
-                        'req', '-x509', '-newkey', 'rsa:4096', '-nodes',
-                        '-out', '/tmp/oxd.crt',
-                        '-keyout', '/tmp/oxd.key',
-                        '-days', '3650',
-                        '-subj', '/C={}/ST={}/L={}/O={}/CN={}/emailAddress={}'.format(self.setupObj.countryCode, self.setupObj.state, self.setupObj.city, self.setupObj.orgName, self.setupObj.hostname, self.setupObj.admin_email),
-                        ])
+            #create oxd certificate if not CN=hostname
+            r = os.popen('/opt/jre/bin/keytool -list -v -keystore {}  -storepass {} | grep Owner'.format(oxd_yaml['server']['applicationConnectors'][0]['keyStorePath'], oxd_yaml['server']['applicationConnectors'][0]['keyStorePassword'])).read()
+            for l in r.splitlines():
+                res = re.search('CN=(.*?.),', l)
+                if res:
+                    cert_cn = res.groups()[0]
+                    if cert_cn != self.setup_prop['hostname']:
+                        self.setupObj.run([
+                            self.setupObj.opensslCommand,
+                            'req', '-x509', '-newkey', 'rsa:4096', '-nodes',
+                            '-out', '/tmp/oxd.crt',
+                            '-keyout', '/tmp/oxd.key',
+                            '-days', '3650',
+                            '-subj', '/C={}/ST={}/L={}/O={}/CN={}/emailAddress={}'.format(self.setupObj.countryCode, self.setupObj.state, self.setupObj.city, self.setupObj.orgName, self.setupObj.hostname, self.setupObj.admin_email),
+                            ])
 
-                    self.setupObj.run([
-                        self.setupObj.opensslCommand,
-                        'pkcs12', '-export',
-                        '-in', '/tmp/oxd.crt',
-                        '-inkey', '/tmp/oxd.key',
-                        '-out', '/tmp/oxd.p12',
-                        '-name', self.setupObj.hostname,
-                        '-passout', 'pass:example'
-                        ])
+                        self.setupObj.run([
+                            self.setupObj.opensslCommand,
+                            'pkcs12', '-export',
+                            '-in', '/tmp/oxd.crt',
+                            '-inkey', '/tmp/oxd.key',
+                            '-out', '/tmp/oxd.p12',
+                            '-name', self.setupObj.hostname,
+                            '-passout', 'pass:example'
+                            ])
 
-                    self.setupObj.run([
-                        self.setupObj.cmd_keytool,
-                        '-importkeystore',
-                        '-deststorepass', 'example',
-                        '-destkeypass', 'example',
-                        '-destkeystore', '/tmp/oxd.keystore',
-                        '-srckeystore', '/tmp/oxd.p12',
-                        '-srcstoretype', 'PKCS12',
-                        '-srcstorepass', 'example',
-                        '-alias', self.setupObj.hostname,
-                        ])
+                        self.setupObj.run([
+                            self.setupObj.cmd_keytool,
+                            '-importkeystore',
+                            '-deststorepass', 'example',
+                            '-destkeypass', 'example',
+                            '-destkeystore', '/tmp/oxd.keystore',
+                            '-srckeystore', '/tmp/oxd.p12',
+                            '-srcstoretype', 'PKCS12',
+                            '-srcstorepass', 'example',
+                            '-alias', self.setupObj.hostname,
+                            ])
 
-                    self.setupObj.backupFile(oxd_yaml['server']['applicationConnectors'][0]['keyStorePath'])
-                    self.setupObj.run(['cp', '-f', '/tmp/oxd.keystore', oxd_yaml['server']['applicationConnectors'][0]['keyStorePath']])
-                    self.setupObj.run(['chown', 'jetty:jetty', oxd_yaml['server']['applicationConnectors'][0]['keyStorePath']])
+                        self.setupObj.backupFile(oxd_yaml['server']['applicationConnectors'][0]['keyStorePath'])
+                        self.setupObj.run(['cp', '-f', '/tmp/oxd.keystore', oxd_yaml['server']['applicationConnectors'][0]['keyStorePath']])
+                        self.setupObj.run(['chown', 'jetty:jetty', oxd_yaml['server']['applicationConnectors'][0]['keyStorePath']])
 
-                    for f in ('/tmp/oxd.crt', '/tmp/oxd.key', '/tmp/oxd.p12', '/tmp/oxd.keystore'):
-                        self.setupObj.run(['rm', '-f', f])
-                    
-                    print("Restarting oxd-server")
-                    self.setupObj.run_service_command('oxd-server', 'stop')
-                    self.setupObj.run_service_command('oxd-server', 'start')
+                        for f in ('/tmp/oxd.crt', '/tmp/oxd.key', '/tmp/oxd.p12', '/tmp/oxd.keystore'):
+                            self.setupObj.run(['rm', '-f', f])
+                        
+                        print("Restarting oxd-server")
+                        self.setupObj.run_service_command('oxd-server', 'stop')
+                        self.setupObj.run_service_command('oxd-server', 'start')
 
-        print("Importing oxd certificate to cacerts")        
-        self.setupObj.import_oxd_certificate()
+            print("Importing oxd certificate to cacerts")        
+            self.setupObj.import_oxd_certificate()
 
     def update_casa(self):
         
@@ -1166,6 +1166,7 @@ class GluuUpdater:
             if result.ok:
                 data = result.json()
                 oxConfApplication = data['results'][0]['oxConfApplication']
+                self.casa_oxd_host = oxConfApplication['oxd_config']['host']
                 fix_oxConfApplication(oxConfApplication)
                 n1ql = 'UPDATE `{}` USE KEYS "configuration_casa" SET {}.oxConfApplication={}'.format(self.setupObj.couchbase_bucket_prefix, self.setupObj.couchbase_bucket_prefix, json.dumps(oxConfApplication))
                 print("Executing", n1ql)
