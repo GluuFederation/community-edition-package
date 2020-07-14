@@ -814,7 +814,7 @@ class GluuUpdater:
             scr_key = 'scripts_{}'.format(entry['inum'][0])
             print("Updating script:", scr_key)
             result = self.cbm.exec_query('UPDATE `{}` USE KEYS "{}" SET oxScript={}'.format(self.setupObj.couchbase_bucket_prefix, scr_key, json.dumps(entry['oxScript'][0])))
-            result_data = result.jsoenable_scim_access_policyn()
+            result_data = result.json()
             print("Result", result_data['status'])
  
     def update_scripts_ldap(self):
