@@ -791,12 +791,16 @@ class GluuUpdater:
         self.setupObj.prepare_base64_extension_scripts()
         self.setupObj.renderTemplate(self.setupObj.ldif_scripts)
         ldif_scripts_fn = os.path.join(self.setupObj.outputFolder, os.path.basename(self.setupObj.ldif_scripts))
+        self.setupObj.logIt("Parsing", ldif_scripts_fn)
+        print("Parsing", ldif_scripts_fn)
         self.parser = self.myLdifParser(ldif_scripts_fn)
         self.parser.parse()
 
         if os.path.exists(self.casa_base_dir):
             self.setupObj.renderTemplate(self.setupObj.ldif_scripts_casa)
             ldif_casa_scripts_fn = os.path.join(self.setupObj.outputFolder, os.path.basename(self.setupObj.ldif_scripts_casa))
+            self.setupObj.logIt("Parsing", ldif_casa_scripts_fn)
+            print("Parsing", ldif_casa_scripts_fn)
             casa_scripts_parser = self.myLdifParser(ldif_casa_scripts_fn)
             casa_scripts_parser.parse()
             for e in casa_scripts_parser.entries:
@@ -810,7 +814,7 @@ class GluuUpdater:
             scr_key = 'scripts_{}'.format(entry['inum'][0])
             print("Updating script:", scr_key)
             result = self.cbm.exec_query('UPDATE `{}` USE KEYS "{}" SET oxScript={}'.format(self.setupObj.couchbase_bucket_prefix, scr_key, json.dumps(entry['oxScript'][0])))
-            result_data = result.json()
+            result_data = result.jsoenable_scim_access_policyn()
             print("Result", result_data['status'])
  
     def update_scripts_ldap(self):
