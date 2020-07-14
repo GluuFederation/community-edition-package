@@ -43,7 +43,7 @@ missing_packages = []
 try:
     import ldap3
 except:
-    missing_packages.append('ldap3')
+    missing_packages.append('python3-ldap3')
 
 try:
     import ruamel.yaml
@@ -124,7 +124,7 @@ class GluuUpdater:
     def __init__(self):
         self.ces_dir = os.path.join(cur_dir, 'ces_current')
         self.up_version = '4.2.0'
-        self.build_tag = '-SNAPSHOT'
+        self.build_tag = '.Final'
         self.backup_time = time.strftime('%Y-%m-%d.%H:%M:%S')
         self.app_dir = os.path.join(cur_dir, 'app')
 
@@ -145,7 +145,6 @@ class GluuUpdater:
         
         if not os.path.exists(self.ces_dir):
             ces_url = 'https://github.com/GluuFederation/community-edition-setup/archive/version_{}.zip'.format(self.up_version)
-            ces_url = 'https://github.com/GluuFederation/community-edition-setup/archive/master.zip'
 
             print("Downloading Community Edition Setup {}".format(self.up_version))
             target_fn = os.path.join(cur_dir, 'version_{}.zip'.format(self.up_version))
@@ -660,14 +659,12 @@ class GluuUpdater:
                     ('https://ox.gluu.org/maven/org/gluu/oxShibbolethStatic/{0}{1}/oxShibbolethStatic-{0}{1}.jar'.format(self.up_version, self.build_tag), os.path.join(self.app_dir, 'shibboleth-idp.jar')),
                     ('https://ox.gluu.org/maven/org/gluu/oxShibbolethKeyGenerator/{0}{1}/oxShibbolethKeyGenerator-{0}{1}.jar'.format(self.up_version, self.build_tag), os.path.join(self.app_dir, 'idp3_cml_keygenerator.jar')),
                     ('https://raw.githubusercontent.com/GluuFederation/oxTrust/master/configuration/src/main/resources/META-INF/shibboleth3/idp/saml-nameid.properties.vm', os.path.join(self.app_dir, 'saml-nameid.properties.vm')),
-                    
                     ]
 
         if os.path.exists('/opt/gluu/node/passport'):
             downloads += [
                     ('https://ox.gluu.org/npm/passport/passport-{}.tgz'.format(self.up_version), os.path.join(self.app_dir, 'passport.tgz')),
-                    #('https://ox.gluu.org/npm/passport/passport-version_{}-node_modules.tar.gz'.format(self.up_version), os.path.join(self.app_dir, 'passport-node_modules.tar.gz')),
-                    ('https://ox.gluu.org/npm/passport/passport-master-node_modules.tar.gz', os.path.join(self.app_dir, 'passport-node_modules.tar.gz')),
+                    ('https://ox.gluu.org/npm/passport/passport-version_{}-node_modules.tar.gz'.format(self.up_version), os.path.join(self.app_dir, 'passport-node_modules.tar.gz')),
                     ]
 
         if os.path.exists('/opt/gluu/radius'):
