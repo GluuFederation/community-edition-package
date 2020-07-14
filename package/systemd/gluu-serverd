@@ -31,20 +31,20 @@ wait_stop() {
 
 case "$1" in
         start)
-            systemctl start systemd-nspawn@gluu_server.service
+            systemctl start systemd-nspawn@gluu-server.service
             ;;
          
         stop)
-            systemctl stop systemd-nspawn@gluu_server.service
+            systemctl stop systemd-nspawn@gluu-server.service
             ;;
          
         status)
-            systemctl status systemd-nspawn@gluu_server.service
+            systemctl status systemd-nspawn@gluu-server.service
             ;;
         restart)
-            systemctl stop systemd-nspawn@gluu_server.service
+            systemctl stop systemd-nspawn@gluu-server.service
 	    wait_stop
-            systemctl start systemd-nspawn@gluu_server.service
+            systemctl start systemd-nspawn@gluu-server.service
             ;;
 	ready)
 	    ready
@@ -61,10 +61,10 @@ case "$1" in
 	    ;;
         enable)
 	    systemctl enable machines.target
-	    systemctl enable systemd-nspawn@gluu_server.service
+	    systemctl enable systemd-nspawn@gluu-server.service
 	    ;;
 	disable) 
-	    systemctl disable systemd-nspawn@gluu_server.service
+	    systemctl disable systemd-nspawn@gluu-server.service
             systemctl disable machines.target
             ;; 
 	*)
