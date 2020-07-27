@@ -747,6 +747,9 @@ class GluuUpdater:
 
     def update_jython(self):
 
+        #check if jython is up to date
+        if os.path.isdir('/opt/jython-2.7.2'):
+            return
         print ("Upgrading Jython")
 
         for jython in glob.glob(os.path.join(self.setupObj.distAppFolder,'jython-installer-*')):
