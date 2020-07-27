@@ -140,7 +140,7 @@ class GluuUpdater:
         self.run(['wget', '-nv', 'https://ox.gluu.org/npm/passport/passport-{}.tgz'.format(self.update_version), '-O', os.path.join(self.app_dir, 'passport.tgz')])
         self.run(['wget', '-nv', 'https://ox.gluu.org/npm/passport/passport-version_{}-node_modules.tar.gz'.format(self.update_version), '-O', os.path.join(self.app_dir, 'passport-node_modules.tar.gz')])
         self.run(['wget', '-nv', 'https://d3pxv6yz143wms.cloudfront.net/8.222.10.1/'+self.jreArchive, '-O', os.path.join(self.app_dir, self.jreArchive)])
-
+        self.run(['wget', '-nv', 'https://repo1.maven.org/maven2/org/python/jython-installer/2.7.2/jython-installer-2.7.2.jar', '-O', os.path.join(self.app_dir, 'jython-installer-2.7.2.jar')])
 
     def updateLdapConfig(self):
         self.ldap_bind_pw, self.ldap_servers, self.ldap_bind_dn = get_ldap_admin_serevers_password('/etc/gluu/conf/ox-ldap.properties')
@@ -249,12 +249,35 @@ class GluuUpdater:
             self.run(['/opt/jre/bin/keytool', '-import', '-alias', alias, '-file', crt_file, '-keystore', '/opt/jre/jre/lib/security/cacerts', '-storepass', 'changeit', '-noprompt', '-trustcacerts'])
 
 
+    def update_jython(self):
+
+        #check if jython is up to date
+        if os.path.isdir('/opt/jython-2.7.2'):
+            return
+
+        print "Upgrading Jython"
+ 
+        for cur_version in glob.glob('/opt/jython-2*'):
+            if os.path.isdir(cur_version):
+                print "Deleting", cur_version
+                self.run(['rm', '-r', cur_version])
+
+        if os.path.islink('/opt/jython'):
+            self.run(['unlink', '/opt/jython'])
+        
+        self.run(['/opt/jre/bin/java', '-jar', os.path.join(self.app_dir, 'jython-installer-2.7.2.jar'), '-v', '-s', '-d', '/opt/jython-2.7.2', '-t', 'standard', '-e', 'ensurepip'])
+
+        self.run(['ln', '-sf', '/opt/jython-2.7.2', '/opt/jython'])
+        self.run(['chown', '-R', 'root:root', '/opt/jython-2.7.2'])
+        self.run(['chown', '-h', 'root:root', '/opt/jython'])
+
 parser = argparse.ArgumentParser(description="This script upgrades OpenDJ gluu-servers (>3.0) to 4.0")
 parser.add_argument('-o', '--online', help="online installation", action='store_true')
 argsp = parser.parse_args()
 
 updaterObject = GluuUpdater()
 updaterObject.download_apps()
+updaterObject.update_jython()
 updaterObject.updateWar()
 updaterObject.updateLdapConfig()
 
