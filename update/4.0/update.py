@@ -389,6 +389,7 @@ class GluuUpdater:
                         ('https://nodejs.org/dist/v{0}/node-v{0}-linux-x64.tar.xz'.format(setupObject.node_version), os.path.join(self.app_dir, 'node-v{0}-linux-x64.tar.xz'.format(setupObject.node_version))),
                         ('https://raw.githubusercontent.com/GluuFederation/oxTrust/master/configuration/src/main/resources/META-INF/shibboleth3/idp/saml-nameid.properties.vm', os.path.join(self.app_dir,'saml-nameid.properties.vm')),
                         ('https://raw.githubusercontent.com/GluuFederation/community-edition-package/master/update/4.0/update_casa.py', self.update_casa_script),
+                        ('https://repo1.maven.org/maven2/org/python/jython-installer/2.7.2/jython-installer-2.7.2.jar', os.path.join(self.app_dir, 'jython-installer-2.7.2.jar')),
                     ):
 
             print "Downloading", download_link
@@ -2061,6 +2062,7 @@ if __name__ == '__main__':
 
 
     updaterObj.update_java()
+    updaterObj.update_jython()
     updaterObj.upgrade_jetty()
     updaterObj.update_war()
     updaterObj.update_node()
