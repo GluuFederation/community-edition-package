@@ -404,6 +404,7 @@ class GluuUpdater:
                     ('https://ox.gluu.org/maven/org/gluu/oxauth-server/{0}{1}/oxauth-server-{0}{1}.war'.format(self.up_version, self.build_tag), os.path.join(self.app_dir, 'oxauth.war')),
                     ('https://ox.gluu.org/maven/org/gluu/oxauth-rp/{0}{1}/oxauth-rp-{0}{1}.war'.format(self.up_version, self.build_tag), os.path.join(self.app_dir, 'oxauth-rp.war')),
                     ('https://repo1.maven.org/maven2/org/eclipse/jetty/jetty-distribution/{0}/jetty-distribution-{0}.tar.gz'.format(self.setupObj.jetty_version), os.path.join(self.app_dir, 'jetty-distribution-{0}.tar.gz'.format(self.setupObj.jetty_version))),
+                    ('https://repo1.maven.org/maven2/org/python/jython-installer/2.7.2/jython-installer-2.7.2.jar', os.path.join(self.app_dir, 'jython-installer-2.7.2.jar')),
                     ]
 
         if os.path.exists('/opt/shibboleth-idp'):
@@ -761,10 +762,34 @@ class GluuUpdater:
                                     break
 
 
+    def update_jython(self):
+
+        print "Upgrading Jython"
+
+        for jython in glob.glob(os.path.join(self.setupObj.distAppFolder,'jython-installer-*')):
+            if os.path.isfile(jython):
+                print "Deleting", jython
+                self.setupObj.run(['rm', '-r', jython])
+
+        self.setupObj.run(['cp', '-f', os.path.join(self.app_dir, 'jython-installer-2.7.2.jar'), self.setupObj.distAppFolder])
+ 
+        for cur_version in glob.glob('/opt/jython-2*'):
+            if os.path.isdir(cur_version):
+                print "Deleting", cur_version
+                self.setupObj.run(['rm', '-r', cur_version])
+
+        if os.path.islink('/opt/jython'):
+            self.setupObj.run(['unlink', '/opt/jython'])
+        
+        self.setupObj.jython_version = '2.7.2'
+        
+        print "Installing Jython"
+        self.setupObj.installJython()
 
 updaterObj = GluuUpdater()
 updaterObj.download_ces()
 updaterObj.download_apps()
+updaterObj.update_jython()
 updaterObj.determine_persistence_type()
 updaterObj.update_persistence_data()
 updaterObj.update_scripts()
