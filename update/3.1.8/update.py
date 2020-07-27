@@ -1780,6 +1780,30 @@ class GluuUpdater:
 
         self.run(['/opt/opendj/bin/dsjavaproperties'], env={"OPENDJ_JAVA_HOME": "/opt/jre"})
 
+
+    def update_jython(self):
+
+        #check if jython is up to date
+        if os.path.isdir('/opt/jython-2.7.2'):
+            return
+
+        print "Upgrading Jython"
+ 
+        for cur_version in glob.glob('/opt/jython-2*'):
+            if os.path.isdir(cur_version):
+                print "Deleting", cur_version
+                self.run(['rm', '-r', cur_version])
+
+        if os.path.islink('/opt/jython'):
+            self.run(['unlink', '/opt/jython'])
+        
+        print "Running jython-installer"
+        self.run(['/opt/jre/bin/java', '-jar', os.path.join(self.app_dir, 'jython-installer-2.7.2.jar'), '-v', '-s', '-d', '/opt/jython-2.7.2', '-t', 'standard', '-e', 'ensurepip'])
+
+        self.run(['ln', '-sf', '/opt/jython-2.7.2', '/opt/jython'])
+        self.run(['chown', '-R', 'root:root', '/opt/jython-2.7.2'])
+        self.run(['chown', '-h', 'root:root', '/opt/jython'])
+
 updaterObj = GluuUpdater()
 
 updaterObj.miscUpdates()
@@ -1799,6 +1823,7 @@ updaterObj.addOxAuthClaimName()
 updaterObj.modifySectorIdentifiers()
 updaterObj.checkIdpMetadata()
 updaterObj.upgradeJetty()
+updaterObj.update_jython()
 updaterObj.updatePassport()
 updaterObj.createOpenTrustStore()
 updaterObj.updateDefaultDettings()
