@@ -292,6 +292,9 @@ class GluuUpdater:
         setupObject.prepare_opendj_schema()
         print "Setting Up WrenDS Service"
         setupObject.setup_opendj_service()
+        print "Restarting WrenDS Service"
+        setupObject.run_service_command('opendj', 'stop')
+        setupObject.run_service_command('opendj', 'start')
         print "Configuring WrenDS"
         setupObject.configure_opendj()
         print "Exporting WrenDS certificate"
@@ -1333,8 +1336,8 @@ class GluuUpdater:
                 
                 if not 'gluuSAML2URI' in new_entry:
                 
-                    if new_dn in attributes_parser.entries:
-                        new_entry['gluuSAML2URI'] = attributes_parser.entries[new_dn]['gluuSAML2URI']
+                    if str(new_dn) in attributes_parser.entries:
+                        new_entry['gluuSAML2URI'] = attributes_parser.entries[str(new_dn)]['gluuSAML2URI']
                     else:
                         new_entry['gluuSAML2URI'] = [ 'urn:oid:1.3.6.1.4.1.48710.1.3.{}'.format(gluuSAML2URI_n) ]
                         gluuSAML2URI_n += 1
@@ -1554,7 +1557,7 @@ class GluuUpdater:
             setupObject.logIt("Updating passport saml configuration")
      
             passport_saml_config = json.loads(setupObject.readFile(passport_saml_config_fn))
-            oxConfigurationProperty = self.ldif_parser.entries[self.passport_saml_dn]['oxConfigurationProperty']
+            oxConfigurationProperty = self.ldif_parser.entries[str(self.passport_saml_dn)]['oxConfigurationProperty']
 
             for e in oxConfigurationProperty:
                 data_ = json.loads(e)
@@ -1927,6 +1930,35 @@ class GluuUpdater:
             if os.path.exists(init_script_fn):
                 setupObject.fix_init_scripts(service, init_script_fn)
                 setupObject.enable_service_at_start(service)
+
+    def update_jython(self):
+
+        #check if jython is up to date
+        if os.path.isdir('/opt/jython-2.7.2'):
+            return
+
+        print "Upgrading Jython"
+
+        for jython in glob.glob(os.path.join(setupObject.distAppFolder,'jython-installer-*')):
+            if os.path.isfile(jython):
+                print "Deleting", jython
+                setupObject.run(['rm', '-r', jython])
+
+        setupObject.run(['cp', '-f', os.path.join(self.app_dir, 'jython-installer-2.7.2.jar'), setupObject.distAppFolder])
+ 
+        for cur_version in glob.glob('/opt/jython-2*'):
+            if os.path.isdir(cur_version):
+                print "Deleting", cur_version
+                setupObject.run(['rm', '-r', cur_version])
+
+        if os.path.islink('/opt/jython'):
+            setupObject.run(['unlink', '/opt/jython'])
+        
+        setupObject.jython_version = '2.7.2'
+        
+        print "Installing Jython"
+        setupObject.installJython()
+
 
 if __name__ == '__main__':
     
