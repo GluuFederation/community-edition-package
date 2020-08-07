@@ -1896,18 +1896,21 @@ class GluuUpdater:
                 setupObject.run(['mkdir', '-p', gluu_scripts_dir])
 
             for service_fn in os.listdir(self.services_dir):
-                
+
                 service = os.path.splitext(service_fn)[0]
-                                
+
                 init_scr_fn = os.path.join('/etc/init.d', service)
-                systemd_scr_fn = os.path.join('/usr/lib/systemd/system', service_fn)
+
+                systemd_dir = '/lib/systemd/system' if setupObject.os_type+setupObject.os_version == 'ubuntu18' else '/usr/lib/systemd/system'
+                systemd_scr_fn = os.path.join(systemd_dir, service_fn)
+                
                 if os.path.exists(init_scr_fn) and not os.path.exists(systemd_scr_fn):
 
                     #move initscript to backup folder
                     setupObject.run(['mv', init_scr_fn, self.backup_folder])
 
                     # copy systemd script and fix
-                    setupObject.copyFile(os.path.join(self.services_dir, service_fn), '/usr/lib/systemd/system')
+                    setupObject.copyFile(os.path.join(self.services_dir, service_fn), systemd_dir)
                     init_script_fn = os.path.join(setupObject.gluuOptSystemFolder, 'passport') if service == 'passport' else \
                                     os.path.join(setupObject.jetty_home, 'bin/jetty.sh')
 
