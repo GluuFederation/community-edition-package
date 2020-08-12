@@ -46,6 +46,21 @@ except:
     missing_packages.append('python3-ldap3')
 
 try:
+    import requests
+except:
+    missing_packages.append('python3-requests')
+
+try:
+    import six
+except:
+    if installer == 'apt':
+        missing_packages.append('python3-six')
+    elif installer.endswith('yum') and os_version == '7':
+        missing_packages.append('python36-six')
+    else:
+        missing_packages.append('python3-six')
+
+try:
     import ruamel.yaml
 except:
     if installer == 'apt':
