@@ -718,6 +718,7 @@ class GluuUpdater:
             print("Extracting WrenDS")
             self.setupObj.run(['unzip', '-o', '-q', os.path.join(self.app_dir, 'opendj-server-legacy-{}.zip'.format(self.wrends_version)), '-d', '/opt/' ])
             self.setupObj.run(['chown', '-R', 'ldap:ldap', self.setupObj.ldapBaseFolder])
+            self.setupObj.fix_opendj_java_properties()
             print("Starting WrenDS")
             self.setupObj.run_service_command('opendj', 'start')
 
