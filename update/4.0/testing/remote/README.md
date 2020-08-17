@@ -9,7 +9,7 @@ wget https://raw.githubusercontent.com/GluuFederation/community-edition-package/
 python update_remote_ldap.py -o --remote-ldap
 ```
 
-Upgrade script will download all necassary components and upgrade them. Once it propmts the following 
+Upgrade script will download all necessary components and upgrade them. Once it prompts the following 
 (note `hostname` and `rootUserPassword` will be different for your server)
 
 ```
@@ -81,4 +81,4 @@ cd /opt/opendj
 ./setup --cli --propertiesFilePath /opt/opendj/setup.properties --acceptLicense --no-prompt
 ```
 
-Once WrenDS setup completed, you can turn to your CE-3.1.x server and hit **<ENTER>** key to continue
+Once WrenDS setup completed, you can turn to your CE-3.1.x server and hit **&lt;ENTER&gt;** key to continue
