@@ -1446,7 +1446,7 @@ updaterObj.download_ces()
 updaterObj.prepare_persist_changes()
 
 if not offline:
-    updaterObj.download_apps(True)
+    updaterObj.download_apps()
 updaterObj.copy_facter()
 
 updaterObj.determine_persistence_type()
