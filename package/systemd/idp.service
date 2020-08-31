@@ -1,6 +1,6 @@
 [Unit]
 Description=Idp service
-After=oxauth.service
+After=oxauth.service opendj.service
 
 [Service]
 Type=forking
