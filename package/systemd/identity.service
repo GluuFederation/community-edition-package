@@ -1,6 +1,6 @@
 [Unit]
 Description=Identity service
-After=oxauth.service
+After=oxauth.service opendj.service
 
 [Service]
 Type=forking
