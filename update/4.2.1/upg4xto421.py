@@ -10,7 +10,7 @@ import base64
 import glob
 import zipfile
 import csv
-
+import uuid
 
 if sys.version_info.major < 3:
     print("This script runs under Python 3")
@@ -142,6 +142,7 @@ class GluuUpdater:
         self.build_tag = '-SNAPSHOT'
         self.backup_time = time.strftime('%Y-%m-%d.%H:%M:%S')
         self.app_dir = os.path.join(cur_dir, 'app')
+        self.postmessages = []
 
         # app versions
         self.wrends_version = '4.0.0-M3'
@@ -442,7 +443,7 @@ class GluuUpdater:
 
     def cb_indexes(self):
         print("Updating Couchbase indexes")
-        return
+
         self.new_cb_indexes = {}
         new_index_json_fn = os.path.join(self.ces_dir, 'static/couchbase/index.json')
         new_index_json_s = self.setupObj.readFile(new_index_json_fn)
@@ -509,8 +510,73 @@ class GluuUpdater:
             print("Executing", cmd)
             self.cbm.exec_query(cmd)
 
+    def get_existing_buckets(self):
+        existing_buckets = []
+        r = self.cbm.get_buckets()
+
+        if r.ok:
+            b_ = r.json()
+            existing_buckets = [ bucket['name'] for bucket in b_ ]        
+
+        return existing_buckets
+
     def update_couchbase(self):
-        
+
+
+        if self.setupObj.couchbase_bucket_prefix+'_token' in self.setupObj.couchbaseBuckets:
+            session_bucket = self.setupObj.couchbase_bucket_prefix + '_session'
+            self.setupObj.couchbaseBuckets.append(session_bucket)
+            self.setupObj.mappingLocations['session'] = 'couchbase'
+            
+            #add missing buckets:
+            existing_buckets = self.get_existing_buckets()
+            
+            if not session_bucket in  existing_buckets:
+                bcr = self.cbm.add_bucket(session_bucket, self.setupObj.couchbaseBucketDict['session']['memory_allocation'])
+                
+                if not bcr.ok:
+                    print("Failed to create bucket {}, reason: {}".format(session_bucket, bcr.text))
+                    print("Please solve the issue. Exiting for now.")
+                else:
+                    print("Bucket {} created".format(session_bucket))
+                    self.postmessages.append("Please use couchbase administrator panel and adjust Memory Quota for bucket {}".format(session_bucket))
+
+            #check if bucket is ready for five times
+            for i in range(5):
+                time.sleep(2)
+                existing_buckets = self.get_existing_buckets()
+                if session_bucket in existing_buckets:
+                    break
+
+            # get all sessions from gluu_token, add sid if not exists and move to gluu_session
+            result = self.cbm.exec_query('SELECT META().id FROM `{}_token` WHERE exp > "" and objectClass = "oxAuthSessionId"'.format(self.setupObj.couchbase_bucket_prefix))
+
+            if result.ok:
+                data = result.json()
+                for d in data.get('results',[]):
+                    docid = d['id']
+                    #remove session entry:
+                    self.cbm.exec_query('DELETE FROM `{}_token` USE KEYS "{}"'.format(self.setupObj.couchbase_bucket_prefix, docid))
+
+                    #rsid = self.cbm.exec_query('SELECT * FROM `{}_token` USE KEYS "{}"'.format(self.setupObj.couchbase_bucket_prefix, docid))
+                    #if rsid.ok:
+                    #    dsid = rsid.json()
+                    #    docc = dsid.get('results',[{}])[0]
+                    #    if docc:
+                    #        doc = docc[self.setupObj.couchbase_bucket_prefix+'_token']
+                    #        if not 'sid' in doc:
+                    #            doc['sid'] = str(uuid.uuid4())
+                    #        if not 'session_id' in doc['oxAuthSessionAttribute']:
+                    #            doc['oxAuthSessionAttribute']['session_id'] = str(uuid.uuid4())
+                    #    print("Moving", docid, "to", self.setupObj.couchbase_bucket_prefix+'_session')
+                    #    n1ql = 'UPSERT INTO `%s_session` (KEY, VALUE) VALUES ("%s", %s)' % (self.setupObj.couchbase_bucket_prefix, docid, json.dumps(doc))
+                    #    radds = self.cbm.exec_query(n1ql)
+                    #    print(radds.json())
+                    #    if radds.ok and radds.json()['status'] == 'success':
+                    #        rx = self.cbm.exec_query('DELETE FROM `{}_token` USE KEYS "{}"'.format(self.setupObj.couchbase_bucket_prefix, docid))
+
+            self.setupObj.couchbaseProperties()
+
         self.cb_indexes()
 
         for n, dn in self.persist_changes:
@@ -529,6 +595,9 @@ class GluuUpdater:
             n1ql = 'UPDATE `{}` USE KEYS "configuration" UNSET {}'.format(self.setupObj.couchbase_bucket_prefix, k)
             print("Executing", n1ql)
             result = self.cbm.exec_query(n1ql)
+
+
+        #copy sessions from gluu_token to gluu_session and add sid
 
         #self.update_gluu_couchbase()
 
@@ -590,14 +659,22 @@ class GluuUpdater:
             dn = 'ou=sessions,o=gluu'
             self.conn.search(
                         search_base=dn, 
-                        search_scope=ldap3.BASE, 
+                        search_scope=ldap3.SUBTREE, 
                         search_filter='(objectClass=*)', 
                         attributes=['*']
                         )
-            if not self.conn.response:
+            if self.conn.response:
+                for session_entry in self.conn.response:
+                    #? delete or modify?
+                    #self.conn.delete(session_entry['dn'])
+                    if ('oxAuthSessionId' in session_entry['attributes']['objectClass']) and (not 'sid' in session_entry['attributes']):
+                        conn.modify(
+                                    session_entry['dn'], 
+                                    {'sid': [ldap3.MODIFY_ADD, str(uuid.uuid4())]}
+                                    )
+            else:
                 print("Adding sessions base entry")
                 self.conn.add(dn, attributes={'objectClass': ['top', 'organizationalUnit'], 'ou': ['sessions']})
-
 
         dn = 'ou=configuration,o=gluu'
 
@@ -1507,5 +1584,9 @@ updaterObj.fix_fido2()
 
 updaterObj.setupObj.deleteLdapPw()
 
+print()
+for msg in updaterObj.postmessages:
+    print("*", msg)
+print()
 print("Please logout from container and restart Gluu Server")
 
