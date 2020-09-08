@@ -1,0 +1,35 @@
+#!/bin/bash
+# fake gluu-serverd
+
+start() {
+
+    for service in httpd opendj oxauth identity idp oxauth-rp  oxd-server casa scim fido2 passport
+    do
+      printf "Starting $service\n"
+      systemctl start $service 2>/dev/null
+    done
+}
+
+
+stop() {
+
+    for service in httpd idp oxauth-rp  oxd-server casa scim fido2 passport identity  oxauth opendj
+    do
+      printf "Stopping $service\n"
+      systemctl stop $service 2>/dev/null
+    done
+}
+
+
+case "$1" in
+    start)
+        start
+    ;;
+    stop)
+        stop
+    ;;
+    restart)
+        stop
+        start
+    ;;
+esac

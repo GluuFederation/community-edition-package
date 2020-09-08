@@ -59,7 +59,7 @@ def package_oxd():
     shutil.copyfile(os.path.join(cur_dir, 'tmp/oxd-server.tgz'), os.path.join(gluu_app_dir, 'oxd-server.tgz'))
 
 
-unit_files = ['casa.service', 'gluu-serverd', 'idp.service', 'oxauth-rp.service', 'oxd-server.service', 'scim.service', 'fido2.service', 'identity.service', 'opendj.service', 'oxauth.service', 'passport.service']
+unit_files = ['casa.service', 'idp.service', 'oxauth-rp.service', 'oxd-server.service', 'scim.service', 'fido2.service', 'identity.service', 'opendj.service', 'oxauth.service', 'passport.service']
 
 if not '-e' in sys.argv:
     for uf in unit_files:
@@ -99,15 +99,13 @@ if not '-e' in sys.argv:
 
     download('https://raw.githubusercontent.com/GluuFederation/community-edition-setup/{}/install.py'.format(app_versions['SETUP_BRANCH']), 'opt/gluu/bin/install.py')
 
-
     package_oxd()
 
 download('https://raw.githubusercontent.com/GluuFederation/community-edition-package/master/ce-host/4.2.1/dependencies.sh'.format(), 'opt/gluu/bin/dependencies.sh')
+download('https://raw.githubusercontent.com/GluuFederation/community-edition-package/master/ce-host/4.2.1/gluu-serverd'.format(), 'usr/sbin/gluu-serverd')
 
-
-os.chmod(os.path.join(cur_dir, 'usr/bin/facter'), 33261)
-os.chmod(os.path.join(cur_dir, 'opt/gluu/bin/install.py'), 33261)
-os.chmod(os.path.join(cur_dir, 'opt/gluu/bin/dependencies.sh'), 33261)
+for app_bin in ('usr/bin/facter', 'opt/gluu/bin/install.py', 'opt/gluu/bin/dependencies.sh', 'usr/sbin/gluu-serverd'):
+    os.chmod(os.path.join(cur_dir, app_bin), 33261)
 
 tmp_dir = os.path.join(cur_dir, 'tmp')
 if os.path.exists(tmp_dir):
