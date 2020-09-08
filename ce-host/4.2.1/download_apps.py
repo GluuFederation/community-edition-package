@@ -63,7 +63,7 @@ unit_files = ['casa.service', 'gluu-serverd', 'idp.service', 'oxauth-rp.service'
 
 if not '-e' in sys.argv:
     for uf in unit_files:
-        base_url = 'https://github.com/GluuFederation/community-edition-package/blob/master/package/systemd/{}'
+        base_url = 'https://raw.githubusercontent.com/GluuFederation/community-edition-package/master/package/systemd/{}'
         download(base_url.format(uf), 'etc/systemd/system/'+uf)
     
     download('https://corretto.aws/downloads/resources/{0}/amazon-corretto-{0}-linux-x64.tar.gz'.format(app_versions['AMAZON_CORRETTO_VERSION']), os.path.join(app_dir, 'amazon-corretto-{0}-linux-x64.tar.gz'.format(app_versions['AMAZON_CORRETTO_VERSION'])))
