@@ -16,5 +16,3 @@ else
 fi
 
 python3 /opt/gluu/bin/install.py
-
-#./makeself.sh --target / /opt/gluu-server-4.2.1-host gluu-server-4.2.1-host.sh "Gluu CE Package 4.2.1" /opt/gluu/bin/dependencies.sh

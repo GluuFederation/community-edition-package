@@ -115,3 +115,5 @@ scripts_dir = os.path.join(cur_dir, 'opt/dist/scripts')
 if not os.path.exists(scripts_dir):
     os.makedirs(scripts_dir)
 open(os.path.join(scripts_dir, '.dontremove'), 'w').close()
+
+#./makeself.sh --tar-extra "--exclude=/opt/gluu-server-4.2.1-host/download_apps.py" --target / /opt/gluu-server-4.2.1-host gluu-server-4.2.1-host.sh "Gluu CE Package 4.2.1" /opt/gluu/bin/dependencies.sh
