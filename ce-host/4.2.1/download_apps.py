@@ -99,11 +99,20 @@ if not '-e' in sys.argv:
 
     download('https://raw.githubusercontent.com/GluuFederation/community-edition-setup/{}/install.py'.format(app_versions['SETUP_BRANCH']), 'opt/gluu/bin/install.py')
 
-package_oxd()
+
+    package_oxd()
+
+download('https://raw.githubusercontent.com/GluuFederation/community-edition-package/master/ce-host/4.2.1/dependencies.sh'.format(), 'opt/gluu/bin/dependencies.sh')
+
 
 os.chmod(os.path.join(cur_dir, 'usr/bin/facter'), 33261)
 os.chmod(os.path.join(cur_dir, 'opt/gluu/bin/install.py'), 33261)
-shutil.rmtree(os.path.join(cur_dir, 'tmp'))
+os.chmod(os.path.join(cur_dir, 'opt/gluu/bin/dependencies.sh'), 33261)
+
+tmp_dir = os.path.join(cur_dir, 'tmp')
+if os.path.exists(tmp_dir):
+    shutil.rmtree(tmp_dir)
+
 scripts_dir = os.path.join(cur_dir, 'opt/dist/scripts')
 if not os.path.exists(scripts_dir):
     os.makedirs(scripts_dir)
