@@ -1255,7 +1255,19 @@ class GluuUpdater:
 
             self.setupObj.backupFile(casa_config_json_fn)
             #self.setupObj.run(['rm', '-f', casa_config_json_fn])
+        
+        pylib_dir = os.path.join(self.setupObj.gluuOptPythonFolder, 'libs')
+        libdir_base_url = 'https://raw.githubusercontent.com/GluuFederation/community-edition-setup/version_{}/static/casa/scripts'.format(self.up_version)
+        for casa_lib in glob.glob(os.path.join(pylib_dir, 'casa-external*.py')):
+            self.setupObj.backupFile(casa_lib)
+            print ("Updating", casa_lib)
+            casa_lib_fn = os.path.basename(casa_lib)
+            cmd = ['wget', '-q',
+                   os.path.join(libdir_base_url, casa_lib_fn),
+                   '-O', os.path.join(pylib_dir, casa_lib_fn)
+                   ]
 
+            self.setupObj.run(cmd)
 
         def fix_oxConfApplication(oxConfApplication):
             if not oxConfApplication.get('oxd_config'):
