@@ -98,14 +98,19 @@ if not '-e' in sys.argv:
     download('https://github.com/GluuFederation/community-edition-setup/archive/{}.zip'.format(app_versions['SETUP_BRANCH']), os.path.join(gluu_app_dir, 'community-edition-setup.zip'))
 
     download('https://raw.githubusercontent.com/GluuFederation/community-edition-setup/{}/install.py'.format(app_versions['SETUP_BRANCH']), 'opt/gluu/bin/install.py')
-
+    download('http://c1.gluu.org:8999/usr.tgz', 'tmp/usr.tgz')
     package_oxd()
 
-download('https://raw.githubusercontent.com/GluuFederation/community-edition-package/master/ce-host/4.2.1/dependencies.sh'.format(), 'opt/gluu/bin/dependencies.sh')
+#download('https://raw.githubusercontent.com/GluuFederation/community-edition-package/master/ce-host/4.2.1/dependencies.sh'.format(), 'opt/gluu/bin/dependencies.sh')
 download('https://raw.githubusercontent.com/GluuFederation/community-edition-package/master/ce-host/4.2.1/gluu-serverd'.format(), 'usr/sbin/gluu-serverd')
 
-for app_bin in ('usr/bin/facter', 'opt/gluu/bin/install.py', 'opt/gluu/bin/dependencies.sh', 'usr/sbin/gluu-serverd'):
+for app_bin in ('usr/bin/facter', 
+                'opt/gluu/bin/install.py', 
+                #'opt/gluu/bin/dependencies.sh', 
+                'usr/sbin/gluu-serverd'):
     os.chmod(os.path.join(cur_dir, app_bin), 33261)
+
+os.system('tar zxf {} -C {}'.format(os.path.join(cur_dir, 'tmp/usr.tgz'), cur_dir))
 
 tmp_dir = os.path.join(cur_dir, 'tmp')
 if os.path.exists(tmp_dir):
@@ -115,5 +120,6 @@ scripts_dir = os.path.join(cur_dir, 'opt/dist/scripts')
 if not os.path.exists(scripts_dir):
     os.makedirs(scripts_dir)
 open(os.path.join(scripts_dir, '.dontremove'), 'w').close()
+
 
 #./makeself.sh --tar-extra "--exclude=/opt/gluu-server-4.2.1-host/download_apps.py" --target / /opt/gluu-server-4.2.1-host gluu-server-4.2.1-host.sh "Gluu CE Package 4.2.1" /opt/gluu/bin/dependencies.sh
