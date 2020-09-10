@@ -634,7 +634,19 @@ class GluuUpdater:
                 result = self.cbm.exec_query('UPDATE `gluu` USE KEYS "scripts_BABA-CACA" SET oxScript={}'.format(json.dumps(scr)))
             elif self.default_storage == 'ldap':
                 self.conn.modify_s('inum=BABA-CACA,ou=scripts,o=gluu', [( ldap.MOD_REPLACE, 'oxScript',  scr)])
-            
+        
+        pylib_dir = os.path.join(self.setupObj.gluuOptPythonFolder, 'libs')
+        for casa_lib in glob.glob(os.path.join(pylib_dir, 'casa-external*.py')):
+            self.setupObj.backupFile(casa_lib)
+            print "Updating", casa_lib
+            casa_lib_fn = os.path.basename(casa_lib)
+            cmd = ['wget', '-q',
+                   os.path.join('https://raw.githubusercontent.com/GluuFederation/community-edition-setup/version_4.1.0/static/casa/scripts', casa_lib_fn),
+                   '-O', os.path.join(pylib_dir, casa_lib_fn)
+                   ]
+
+            self.setupObj.run(cmd)
+        
     def update_passport(self):
 
         if not os.path.exists(self.setupObj.gluu_passport_base):
