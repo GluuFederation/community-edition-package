@@ -11,6 +11,7 @@ import glob
 import zipfile
 import csv
 import uuid
+import urllib.request
 
 if sys.version_info.major < 3:
     print("This script runs under Python 3")
@@ -1259,15 +1260,19 @@ class GluuUpdater:
         pylib_dir = os.path.join(self.setupObj.gluuOptPythonFolder, 'libs')
         libdir_base_url = 'https://raw.githubusercontent.com/GluuFederation/community-edition-setup/version_{}/static/casa/scripts'.format(self.up_version)
         for casa_lib in glob.glob(os.path.join(pylib_dir, 'casa-external*.py')):
-            self.setupObj.backupFile(casa_lib)
-            print ("Updating", casa_lib)
             casa_lib_fn = os.path.basename(casa_lib)
-            cmd = ['wget', '-q',
-                   os.path.join(libdir_base_url, casa_lib_fn),
-                   '-O', os.path.join(pylib_dir, casa_lib_fn)
-                   ]
-
-            self.setupObj.run(cmd)
+            try:
+                response = urllib.request.urlopen(os.path.join('https://raw.githubusercontent.com/GluuFederation/community-edition-setup/version_4.1.0/static/casa/scripts', casa_lib_fn))
+                if response.code == 200:
+                    self.setupObj.backupFile(casa_lib)
+                    print ("Updating", casa_lib)
+                    target_fn = os.path.join(pylib_dir, casa_lib_fn)
+                    scr = response.read()
+                    print ("Writing", target_fn)
+                    with open(target_fn, 'wb') as w: 
+                        w.write(scr)
+            except:
+                print ("ERROR Updating", casa_lib_fn)
 
         def fix_oxConfApplication(oxConfApplication):
             if not oxConfApplication.get('oxd_config'):

@@ -11,6 +11,7 @@ import base64
 import ldap.modlist as modlist
 import glob
 import zipfile
+import urllib2
 
 cur_dir = os.path.dirname(os.path.realpath(__file__))
 properties_password = None
@@ -637,15 +638,17 @@ class GluuUpdater:
         
         pylib_dir = os.path.join(self.setupObj.gluuOptPythonFolder, 'libs')
         for casa_lib in glob.glob(os.path.join(pylib_dir, 'casa-external*.py')):
-            self.setupObj.backupFile(casa_lib)
-            print "Updating", casa_lib
-            casa_lib_fn = os.path.basename(casa_lib)
-            cmd = ['wget', '-q',
-                   os.path.join('https://raw.githubusercontent.com/GluuFederation/community-edition-setup/version_4.1.0/static/casa/scripts', casa_lib_fn),
-                   '-O', os.path.join(pylib_dir, casa_lib_fn)
-                   ]
-
-            self.setupObj.run(cmd)
+            try:
+                response = urllib2.urlopen(os.path.join('https://raw.githubusercontent.com/GluuFederation/community-edition-setup/version_4.1.0/static/casa/scripts', casa_lib_fn))
+                if response.code == 200:
+                    self.setupObj.backupFile(casa_lib)
+                    print "Updating", casa_lib_fn
+                    scr = response.read()
+                    target_fn = os.path.join(pylib_dir, casa_lib_fn)
+                    with open(target_fn, 'w') as w:
+                        w.write(scr)
+            except Exception as e:
+                print "ERROR Updating", casa_lib_fn, e
         
     def update_passport(self):
 
