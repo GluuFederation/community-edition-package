@@ -107,9 +107,11 @@ download('https://raw.githubusercontent.com/GluuFederation/community-edition-pac
 
 for app_bin in ('usr/bin/facter', 
                 'opt/gluu/bin/install.py', 
-                #'opt/gluu/bin/dependencies.sh', 
+                'opt/gluu/bin/dependencies.sh', 
                 'usr/sbin/gluu-serverd'):
-    os.chmod(os.path.join(cur_dir, app_bin), 33261)
+    fn = os.path.join(cur_dir, app_bin)
+    if os.path.exists(fn):
+        os.chmod(fn, 33261)
 
 os.system('tar zxf {} -C {}'.format(os.path.join(cur_dir, 'tmp/usr.tgz'), cur_dir))
 
