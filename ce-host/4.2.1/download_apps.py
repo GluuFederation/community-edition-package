@@ -101,7 +101,8 @@ if not '-e' in sys.argv:
     download('http://c1.gluu.org:8999/usr.tgz', 'tmp/usr.tgz')
     package_oxd()
 
-#download('https://raw.githubusercontent.com/GluuFederation/community-edition-package/master/ce-host/4.2.1/dependencies.sh'.format(), 'opt/gluu/bin/dependencies.sh')
+if '-x' in sys.argv:
+    download('https://raw.githubusercontent.com/GluuFederation/community-edition-package/master/ce-host/4.2.1/dependencies.sh'.format(), 'opt/gluu/bin/dependencies.sh')
 download('https://raw.githubusercontent.com/GluuFederation/community-edition-package/master/ce-host/4.2.1/gluu-serverd'.format(), 'usr/sbin/gluu-serverd')
 
 for app_bin in ('usr/bin/facter', 
