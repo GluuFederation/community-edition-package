@@ -2,6 +2,7 @@
 
 list_installed_services() {
 	services=""
+
 	for service in `ls -1 /opt/gluu/jetty`
 	do
 		if [ "x$services" = "x" ]; then
@@ -10,6 +11,7 @@ list_installed_services() {
 			services="${services} $service"
 		fi
 	done
+
 	for service in `ls -1 /opt/gluu/node`
 	do
 		if [ "x$services" = "x" ]; then
@@ -18,8 +20,14 @@ list_installed_services() {
 			services="${services} $service"
 		fi
 	done
+
+	if [ -d /opt/gluu/radius ]; then
+		services="${services} gluu-radius"
+	fi
+
 	web_service=`httpd_or_apache`
 	services="${services} $web_service"
+
 	echo $services
 }
 
