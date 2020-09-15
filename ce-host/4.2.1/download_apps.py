@@ -12,6 +12,10 @@ cur_dir = os.path.dirname(os.path.realpath(__file__))
 app_dir = os.path.join(cur_dir, 'opt/dist/app')
 gluu_app_dir = os.path.join(cur_dir, 'opt/dist/gluu')
 
+target = 'el7'
+if '-el8' in sys.argv:
+    target = 'el8'
+
 app_versions = {
               "JETTY_VERSION": "9.4.31.v20200723", 
               "AMAZON_CORRETTO_VERSION": "11.0.8.10.1", 
@@ -98,7 +102,7 @@ if not '-e' in sys.argv:
     download('https://github.com/GluuFederation/community-edition-setup/archive/{}.zip'.format(app_versions['SETUP_BRANCH']), os.path.join(gluu_app_dir, 'community-edition-setup.zip'))
 
     download('https://raw.githubusercontent.com/GluuFederation/community-edition-setup/{}/install.py'.format(app_versions['SETUP_BRANCH']), 'opt/gluu/bin/install.py')
-    download('http://c1.gluu.org:8999/usr.tgz', 'tmp/usr.tgz')
+    download('https://repo.gluu.org/nochroot/python-libs/py3libs-{}.tgz'.format(target), 'tmp/usr.tgz')
     package_oxd()
 
 if '-x' in sys.argv:
