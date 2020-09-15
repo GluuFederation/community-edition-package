@@ -88,6 +88,17 @@ show_version() {
 	/opt/gluu/bin/show_version.py
 }
 
+display_help() {
+	clear
+	echo "Usage: "
+	echo "gluu-serverd start|stop|restart|version|list"
+	echo "start: Start gluu-server all services."
+	echo "stop: Stop gluu-server all services."
+	echo "restart: Restart gluu-server all services."
+	echo "version: Show versions of all gluu-server specific services."
+	echo "list: List all gluu-server specific installed services."
+}
+
 case "$1" in
     start)
         start
@@ -104,5 +115,8 @@ case "$1" in
     ;;
     list)
         list_installed_services
+    ;;
+    *)
+        display_help
     ;;
 esac
