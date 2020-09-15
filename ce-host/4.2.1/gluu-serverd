@@ -1,25 +1,111 @@
 #!/bin/bash
-# fake gluu-serverd
+
+list_installed_services() {
+	services=""
+
+	for service in `ls -1 /opt/gluu/jetty`
+	do
+		if [ "x$services" = "x" ]; then
+			services="$service"
+		else
+			services="${services} $service"
+		fi
+	done
+
+	for service in `ls -1 /opt/gluu/node`
+	do
+		if [ "x$services" = "x" ]; then
+			services="$service"
+		else
+			services="${services} $service"
+		fi
+	done
+
+	if [ -d /opt/gluu/radius ]; then
+		services="${services} gluu-radius"
+	fi
+
+	web_service=`httpd_or_apache`
+	services="${services} $web_service"
+
+	echo $services
+}
+
+httpd_or_apache() {
+	if [ -f /usr/lib/systemd/system/httpd.service ]; then
+		echo "httpd"
+	else
+		echo "apache2"
+	fi
+}
+
+start_single_service() {
+	service_name=$1
+      	if [ -f /etc/systemd/system/${service_name}.service ] || [ "$service_name" = "httpd" ] || [ "$service_name" = "apache2" ]; then
+		PROCESS_RUNNING=`ps -eaf|grep -i $service_name|grep -v grep`
+		if [ "x$PROCESS_RUNNING" = "x" ]; then
+      			printf "Starting $service_name\n"
+      			systemctl start $service_name
+		else
+      			printf "$service_name Already running...\n"
+		fi
+	fi
+}
+
+stop_single_service() {
+	service_name=$1
+      	if [ -f /etc/systemd/system/${service_name}.service ] || [ "$service_name" = "httpd" ] || [ "$service_name" = "apache2" ]; then
+		PROCESS_RUNNING=`ps -eaf|grep -i $service_name|grep -v grep`
+		if [ "x$PROCESS_RUNNING" != "x" ]; then
+      			printf "Stopping $service_name\n"
+      			systemctl stop $service_name
+		else
+      			printf "$service_name Already stopped...\n"
+		fi
+	fi
+}
 
 start() {
+	start_single_service opendj
+	start_single_service oxauth
 
-    for service in httpd opendj oxauth identity idp oxauth-rp  oxd-server casa scim fido2 passport
-    do
-      printf "Starting $service\n"
-      systemctl start $service 2>/dev/null
-    done
+	services=`list_installed_services`
+	for service in `echo $services`;
+	do
+		if [ "$service" != "opendj" ] && [ "$service" != "oxauth" ]; then
+			start_single_service $service
+		fi
+	done
 }
 
 
 stop() {
+	services=`list_installed_services`
+	for service in `echo $services`;
+	do
+		if [ "$service" != "opendj" ] && [ "$service" != "oxauth" ]; then
+			stop_single_service $service
+		fi
+	done
 
-    for service in httpd idp oxauth-rp  oxd-server casa scim fido2 passport identity  oxauth opendj
-    do
-      printf "Stopping $service\n"
-      systemctl stop $service 2>/dev/null
-    done
+	stop_single_service oxauth
+	stop_single_service opendj
 }
 
+show_version() {
+	/opt/gluu/bin/show_version.py
+}
+
+display_help() {
+	clear
+	echo "Usage: "
+	echo "gluu-serverd start|stop|restart|version|list"
+	echo "start: Start gluu-server all services."
+	echo "stop: Stop gluu-server all services."
+	echo "restart: Restart gluu-server all services."
+	echo "version: Show versions of all gluu-server specific services."
+	echo "list: List all gluu-server specific installed services."
+}
 
 case "$1" in
     start)
@@ -31,5 +117,14 @@ case "$1" in
     restart)
         stop
         start
+    ;;
+    version)
+        show_version
+    ;;
+    list)
+        list_installed_services
+    ;;
+    *)
+        display_help
     ;;
 esac
