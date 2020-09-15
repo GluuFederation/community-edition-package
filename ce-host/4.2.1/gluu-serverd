@@ -1,25 +1,67 @@
 #!/bin/bash
-# fake gluu-serverd
+
+httpd_or_apache() {
+	if [ -f /usr/lib/systemd/system/httpd.service ]; then
+		echo "httpd"
+	else
+		echo "apache2"
+	fi
+}
+
+start_a_service() {
+	service_name=$1
+      	if [ -f /etc/systemd/system/${service_name}.service -o "$service_name=httpd" -o "$service_name=apache2" ]; then
+		PROCESS_RUNNING=`ps -eaf|grep -i $service_name|grep -v grep`
+		if [ "x$PROCESS_RUNNING" = "x" ]; then
+      			printf "Starting $service_name\n"
+      			systemctl start $service_name
+		else
+      			printf "$service_name Already running...\n"
+		fi
+	fi
+}
+
+stop_a_service() {
+	service_name=$1
+      	if [ -f /etc/systemd/system/${service_name}.service ] || [ "$service_name"="httpd" ] || [ "$service_name"="apache2" ]; then
+		PROCESS_RUNNING=`ps -eaf|grep -i $service_name|grep -v grep`
+		if [ "x$PROCESS_RUNNING" != "x" ]; then
+      			printf "Stopping $service_name\n"
+      			systemctl stop $service_name
+		else
+      			printf "$service_name Not running...\n"
+		fi
+	fi
+}
 
 start() {
+	web_service=`httpd_or_apache`
+	start_a_service opendj
+	start_a_service oxauth
+	start_a_service identity
 
-    for service in httpd opendj oxauth identity idp oxauth-rp  oxd-server casa scim fido2 passport
-    do
-      printf "Starting $service\n"
-      systemctl start $service 2>/dev/null
-    done
+    	for service in idp oxauth-rp oxd-server casa scim fido2 passport $web_service
+    	do
+		start_a_service $service
+    	done
 }
 
 
 stop() {
+	web_service=`httpd_or_apache`
+    	for service in $web_service idp oxauth-rp oxd-server casa scim fido2 passport identity
+    	do
+		stop_a_service $service
+    	done
 
-    for service in httpd idp oxauth-rp  oxd-server casa scim fido2 passport identity  oxauth opendj
-    do
-      printf "Stopping $service\n"
-      systemctl stop $service 2>/dev/null
-    done
+	stop_a_service oxauth
+	stop_a_service opendj
+	stop_a_service opendjggg
 }
 
+show_version() {
+	/opt/gluu/bin/show_version.py
+}
 
 case "$1" in
     start)
@@ -31,5 +73,8 @@ case "$1" in
     restart)
         stop
         start
+    ;;
+    version)
+        show_version
     ;;
 esac
