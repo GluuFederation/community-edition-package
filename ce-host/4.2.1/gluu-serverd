@@ -1,5 +1,28 @@
 #!/bin/bash
 
+list_installed_services() {
+	services=""
+	for service in `ls -1 /opt/gluu/jetty`
+	do
+		if [ "x$services" = "x" ]; then
+			services="$service"
+		else
+			services="${services} $service"
+		fi
+	done
+	for service in `ls -1 /opt/gluu/node`
+	do
+		if [ "x$services" = "x" ]; then
+			services="$service"
+		else
+			services="${services} $service"
+		fi
+	done
+	web_service=`httpd_or_apache`
+	services="${services} $web_service"
+	echo $services
+}
+
 httpd_or_apache() {
 	if [ -f /usr/lib/systemd/system/httpd.service ]; then
 		echo "httpd"
@@ -8,7 +31,7 @@ httpd_or_apache() {
 	fi
 }
 
-start_a_service() {
+start_single_service() {
 	service_name=$1
       	if [ -f /etc/systemd/system/${service_name}.service ] || [ "$service_name" = "httpd" ] || [ "$service_name" = "apache2" ]; then
 		PROCESS_RUNNING=`ps -eaf|grep -i $service_name|grep -v grep`
@@ -21,7 +44,7 @@ start_a_service() {
 	fi
 }
 
-stop_a_service() {
+stop_single_service() {
 	service_name=$1
       	if [ -f /etc/systemd/system/${service_name}.service ] || [ "$service_name" = "httpd" ] || [ "$service_name" = "apache2" ]; then
 		PROCESS_RUNNING=`ps -eaf|grep -i $service_name|grep -v grep`
@@ -35,27 +58,30 @@ stop_a_service() {
 }
 
 start() {
-	web_service=`httpd_or_apache`
-	start_a_service opendj
-	start_a_service oxauth
-	start_a_service identity
+	start_single_service opendj
+	start_single_service oxauth
 
-    	for service in idp oxauth-rp oxd-server casa scim fido2 passport $web_service
-    	do
-		start_a_service $service
-    	done
+	services=`list_installed_services`
+	for service in `echo $services`;
+	do
+		if [ "$service" != "opendj" ] && [ "$service" != "oxauth" ]; then
+			start_single_service $service
+		fi
+	done
 }
 
 
 stop() {
-	web_service=`httpd_or_apache`
-    	for service in $web_service idp oxauth-rp oxd-server casa scim fido2 passport identity
-    	do
-		stop_a_service $service
-    	done
+	services=`list_installed_services`
+	for service in `echo $services`;
+	do
+		if [ "$service" != "opendj" ] && [ "$service" != "oxauth" ]; then
+			stop_single_service $service
+		fi
+	done
 
-	stop_a_service oxauth
-	stop_a_service opendj
+	stop_single_service oxauth
+	stop_single_service opendj
 }
 
 show_version() {
@@ -75,5 +101,8 @@ case "$1" in
     ;;
     version)
         show_version
+    ;;
+    list)
+        list_installed_services
     ;;
 esac
