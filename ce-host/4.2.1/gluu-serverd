@@ -1,34 +1,47 @@
 #!/bin/bash
 
 list_installed_services() {
-	services=""
+	unordered_list=""
+	if [ -d /opt/opendj ]; then
+		db_service="opendj"
+	elif [ -d /opt/couchbase-server ]; then
+		db_service="couchbase-server"
+	else
+		db_service=""
+	fi
+
+	ordered_list="$db_service"
 
 	for service in `ls -1 /opt/gluu/jetty`
 	do
-		if [ "x$services" = "x" ]; then
-			services="$service"
-		else
-			services="${services} $service"
-		fi
+		unordered_list="${unordered_list} $service"
 	done
 
 	for service in `ls -1 /opt/gluu/node`
 	do
-		if [ "x$services" = "x" ]; then
-			services="$service"
-		else
-			services="${services} $service"
-		fi
+		unordered_list="${unordered_list} $service"
 	done
 
 	if [ -d /opt/gluu/radius ]; then
-		services="${services} gluu-radius"
+		unordered_list="${unordered_list} gluu-radius"
 	fi
 
 	web_service=`httpd_or_apache`
-	services="${services} $web_service"
+	unordered_list="${unordered_list} $web_service"
 
-	echo $services
+	### Create ordered list of services from created list
+	ordered_list="$db_service"
+	if [ -d /opt/gluu/jetty/oxauth ]; then
+		ordered_list="$ordered_list oxauth"
+	fi
+
+	if [ -d /opt/oxd-server ]; then
+		ordered_list="${ordered_list} oxd-server"
+	fi
+
+	remaining_list=`echo "$unordered_list"|sed 's/^ //'|tr ' ' '\n'|egrep -vw "oxauth|oxd-server"|tr '\n' ' '`
+
+	echo "$ordered_list $remaining_list"
 }
 
 httpd_or_apache() {
@@ -66,30 +79,18 @@ stop_single_service() {
 }
 
 start() {
-	start_single_service opendj
-	start_single_service oxauth
-
-	services=`list_installed_services`
-	for service in `echo $services`;
+	for service in `list_installed_services`
 	do
-		if [ "$service" != "opendj" ] && [ "$service" != "oxauth" ]; then
-			start_single_service $service
-		fi
+		start_single_service $service
 	done
 }
 
 
 stop() {
-	services=`list_installed_services`
-	for service in `echo $services`;
+	for service in `list_installed_services|tac -s " "`
 	do
-		if [ "$service" != "opendj" ] && [ "$service" != "oxauth" ]; then
-			stop_single_service $service
-		fi
+		stop_single_service $service
 	done
-
-	stop_single_service oxauth
-	stop_single_service opendj
 }
 
 show_version() {
