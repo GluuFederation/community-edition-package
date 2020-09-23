@@ -19,7 +19,7 @@ if '-el8' in sys.argv:
 app_versions = {
               "JETTY_VERSION": "9.4.31.v20200723", 
               "AMAZON_CORRETTO_VERSION": "11.0.8.10.1", 
-              "OX_GITVERISON": "-SNAPSHOT", 
+              "OX_GITVERISON": ".Final", 
               "OX_VERSION": "4.2.1", 
               "JYTHON_VERSION": "2.7.2",
               "OPENDJ_VERSION": "4.0.0-M3",
