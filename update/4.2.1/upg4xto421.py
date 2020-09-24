@@ -162,6 +162,12 @@ class GluuUpdater:
         if not os.path.exists(self.app_dir):
             os.mkdir(self.app_dir)
 
+    def stop_services(self):
+        print("Stopping Gluu Services")
+        for service in ('oxauth', 'identity', 'idp', 'oxauth-rp',  'oxd-server', 'casa', 'scim', 'fido2', 'passport'):
+            os.system('systemctl stop ' + service)
+
+
     def download_ces(self):
         
         if not os.path.exists(self.ces_dir):
@@ -1579,6 +1585,7 @@ updaterObj.prepare_persist_changes()
 updaterObj.download_apps()
 updaterObj.determine_persistence_type()
 updaterObj.update_default_settings()
+updaterObj.stop_services()
 updaterObj.update_java()
 updaterObj.update_opendj()
 updaterObj.update_jython()
