@@ -140,13 +140,12 @@ class GluuUpdater:
     def __init__(self):
         self.ces_dir = os.path.join(cur_dir, 'ces_current')
         self.up_version = '4.2.1'
-        self.build_tag = '-SNAPSHOT'
+        self.build_tag = '.Final'
         self.backup_time = time.strftime('%Y-%m-%d.%H:%M:%S')
         self.app_dir = os.path.join(cur_dir, 'app')
         self.postmessages = []
 
         # app versions
-        self.wrends_version = '4.0.0-M3'
         self.corretto_version = '11.0.8.10.1'
         self.jython_version = '2.7.2'
         self.jetty_version = '9.4.26.v20200117'
@@ -738,7 +737,7 @@ class GluuUpdater:
                             self.setupObj.openDjSchemaFolder
                             ])
 
-        print("Restarting WrenDS ...")
+        print("Restarting OpenDJ ...")
         self.setupObj.run_service_command('opendj', 'stop')
         self.setupObj.run_service_command('opendj', 'start')
 
@@ -755,7 +754,7 @@ class GluuUpdater:
                     ('https://corretto.aws/downloads/resources/{0}/amazon-corretto-{0}-linux-x64.tar.gz'.format(self.corretto_version), os.path.join(self.app_dir, 'amazon-corretto-11-x64-linux-jdk.tar.gz')),
                     ('https://repo1.maven.org/maven2/org/python/jython-installer/{0}/jython-installer-{0}.jar'.format(self.jython_version), os.path.join(self.app_dir, 'jython-installer-2.7.2.jar')),
                     ('https://raw.githubusercontent.com/GluuFederation/gluu-snap/master/facter/facter', '/usr/bin/facter'),
-                    ('https://ox.gluu.org/maven/org/forgerock/opendj/opendj-server-legacy/{0}/opendj-server-legacy-{0}.zip'.format(self.wrends_version), os.path.join(self.app_dir, 'opendj-server-legacy-{}.zip'.format(self.wrends_version))),
+                    ('https://ox.gluu.org/maven/org/gluufederation/opendj/opendj-server-legacy/4.0.0.gluu/opendj-server-legacy-4.0.0.gluu.zip', os.path.join(self.app_dir, 'opendj-server-4.0.0.zip')),
                     ]
 
         if os.path.exists('/opt/shibboleth-idp'):
@@ -805,14 +804,14 @@ class GluuUpdater:
 
     def update_opendj(self):
         if os.path.exists(os.path.join(self.setupObj.ldapBaseFolder, 'config/java.properties')):
-            print("Updating WrenDS")
-            print("Stopping WrenDS")
+            print("Updating OpenDJ")
+            print("Stopping OpenDJ")
             self.setupObj.run_service_command('opendj', 'stop')
-            print("Extracting WrenDS")
-            self.setupObj.run(['unzip', '-o', '-q', os.path.join(self.app_dir, 'opendj-server-legacy-{}.zip'.format(self.wrends_version)), '-d', '/opt/' ])
+            print("Extracting OpenDJ")
+            self.setupObj.run(['unzip', '-o', '-q', os.path.join(self.app_dir, 'opendj-server-4.0.0.zip'), '-d', '/opt/' ])
             self.setupObj.run(['chown', '-R', 'ldap:ldap', self.setupObj.ldapBaseFolder])
             self.setupObj.fix_opendj_java_properties()
-            print("Starting WrenDS")
+            print("Starting OpenDJ")
             self.setupObj.run_service_command('opendj', 'start')
 
     def update_java(self):
