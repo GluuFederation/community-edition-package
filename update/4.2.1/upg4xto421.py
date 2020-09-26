@@ -167,6 +167,9 @@ class GluuUpdater:
         for service in ('oxauth', 'identity', 'idp', 'oxauth-rp',  'oxd-server', 'casa', 'scim', 'fido2', 'passport'):
             os.system('systemctl stop ' + service)
 
+        print("Cleaning Jetty cache")
+        os.system('rm -r -f /opt/jetty-9.4/temp/*')
+
 
     def download_ces(self):
         

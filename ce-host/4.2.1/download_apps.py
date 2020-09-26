@@ -107,12 +107,16 @@ if not '-e' in sys.argv:
 
 if '-x' in sys.argv:
     download('https://raw.githubusercontent.com/GluuFederation/community-edition-package/master/ce-host/4.2.1/dependencies.sh'.format(), 'opt/gluu/bin/dependencies.sh')
+
 download('https://raw.githubusercontent.com/GluuFederation/community-edition-package/master/ce-host/4.2.1/gluu-serverd'.format(), 'usr/sbin/gluu-serverd')
+download('https://raw.githubusercontent.com/GluuFederation/community-edition-package/master/ce-host/4.2.1/gluu-server.sh'.format(), 'etc/profile.d/gluu-server.sh')
 
 for app_bin in ('usr/bin/facter', 
                 'opt/gluu/bin/install.py', 
                 'opt/gluu/bin/dependencies.sh', 
-                'usr/sbin/gluu-serverd'):
+                'usr/sbin/gluu-serverd',
+                'etc/profile.d/gluu-server.sh',
+                ):
     fn = os.path.join(cur_dir, app_bin)
     if os.path.exists(fn):
         os.chmod(fn, 33261)
