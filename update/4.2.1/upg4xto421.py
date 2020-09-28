@@ -677,7 +677,7 @@ class GluuUpdater:
                     #? delete or modify?
                     #self.conn.delete(session_entry['dn'])
                     if ('oxAuthSessionId' in session_entry['attributes']['objectClass']) and (not 'sid' in session_entry['attributes']):
-                        conn.modify(
+                        self.conn.modify(
                                     session_entry['dn'], 
                                     {'sid': [ldap3.MODIFY_ADD, str(uuid.uuid4())]}
                                     )
