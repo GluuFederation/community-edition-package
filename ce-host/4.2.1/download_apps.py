@@ -24,7 +24,6 @@ app_versions = {
               "OX_GITVERISON": ".Final", 
               "OX_VERSION": "4.2.1", 
               "JYTHON_VERSION": "2.7.2",
-              "OPENDJ_VERSION": "4.0.0-M3",
               "NODE_VERSION": "v12.18.3",
               "SETUP_BRANCH": "version_4.2.1",
               "PASSPORT_NODE_VERSION": "4.2.1",
