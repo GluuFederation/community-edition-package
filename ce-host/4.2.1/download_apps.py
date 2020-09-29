@@ -15,6 +15,8 @@ gluu_app_dir = os.path.join(cur_dir, 'opt/dist/gluu')
 target = 'el7'
 if '-el8' in sys.argv:
     target = 'el8'
+elif '-ub' in sys.argv:
+    target = 'ub'
 
 app_versions = {
               "JETTY_VERSION": "9.4.31.v20200723", 
@@ -102,7 +104,10 @@ if not '-e' in sys.argv:
     download('https://github.com/GluuFederation/community-edition-setup/archive/{}.zip'.format(app_versions['SETUP_BRANCH']), os.path.join(gluu_app_dir, 'community-edition-setup.zip'))
 
     download('https://raw.githubusercontent.com/GluuFederation/community-edition-setup/{}/install.py'.format(app_versions['SETUP_BRANCH']), 'opt/gluu/bin/install.py')
-    download('https://repo.gluu.org/nochroot/python-libs/py3libs-{}.tgz'.format(target), 'tmp/usr.tgz')
+    
+    if target in ('el7', 'el8'):
+        download('https://repo.gluu.org/nochroot/python-libs/py3libs-{}.tgz'.format(target), 'tmp/usr.tgz')
+    
     package_oxd()
 
 if '-x' in sys.argv:
@@ -121,7 +126,8 @@ for app_bin in ('usr/bin/facter',
     if os.path.exists(fn):
         os.chmod(fn, 33261)
 
-os.system('tar zxf {} -C {}'.format(os.path.join(cur_dir, 'tmp/usr.tgz'), cur_dir))
+if target in ('el7', 'el8'):
+    os.system('tar zxf {} -C {}'.format(os.path.join(cur_dir, 'tmp/usr.tgz'), cur_dir))
 
 tmp_dir = os.path.join(cur_dir, 'tmp')
 if os.path.exists(tmp_dir):
@@ -130,6 +136,7 @@ if os.path.exists(tmp_dir):
 scripts_dir = os.path.join(cur_dir, 'opt/dist/scripts')
 if not os.path.exists(scripts_dir):
     os.makedirs(scripts_dir)
+
 open(os.path.join(scripts_dir, '.dontremove'), 'w').close()
 
 
