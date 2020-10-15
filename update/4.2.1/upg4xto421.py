@@ -741,7 +741,7 @@ class GluuUpdater:
         self.conn.unbind()
 
         # update opendj schema and restart
-        self.setupObj.run(['cp', '-f', 
+        self.setupObj.run(['\\cp',
                             os.path.join(self.ces_dir, 'static/opendj/101-ox.ldif'),
                             self.setupObj.openDjSchemaFolder
                             ])
@@ -852,7 +852,7 @@ class GluuUpdater:
                 self.setupObj.run(['rm', '-r', corretto])
                 
 
-        self.setupObj.run(['cp', '-f', os.path.join(self.app_dir, 'amazon-corretto-11-x64-linux-jdk.tar.gz'), self.setupObj.distAppFolder])
+        self.setupObj.run(['\\cp', os.path.join(self.app_dir, 'amazon-corretto-11-x64-linux-jdk.tar.gz'), self.setupObj.distAppFolder])
  
         for cur_version in glob.glob('/opt/amazon-corretto*'):
             if os.path.isdir(cur_version):
@@ -889,7 +889,7 @@ class GluuUpdater:
                 self.setupObj.run(['rm', '-r', jython])
                 
 
-        self.setupObj.run(['cp', '-f', os.path.join(self.app_dir, 'jython-installer-2.7.2.jar'), self.setupObj.distAppFolder])
+        self.setupObj.run(['\\cp', os.path.join(self.app_dir, 'jython-installer-2.7.2.jar'), self.setupObj.distAppFolder])
  
         for cur_version in glob.glob('/opt/jython-2*'):
             if os.path.isdir(cur_version):
@@ -906,7 +906,7 @@ class GluuUpdater:
         for service in self.setupObj.jetty_app_configuration:
             service_webapps_dir = os.path.join(self.setupObj.jetty_base, service, 'webapps')
             if os.path.exists(service_webapps_dir):
-                self.setupObj.run(['cp', '-f', os.path.join(self.app_dir, service+'.war'), service_webapps_dir])
+                self.setupObj.run(['\\cp', os.path.join(self.app_dir, service+'.war'), service_webapps_dir])
 
     def update_jetty(self):
         
@@ -1008,7 +1008,7 @@ class GluuUpdater:
         print("Updadting shibboleth-idp")
 
         print("Backing up ...")
-        self.setupObj.run(['cp', '-r', '/opt/shibboleth-idp', '/opt/shibboleth-idp.back'])
+        self.setupObj.run(['\\cp', '-r', '/opt/shibboleth-idp', '/opt/shibboleth-idp.back'])
         print("Updating idp-metadata.xml")
         self.setupObj.templateRenderingDict['idp3SigningCertificateText'] = open('/etc/certs/idp-signing.crt').read().replace('-----BEGIN CERTIFICATE-----','').replace('-----END CERTIFICATE-----','')
         self.setupObj.templateRenderingDict['idp3EncryptionCertificateText'] = open('/etc/certs/idp-encryption.crt').read().replace('-----BEGIN CERTIFICATE-----','').replace('-----END CERTIFICATE-----','')
@@ -1026,7 +1026,7 @@ class GluuUpdater:
 
         self.setupObj.run(['/opt/jre/bin/jar', 'xf', os.path.join(self.app_dir, 'idp.war')])
         self.setupObj.run(['rm', '-f', '/opt/shibboleth-idp/webapp/WEB-INF/lib/*'])
-        self.setupObj.run(['cp', '-r', os.path.join(idp_tmp_dir, 'WEB-INF/'), '/opt/shibboleth-idp/webapp'])
+        self.setupObj.run(['\\cp', '-r', os.path.join(idp_tmp_dir, 'WEB-INF/'), '/opt/shibboleth-idp/webapp'])
 
         #Recreate idp-metadata.xml with new format
         temp_fn = os.path.join(self.ces_dir, 'static/idp3/metadata/idp-metadata.xml')
@@ -1038,7 +1038,7 @@ class GluuUpdater:
             properties = self.render_template(os.path.join(self.ces_dir, 'static/idp3/conf', prop_fn))
             self.setupObj.writeFile(os.path.join('/opt/shibboleth-idp/conf', prop_fn), properties)
 
-        self.setupObj.run(['cp', '-f', '{}/app/saml-nameid.properties.vm'.format(cur_dir), '/opt/gluu/jetty/identity/conf/shibboleth3/idp/'])
+        self.setupObj.run(['\\cp', '{}/app/saml-nameid.properties.vm'.format(cur_dir), '/opt/gluu/jetty/identity/conf/shibboleth3/idp/'])
         self.setupObj.run(['chown', '-R', 'jetty:jetty', '/opt/shibboleth-idp'])
         self.setupObj.run(['rm', '-r', '-f', idp_tmp_dir])
 
@@ -1141,7 +1141,7 @@ class GluuUpdater:
                             ])
 
                         self.setupObj.backupFile(oxd_yaml['server']['applicationConnectors'][0]['keyStorePath'])
-                        self.setupObj.run(['cp', '-f', '/tmp/oxd.keystore', oxd_yaml['server']['applicationConnectors'][0]['keyStorePath']])
+                        self.setupObj.run(['\\cp', '/tmp/oxd.keystore', oxd_yaml['server']['applicationConnectors'][0]['keyStorePath']])
                         self.setupObj.run(['chown', 'jetty:jetty', oxd_yaml['server']['applicationConnectors'][0]['keyStorePath']])
 
                         for f in ('/tmp/oxd.crt', '/tmp/oxd.key', '/tmp/oxd.p12', '/tmp/oxd.keystore'):
@@ -1177,7 +1177,7 @@ class GluuUpdater:
         casa_plugins_dir = os.path.join(self.casa_base_dir, 'plugins')
         self.setupObj.run_service_command('casa', 'stop')
         
-        self.setupObj.run(['cp', '-f', os.path.join(self.app_dir, 'casa.war'),
+        self.setupObj.run(['\\cp', os.path.join(self.app_dir, 'casa.war'),
                                     os.path.join(self.casa_base_dir, 'webapps')])
 
         account_linking = None
@@ -1194,7 +1194,7 @@ class GluuUpdater:
                     if pid in self.casa_plugins:
                         jar_fn = os.path.join(self.app_dir, pid + '.jar')
                         self.setupObj.run(['rm', '-f', plugin])
-                        self.setupObj.run(['cp', '-f', jar_fn, casa_plugins_dir])
+                        self.setupObj.run(['\\cp', jar_fn, casa_plugins_dir])
                     if pid == 'account-linking':
                         account_linking = True
 
@@ -1429,7 +1429,7 @@ class GluuUpdater:
         self.setupObj.templateRenderingDict['fido2_static_conf_base64'] = self.setupObj.generate_base64_ldap_file(self.setupObj.fido2_static_conf_json)
         self.setupObj.renderTemplate(self.setupObj.ldif_fido2)
 
-        self.setupObj.run(['cp', self.setupObj.ldif_fido2, '/tmp'])
+        self.setupObj.run(['\\cp', self.setupObj.ldif_fido2, '/tmp'])
         ldif_fido2 = os.path.join('/tmp', os.path.basename(self.setupObj.ldif_fido2))
 
         if self.default_storage == 'ldap':
