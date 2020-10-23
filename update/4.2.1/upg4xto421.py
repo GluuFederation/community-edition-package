@@ -54,7 +54,7 @@ except:
 try:
     import six
 except:
-    if installer == 'apt':
+    if installer.endswith('apt'):
         missing_packages.append('python3-six')
     elif installer.endswith('yum') and os_version == '7':
         missing_packages.append('python36-six')
@@ -64,7 +64,7 @@ except:
 try:
     import ruamel.yaml
 except:
-    if installer == 'apt':
+    if installer.endswith('apt'):
         missing_packages.append('python3-ruamel.yaml')
     elif installer.endswith('yum') and os_version == '7':
         missing_packages.append('python36-ruamel-yaml')
