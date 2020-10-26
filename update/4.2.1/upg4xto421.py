@@ -801,8 +801,8 @@ class GluuUpdater:
                 downloads.append((self.casa_plugins[p].format(self.up_version, self.build_tag), os.path.join(self.app_dir, p + '.jar')))
 
             downloads += [
-                    ('https://raw.githubusercontent.com/GluuFederation/casa/master/plugins/account-linking/extras/casa.xhtml', os.path.join(self.app_dir, 'casa.xhtml')),
-                    ('https://raw.githubusercontent.com/GluuFederation/casa/master/plugins/account-linking/extras/casa.py', os.path.join(self.app_dir, 'casa.py')),
+                    ('https://raw.githubusercontent.com/GluuFederation/casa/version_{}/plugins/account-linking/extras/login.xhtml'.format(self.up_version), os.path.join(self.app_dir, 'login.xhtml')),
+                    ('https://raw.githubusercontent.com/GluuFederation/casa/version_{}/plugins/account-linking/extras/casa.py'.format(self.up_version), os.path.join(self.app_dir, 'casa.py')),
                     ]
 
         for download_link, out_file in downloads:
@@ -1226,7 +1226,7 @@ class GluuUpdater:
 
         if account_linking:
             self.setupObj.copyFile(
-                    os.path.join(self.app_dir, 'casa.xhtml'),
+                    os.path.join(self.app_dir, 'login.xhtml'),
                     os.path.join(self.setupObj.jetty_base, 'oxauth/custom/pages')
                     )
             
