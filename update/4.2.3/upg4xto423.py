@@ -139,7 +139,7 @@ def make_key(l):
 class GluuUpdater:
     def __init__(self):
         self.ces_dir = os.path.join(cur_dir, 'ces_current')
-        self.up_version = '4.2.2'
+        self.up_version = '4.2.3'
         self.build_tag = '.Final'
         self.backup_time = time.strftime('%Y-%m-%d.%H:%M:%S')
         self.app_dir = os.path.join(cur_dir, 'app')
@@ -148,7 +148,7 @@ class GluuUpdater:
         # app versions
         self.corretto_version = '11.0.8.10.1'
         self.jython_version = '2.7.2'
-        self.jetty_version = '9.4.26.v20200117'
+        self.jetty_version = '9.4.35.v20201120'
 
         self.delete_from_configuration = ['gluuFreeDiskSpace', 'gluuFreeMemory', 'gluuFreeSwap', 'gluuGroupCount', 'gluuIpAddress', 'gluuPersonCount', 'gluuSystemUptime']
 
@@ -923,7 +923,8 @@ class GluuUpdater:
         if os.path.isdir('/opt/jetty-9.4/jetty-distribution-{}'.format(self.jetty_version)):
             print("Jetty is up to date")
             return
-        
+
+        print("Upgrading Jetty")
         distAppFolder = self.setupObj.distAppFolder
         self.setupObj.distAppFolder = self.app_dir
         jetty_folder = os.readlink(self.setupObj.jetty_home)
@@ -1174,7 +1175,7 @@ class GluuUpdater:
             print("Restarting oxd-server")
             self.setupObj.run_service_command('oxd-server', 'stop')
             self.setupObj.run_service_command('oxd-server', 'start')
-
+            time.sleep(5)
             print("Importing oxd certificate to cacerts")        
             self.setupObj.import_oxd_certificate()
 
@@ -1296,7 +1297,7 @@ class GluuUpdater:
         for casa_lib in glob.glob(os.path.join(pylib_dir, 'casa-external*.py')):
             casa_lib_fn = os.path.basename(casa_lib)
             try:
-                response = urllib.request.urlopen(os.path.join('https://raw.githubusercontent.com/GluuFederation/community-edition-setup/version_4.1.0/static/casa/scripts', casa_lib_fn))
+                response = urllib.request.urlopen(os.path.join('https://raw.githubusercontent.com/GluuFederation/community-edition-setup/version_{}/static/casa/scripts'.format(self.up_version), casa_lib_fn))
                 if response.code == 200:
                     self.setupObj.backupFile(casa_lib)
                     print ("Updating", casa_lib)
@@ -1305,8 +1306,10 @@ class GluuUpdater:
                     print ("Writing", target_fn)
                     with open(target_fn, 'wb') as w: 
                         w.write(scr)
-            except:
+            except Exception as e:
                 print ("ERROR Updating", casa_lib_fn)
+                self.setupObj.logIt("ERROR Updating " + casa_lib_fn, True)
+                self.setupObj.logIt(str(e), True)
 
         def fix_oxConfApplication(oxConfApplication):
             if not oxConfApplication.get('oxd_config'):
