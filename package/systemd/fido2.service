@@ -1,11 +1,15 @@
 [Unit]
 Description=fido2 service
 After=opendj.service
+StartLimitIntervalSec=600
+StartLimitBurst=5
 
 [Service]
 Type=forking
 ExecStart=/opt/dist/scripts/fido2 start
 ExecStop=/opt/dist/scripts/fido2 stop
+Restart=on-failure
+RestartSec=30s
 User=jetty
 Group=jetty
 
