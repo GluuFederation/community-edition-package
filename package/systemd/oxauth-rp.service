@@ -1,12 +1,15 @@
 [Unit]
 Description=oxAuth RP service
 After=identity.service
-
+StartLimitIntervalSec=600
+StartLimitBurst=5
 
 [Service]
 Type=forking
 ExecStart=/opt/dist/scripts/oxauth-rp start
 ExecStop=/opt/dist/scripts/oxauth-rp stop
+Restart=on-failure
+RestartSec=30s
 User=jetty
 Group=jetty
 
