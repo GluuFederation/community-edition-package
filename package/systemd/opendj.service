@@ -1,11 +1,14 @@
 [Unit]
 Description=OpenDJ Directory Service
 After=syslog.target
+StartLimitIntervalSec=600
+StartLimitBurst=5
 
 [Service]
 Environment=OPENDJ_JAVA_HOME=/opt/jre
 Type=simple
-Restart=no
+Restart=on-failure
+RestartSec=30s
 TimeoutSec=5min
 IgnoreSIGPIPE=no
 KillMode=process
