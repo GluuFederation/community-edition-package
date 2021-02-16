@@ -1,11 +1,15 @@
 [Unit]
 Description=Idp service
 After=oxauth.service opendj.service
+StartLimitIntervalSec=600
+StartLimitBurst=5
 
 [Service]
 Type=forking
 ExecStart=/opt/dist/scripts/idp start
 ExecStop=/opt/dist/scripts/idp stop
+Restart=on-failure
+RestartSec=30s
 User=jetty
 Group=jetty
 
