@@ -1,11 +1,15 @@
 [Unit]
 Description=Oxauth service
 After=opendj.service
+StartLimitIntervalSec=600
+StartLimitBurst=5
 
 [Service]
 Type=forking
 ExecStart=/opt/dist/scripts/oxauth start
 ExecStop=/opt/dist/scripts/oxauth stop
+Restart=on-failure
+RestartSec=30s
 User=jetty
 Group=jetty
 
