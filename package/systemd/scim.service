@@ -1,17 +1,14 @@
 [Unit]
 Description=scim service
 After=oxauth.service
-StartLimitIntervalSec=600
-StartLimitBurst=5
 
 [Service]
 Type=forking
 ExecStart=/opt/dist/scripts/scim start
 ExecStop=/opt/dist/scripts/scim stop
-Restart=on-failure
-RestartSec=30s
 User=jetty
 Group=jetty
+TimeoutSec=300
 
 [Install]
 WantedBy=multi-user.target
