@@ -8,6 +8,7 @@ ExecStart=/opt/dist/scripts/fido2 start
 ExecStop=/opt/dist/scripts/fido2 stop
 User=jetty
 Group=jetty
+TimeoutSec=300
 
 [Install]
 WantedBy=multi-user.target

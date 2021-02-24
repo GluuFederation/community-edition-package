@@ -9,6 +9,7 @@ ExecStart=/opt/dist/scripts/oxauth-rp start
 ExecStop=/opt/dist/scripts/oxauth-rp stop
 User=jetty
 Group=jetty
+TimeoutSec=300
 
 [Install]
 WantedBy=multi-user.target

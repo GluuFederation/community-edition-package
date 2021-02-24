@@ -9,6 +9,7 @@ ExecStart=/opt/dist/scripts/passport start
 ExecStop=/opt/dist/scripts/passport stop
 User=node
 Group=node
+TimeoutSec=300
 
 [Install]
 WantedBy=multi-user.target

@@ -9,6 +9,7 @@ ExecStop=/opt/oxd-server/bin/oxd-server stop
 RemainAfterExit=yes
 User=jetty
 Group=jetty
+TimeoutSec=300
 
 [Install]
 WantedBy=multi-user.target

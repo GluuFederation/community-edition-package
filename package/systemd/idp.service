@@ -8,6 +8,7 @@ ExecStart=/opt/dist/scripts/idp start
 ExecStop=/opt/dist/scripts/idp stop
 User=jetty
 Group=jetty
+TimeoutSec=300
 
 [Install]
 WantedBy=multi-user.target
