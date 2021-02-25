@@ -8,7 +8,6 @@ ExecStart=/opt/dist/scripts/casa start
 ExecStop=/opt/dist/scripts/casa stop
 User=jetty
 Group=jetty
-TimeoutSec=300
 
 [Install]
 WantedBy=multi-user.target
