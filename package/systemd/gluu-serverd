@@ -23,7 +23,7 @@ wait_stop() {
         if [ $STAT = 0 ]; then
             return 0;
         fi
-        sleep 10
+        sleep 30
     done
  
     return 1
@@ -36,6 +36,7 @@ case "$1" in
          
         stop)
             systemctl stop systemd-nspawn@gluu_server.service
+            wait_stop
             ;;
          
         status)
@@ -43,7 +44,6 @@ case "$1" in
             ;;
         restart)
             systemctl stop systemd-nspawn@gluu_server.service
-	    wait_stop
             systemctl start systemd-nspawn@gluu_server.service
             ;;
 	ready)
