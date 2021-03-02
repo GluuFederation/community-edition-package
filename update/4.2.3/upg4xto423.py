@@ -144,6 +144,7 @@ class GluuUpdater:
         self.backup_time = time.strftime('%Y-%m-%d.%H:%M:%S')
         self.app_dir = os.path.join(cur_dir, 'app')
         self.postmessages = []
+        self.opendjNeedsUpdate = False
 
         # app versions
         self.corretto_version = '11.0.8.10.1'
@@ -238,6 +239,9 @@ class GluuUpdater:
         self.setupObj.encode_passwords()
 
         self.casa_base_dir = os.path.join(self.setupObj.jetty_base, 'casa')
+
+        self.setupObj.set_systemd_timeout()
+
 
     def prepare_persist_changes(self):
         self.persist_changes = { 
@@ -813,6 +817,11 @@ class GluuUpdater:
 
 
     def update_opendj(self):
+        
+        if not os.path.exists(os.path.join(self.setupObj.ldapBaseFolder,'lib/wrends.jar')):
+            print("OpenDJ is up to date.")
+            return
+        
         if os.path.exists(os.path.join(self.setupObj.ldapBaseFolder, 'config/java.properties')):
             print("Updating OpenDJ")
             print("Stopping OpenDJ")
@@ -823,6 +832,7 @@ class GluuUpdater:
             self.setupObj.fix_opendj_java_properties()
             print("Starting OpenDJ")
             self.setupObj.run_service_command('opendj', 'start')
+            self.opendjNeedsUpdate = True
 
     def update_java(self):
         
@@ -1607,6 +1617,7 @@ class GluuUpdater:
         self.setupObj.jetty_dist = '/opt/jetty-' + '.'.join(self.jetty_version.split('.')[:2])
         for service in ('casa', 'fido2', 'identity', 'idp', 'oxauth', 'oxauth-rp', 'scim'):
             default_fn = os.path.join('/etc/default', service)
+            print("Updating default file", service)
             if os.path.exists(default_fn):
                 default_ = self.render_template(os.path.join(self.ces_dir, 'templates/jetty', service))
                 self.setupObj.writeFile(default_fn, default_)
@@ -1620,6 +1631,8 @@ updaterObj.update_default_settings()
 updaterObj.stop_services()
 updaterObj.update_java()
 updaterObj.update_opendj()
+if not updaterObj.opendjNeedsUpdate:
+    updaterObj.setupObj.fix_opendj_java_properties()
 updaterObj.update_jython()
 updaterObj.update_scopes()
 updaterObj.updateAttributes()
