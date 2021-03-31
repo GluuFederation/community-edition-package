@@ -71,7 +71,7 @@ if not '-e' in sys.argv:
         base_url = 'https://raw.githubusercontent.com/GluuFederation/community-edition-package/master/package/systemd/{}'
         download(base_url.format(uf), 'etc/systemd/system/'+uf)
     
-    download('https://corretto.aws/downloads/resources/{0}/amazon-corretto-{0}-linux-x64.tar.gz'.format(app_versions['AMAZON_CORRETTO_VERSION']), os.path.join(app_dir, 'amazon-corretto-{0}-linux-x64.tar.gz'.format(app_versions['AMAZON_CORRETTO_VERSION'])))
+    download('https://corretto.aws/downloads/latest/amazon-corretto-{0}-linux-jdk.tar.gz'.format(app_versions['AMAZON_CORRETTO_VERSION']), os.path.join(app_dir, 'amazon-corretto-{0}-linux-jdk.tar.gz'.format(app_versions['AMAZON_CORRETTO_VERSION'])))
     download('https://repo1.maven.org/maven2/org/eclipse/jetty/jetty-distribution/{0}/jetty-distribution-{0}.tar.gz'.format(app_versions['JETTY_VERSION']), os.path.join(app_dir, 'jetty-distribution-{0}.tar.gz'.format(app_versions['JETTY_VERSION'])))
     download('https://repo1.maven.org/maven2/org/python/jython-installer/{0}/jython-installer-{0}.jar'.format(app_versions['JYTHON_VERSION']), os.path.join(app_dir, 'jython-installer-{0}.jar'.format(app_versions['JYTHON_VERSION'])))
     download('https://nodejs.org/dist/{0}/node-{0}-linux-x64.tar.xz'.format(app_versions['NODE_VERSION']), os.path.join(app_dir, 'node-{0}-linux-x64.tar.xz'.format(app_versions['NODE_VERSION'])))
