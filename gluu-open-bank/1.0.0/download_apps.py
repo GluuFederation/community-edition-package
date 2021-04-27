@@ -98,11 +98,3 @@ shutil.copytree(
 shutil.rmtree(tmp_dir)
 
 download('https://raw.githubusercontent.com/JanssenProject/jans-config-api/master/docs/jans-config-api-swagger.yaml'.format(app_versions['JANS_APP_VERSION'], app_versions['JANS_BUILD']), os.path.join(setup_dir, 'setup_app/data/jans-config-api-swagger.yaml'))
-print("Launching Janssen Setup")
-#setup_cmd = 'python3 {}/setup.py'.format(setup_dir)
-
-if argsp.args:
-    setup_cmd += ' ' + argsp.args
-
-os.system(setup_cmd)
-
