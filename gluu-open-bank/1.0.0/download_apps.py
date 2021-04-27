@@ -23,6 +23,7 @@ app_versions = {
   "SETUP_BRANCH": "master",
 }
 
+cur_dir = os.path.dirname(os.path.realpath(__file__))
 jans_dir = os.path.join(cur_dir, 'opt/jans')
 app_dir = os.path.join(cur_dir, 'opt/dist/app')
 jans_app_dir = os.path.join(cur_dir, 'opt/dist/jans')
