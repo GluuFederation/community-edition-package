@@ -17,10 +17,13 @@ list_installed_services() {
 		unordered_list="${unordered_list} $service"
 	done
 
-	for service in `ls -1 /opt/gluu/node`
-	do
-		unordered_list="${unordered_list} $service"
-	done
+    if [ -d "/opt/gluu/node" ]
+    then
+        for service in `ls -1 /opt/gluu/node`
+        do
+            unordered_list="${unordered_list} $service"
+        done
+    fi
 
 	if [ -d /opt/gluu/radius ]; then
 		unordered_list="${unordered_list} gluu-radius"
