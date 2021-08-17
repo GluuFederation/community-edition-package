@@ -163,6 +163,7 @@ class GluuUpdater:
         self.jython_version = '2.7.2'
         self.jetty_version = '9.4.43.v20210629'
         self.opendj_version = '4.4.10'
+        self.node_version = 'v14.16.1'
 
         self.delete_from_configuration = ['gluuFreeDiskSpace', 'gluuFreeMemory', 'gluuFreeSwap', 'gluuGroupCount', 'gluuIpAddress', 'gluuPersonCount', 'gluuSystemUptime']
 
@@ -758,7 +759,7 @@ class GluuUpdater:
         #self.update_gluu_couchbase()
 
 
-    def update_gluu_couchbase(self):        
+    def update_gluu_couchbase(self):
         self.setupObj.couchbaseProperties()
 
 
@@ -910,6 +911,7 @@ class GluuUpdater:
                     ('https://repo1.maven.org/maven2/org/eclipse/jetty/jetty-distribution/{0}/jetty-distribution-{0}.tar.gz'.format(self.jetty_version), os.path.join(self.app_dir, 'jetty-distribution-{0}.tar.gz'.format(self.jetty_version))),
                     ('https://corretto.aws/downloads/resources/{0}/amazon-corretto-{0}-linux-x64.tar.gz'.format(self.corretto_version), os.path.join(self.app_dir, 'amazon-corretto-11-x64-linux-jdk.tar.gz')),
                     ('https://repo1.maven.org/maven2/org/python/jython-installer/{0}/jython-installer-{0}.jar'.format(self.jython_version), os.path.join(self.app_dir, 'jython-installer-{}.jar'.format(self.jython_version))),
+                    ('https://nodejs.org/dist/{0}/node-{0}-linux-x64.tar.xz'.format(self.node_version), os.path.join(self.app_dir, 'node-{0}-linux-x64.tar.xz'.format(self.node_version))),
                     ('https://raw.githubusercontent.com/GluuFederation/gluu-snap/master/facter/facter', '/usr/bin/facter'),
                     ('https://ox.gluu.org/maven/org/gluufederation/opendj/opendj-server-legacy/{0}/opendj-server-legacy-{0}.zip'.format(self.opendj_version), os.path.join(self.app_dir, 'opendj-server-{}.zip'.format(self.opendj_version))),
                     ]
@@ -1078,8 +1080,42 @@ class GluuUpdater:
         if os.path.islink('/opt/jython'):
             self.gluuInstaller.run(['unlink', '/opt/jython'])
 
-        print("Installing Jython")
+        print("Installing Jython", self.jython_version)
         self.jythonInstaller.start_installation()
+
+
+    def update_node(self):
+
+        #check if jython is up to date
+        if os.path.isdir('/opt/node-{}-linux-x64'.format(self.node_version)):
+            print("Node is up to date")
+            return
+
+        print("Upgrading Node")
+
+        for node in glob.glob(os.path.join(self.Config.distAppFolder,'node-*-linux-x64.tar.xz')):
+            if os.path.isfile(node):
+                print("Deleting", node)
+                self.gluuInstaller.run(['rm', '-r', '-f', node])
+
+
+        self.gluuInstaller.copyFile(
+                os.path.join(self.app_dir, 'node-{}-linux-x64.tar.xz'.format(self.node_version)), 
+                self.Config.distAppFolder
+                )
+
+
+        for cur_version in glob.glob('/opt/node-v*'):
+            if os.path.isdir(cur_version):
+                print("Deleting", cur_version)
+                self.gluuInstaller.run(['rm', '-r', cur_version])
+
+        if os.path.islink('/opt/node'):
+            self.gluuInstaller.run(['unlink', '/opt/node'])
+
+        print("Installing Node", self.node_version)
+        self.nodeInstaller.start_installation()
+
 
     def update_war_files(self):
         for service in self.setupObj.jetty_app_configuration:
@@ -1840,7 +1876,9 @@ updaterObj.prepare_persist_changes()
 #updaterObj.update_java()
 #updaterObj.update_opendj()
 
-updaterObj.update_jython()
+#updaterObj.update_jython()
+
+updaterObj.update_node()
 
 """
 
