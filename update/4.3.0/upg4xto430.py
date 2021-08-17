@@ -1,14 +1,9 @@
 #!/usr/bin/python3
 import warnings
 warnings.filterwarnings("ignore")
-
-import sys
-
-print("This scirpt is under development. Not for use.")
-sys.exit()
-
-import shutil
 import os
+import sys
+import shutil
 import re
 import time
 import json
@@ -20,6 +15,12 @@ import uuid
 import urllib.request
 from urllib import request
 import ssl
+
+if os.environ.get('gldev') != 'true':
+    print("This scirpt is under development. Not for use.")
+    sys.exit()
+
+
 ssl._create_default_https_context = ssl._create_unverified_context
 
 if sys.version_info.major < 3:
@@ -85,7 +86,7 @@ packages = ' '.join(missing_packages)
 if packages:
     print("This script requires", packages)
     cmd = installer +' install -y ' + packages
-    prompt = input("Install with command {}? [Y/n] ".format(cmd))
+    prompt = 'y' if '-n' in sys.argv else input("Install with command {}? [Y/n] ".format(cmd))
     if not prompt.strip() or prompt[0].lower() == 'y':
         if installer.endswith('apt'):
             cmd_up = 'apt-get -y update'
@@ -103,7 +104,8 @@ from ldap3.utils import dn as dnutils
 cur_dir = os.path.dirname(os.path.realpath(__file__))
 properties_password = None
 
-result = input("Starting upgrade. CONTINUE? (y|N): ")
+result = 'y' if '-n' in sys.argv else input("Starting upgrade. CONTINUE? (y|N): ")
+
 if not result.strip() or (result.strip() and result.strip().lower()[0] != 'y'):
     print("You can re-run this script to upgrade. Bye now ...")
     sys.exit()
@@ -155,12 +157,12 @@ class GluuUpdater:
         self.backup_time = time.strftime('%Y-%m-%d.%H:%M:%S')
         self.app_dir = os.path.join(cur_dir, 'app')
         self.postmessages = []
-        self.opendjNeedsUpdate = False
 
         # app versions
         self.corretto_version = '11.0.12.7.1'
         self.jython_version = '2.7.2'
         self.jetty_version = '9.4.43.v20210629'
+        self.opendj_version = '4.4.10'
 
         self.delete_from_configuration = ['gluuFreeDiskSpace', 'gluuFreeMemory', 'gluuFreeSwap', 'gluuGroupCount', 'gluuIpAddress', 'gluuPersonCount', 'gluuSystemUptime']
 
@@ -190,7 +192,7 @@ class GluuUpdater:
         for service in ('oxauth', 'identity', 'idp', 'oxauth-rp',  'oxd-server', 'casa', 'scim', 'fido2', 'passport'):
             if os.path.exists(os.path.join('/etc/default', service)):
                 print("Stopping", service)
-                os.system('systemctl stop ' + service)
+                self.gluuInstaller.stop(service)
 
         print("Cleaning Jetty cache")
         os.system('rm -r -f /opt/jetty-9.4/temp/*')
@@ -909,7 +911,7 @@ class GluuUpdater:
                     ('https://corretto.aws/downloads/resources/{0}/amazon-corretto-{0}-linux-x64.tar.gz'.format(self.corretto_version), os.path.join(self.app_dir, 'amazon-corretto-11-x64-linux-jdk.tar.gz')),
                     ('https://repo1.maven.org/maven2/org/python/jython-installer/{0}/jython-installer-{0}.jar'.format(self.jython_version), os.path.join(self.app_dir, 'jython-installer-2.7.2.jar')),
                     ('https://raw.githubusercontent.com/GluuFederation/gluu-snap/master/facter/facter', '/usr/bin/facter'),
-                    ('https://ox.gluu.org/maven/org/gluufederation/opendj/opendj-server-legacy/4.0.0.gluu/opendj-server-legacy-4.0.0.gluu.zip', os.path.join(self.app_dir, 'opendj-server-4.0.0.zip')),
+                    ('https://ox.gluu.org/maven/org/gluufederation/opendj/opendj-server-legacy/{0}/opendj-server-legacy-{0}.zip'.format(self.opendj_version), os.path.join(self.app_dir, 'opendj-server-{}.zip'.format(self.opendj_version))),
                     ]
 
         if os.path.exists('/opt/shibboleth-idp'):
@@ -958,22 +960,41 @@ class GluuUpdater:
 
 
     def update_opendj(self):
-        
-        if not os.path.exists(os.path.join(self.setupObj.ldapBaseFolder,'lib/wrends.jar')):
+        build_fn = '/opt/opendj/config/buildinfo'
+        if not os.path.exists(build_fn):
+            # opendj was not installed on this server
+            return
+
+        # check if opendj needs to be updated
+        opendj_fn = os.path.join(self.app_dir, 'opendj-server-{}.zip'.format(self.opendj_version))
+        opendj_zip = zipfile.ZipFile(opendj_fn)
+        latest_build = opendj_zip.read('opendj/template/config/buildinfo').decode()
+        with open('/opt/opendj/config/buildinfo') as f:
+            cur_build = f.read()
+        if latest_build == cur_build:
             print("OpenDJ is up to date.")
             return
-        
-        if os.path.exists(os.path.join(self.setupObj.ldapBaseFolder, 'config/java.properties')):
-            print("Updating OpenDJ")
-            print("Stopping OpenDJ")
-            self.setupObj.run_service_command('opendj', 'stop')
-            print("Extracting OpenDJ")
-            self.setupObj.run(['unzip', '-o', '-q', os.path.join(self.app_dir, 'opendj-server-4.0.0.zip'), '-d', '/opt/' ])
-            self.setupObj.run(['chown', '-R', 'ldap:ldap', self.setupObj.ldapBaseFolder])
-            self.setupObj.fix_opendj_java_properties()
-            print("Starting OpenDJ")
-            self.setupObj.run_service_command('opendj', 'start')
-            self.opendjNeedsUpdate = True
+
+        # unbind opendj
+        try:
+            self.gluuInstaller.dbUtils.ldap_conn.unbind()
+        except:
+            pass
+
+        print("Updating OpenDJ")
+        print("Stopping OpenDJ")
+        self.gluuInstaller.stop('opendj')
+        print("Extracting OpenDJ")
+        opendj_zip.extractall('/opt')
+        opendj_zip.close()
+        print("Executing OpenDJ upgrade script")
+        self.gluuInstaller.run([os.path.join(self.Config.ldapBaseFolder, 'upgrade'), '-n'])
+        self.gluuInstaller.run(['chown', '-R', 'ldap:ldap', self.Config.ldapBaseFolder])
+        print("Starting OpenDJ")
+        self.gluuInstaller.start('opendj')
+
+        # rebind opendj
+        self.gluuInstaller.dbUtils.ldap_conn.bind()
 
     def update_java(self):
         
@@ -1817,11 +1838,12 @@ updaterObj.prepare_persist_changes()
 
 
 #updaterObj.update_java()
+#updaterObj.update_opendj()
+
+
 """
-updaterObj.update_opendj()
-if not updaterObj.opendjNeedsUpdate:
-    updaterObj.setupObj.fix_opendj_java_properties()
 updaterObj.update_jython()
+
 updaterObj.update_scopes()
 updaterObj.updateAttributes()
 updaterObj.fix_gluu_config()
