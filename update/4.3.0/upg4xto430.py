@@ -165,8 +165,6 @@ class GluuUpdater:
         self.opendj_version = '4.4.10'
         self.node_version = 'v14.16.1'
 
-        self.delete_from_configuration = ['gluuFreeDiskSpace', 'gluuFreeMemory', 'gluuFreeSwap', 'gluuGroupCount', 'gluuIpAddress', 'gluuPersonCount', 'gluuSystemUptime']
-
         self.casa_plugins = {
             'strong-authn-settings': 'https://ox.gluu.org/maven/org/gluu/casa/plugins/strong-authn-settings/{0}{1}/strong-authn-settings-{0}{1}-jar-with-dependencies.jar',
             'account-linking': 'https://ox.gluu.org/maven/org/gluu/casa/plugins/account-linking/{0}{1}/account-linking-{0}{1}-jar-with-dependencies.jar',
@@ -246,6 +244,7 @@ class GluuUpdater:
 
         from setup_app.messages import msg
         from setup_app.config import Config
+        from setup_app.static import BackendTypes
         from setup_app.utils.progress import gluuProgress
         from setup_app.utils.ldif_utils import myLdifParser
         from setup_app.pylib.ldif4.ldif import LDIFWriter
@@ -318,6 +317,7 @@ class GluuUpdater:
 
         self.myLdifParser = myLdifParser
         self.myLdifWriter = LDIFWriter
+        self.BackendTypes = BackendTypes
 
         """
         global Properties
@@ -544,7 +544,20 @@ class GluuUpdater:
 
 
     def update_persistence_data(self):
-        getattr(self, 'update_' + self.default_storage)()
+
+        if self.gluuInstaller.dbUtils.moddb == self.BackendTypes.LDAP:
+           self.update_ldap()
+
+        for config_element, config_dn in self.persist_changes:
+            print("Updating", config_element)
+            ldap_filter = '({0}=*)'.format(config_element)
+            result = self.gluuInstaller.dbUtils.search(config_dn, search_filter=ldap_filter, search_scope=ldap3.BASE)
+
+            js_conf = json.loads(result[config_element])
+            self.apply_persist_changes(js_conf, self.persist_changes[(config_element, config_dn)])
+            new_conf = json.dumps(js_conf,indent=2)
+            self.gluuInstaller.dbUtils.set_configuration(config_element, new_conf, dn=config_dn)
+
 
     def checkRemoteSchema(self):
 
@@ -682,7 +695,6 @@ class GluuUpdater:
 
     def update_couchbase(self):
 
-
         if self.setupObj.couchbase_bucket_prefix+'_token' in self.setupObj.couchbaseBuckets:
             session_bucket = self.setupObj.couchbase_bucket_prefix + '_session'
             self.setupObj.couchbaseBuckets.append(session_bucket)
@@ -751,10 +763,7 @@ class GluuUpdater:
             print("Executing", n1ql)
             result = self.cbm.exec_query(n1ql)
 
-        for k in self.delete_from_configuration:
-            n1ql = 'UPDATE `{}` USE KEYS "configuration" UNSET {}'.format(self.setupObj.couchbase_bucket_prefix, k)
-            print("Executing", n1ql)
-            result = self.cbm.exec_query(n1ql)
+
 
 
         #copy sessions from gluu_token to gluu_session and add sid
@@ -815,93 +824,53 @@ class GluuUpdater:
 
     def update_ldap(self):
 
-        dn = 'ou=configuration,o=gluu'
-
-        for config_element, config_dn in self.persist_changes:
-            print("Updating", config_element)
-            ldap_filter = '({0}=*)'.format(config_element)
-
-            self.conn.search(
-                        search_base=config_dn, 
-                        search_scope=ldap3.BASE, 
-                        search_filter=ldap_filter, 
-                        attributes=[config_element]
-                    )
-            result = self.conn.response
-            sdn = result[0]['dn']
-            js_conf = json.loads(result[0]['attributes'][config_element][0])
-            self.apply_persist_changes(js_conf, self.persist_changes[(config_element, config_dn)])
-            new_conf = json.dumps(js_conf,indent=4)
-
-            self.conn.modify(
-                            sdn, 
-                            {config_element: [ldap3.MODIFY_REPLACE, new_conf]}
-                            )
-
-        self.conn.search(
-                    search_base=dn, 
-                    search_scope=ldap3.BASE,
-                    search_filter='(objectclass=*)',
-                    attributes=self.delete_from_configuration
-                    )
-        
-        result = self.conn.response
-        
-        remove_list = []
-        
-        for k in result[0]['attributes']:
-            if result[0]['attributes'][k]:
-                    self.conn.modify(
-                    dn, 
-                    {k: [ldap3.MODIFY_DELETE, result[0]['attributes'][k]]}
-                    )
-
         # we need to delete index oxAuthExpiration before restarting opendj
         oxAuthExpiration_index_dn = 'ds-cfg-attribute=oxAuthExpiration,cn=Index,ds-cfg-backend-id=userRoot,cn=Backends,cn=config'
-        self.conn.search(
+        self.gluuInstaller.dbUtils.ldap_conn.search(
             search_base=oxAuthExpiration_index_dn, 
             search_scope=ldap3.BASE, 
             search_filter='(objectclass=*)', 
             attributes=['ds-cfg-attribute']
             )
 
-        if self.conn.response:        
-            self.conn.delete(oxAuthExpiration_index_dn)
+        if self.gluuInstaller.dbUtils.ldap_conn.response:
+            self.gluuInstaller.dbUtils.ldap_conn.delete(oxAuthExpiration_index_dn)
 
-        self.conn.unbind()
+        self.gluuInstaller.dbUtils.ldap_conn.unbind()
 
+        print("Copying new schema to opendj")
         # update opendj schema and restart
-        self.setupObj.copyFile(
+        self.gluuInstaller.copyFile(
                             os.path.join(self.ces_dir, 'static/opendj/101-ox.ldif'),
-                            self.setupObj.openDjSchemaFolder
+                            self.openDjInstaller.openDjSchemaFolder
                             )
 
         print("Restarting OpenDJ ...")
-        self.setupObj.run_service_command('opendj', 'stop')
-        self.setupObj.run_service_command('opendj', 'start')
+        self.gluuInstaller.stop('opendj')
+        self.gluuInstaller.start('opendj')
 
-        self.db_connection_ldap()
+        # rebind opendj
+        self.gluuInstaller.dbUtils.ldap_conn.bind()
 
-        if self.sessions_location == 'ldap':
-            dn = 'ou=sessions,o=gluu'
-            self.conn.search(
-                        search_base=dn, 
-                        search_scope=ldap3.SUBTREE, 
-                        search_filter='(objectClass=*)', 
-                        attributes=['*']
-                        )
-            if self.conn.response:
-                for session_entry in self.conn.response:
-                    #? delete or modify?
-                    #self.conn.delete(session_entry['dn'])
-                    if ('oxAuthSessionId' in session_entry['attributes']['objectClass']) and (not 'sid' in session_entry['attributes']):
-                        self.conn.modify(
-                                    session_entry['dn'], 
-                                    {'sid': [ldap3.MODIFY_ADD, str(uuid.uuid4())]}
-                                    )
-            else:
-                print("Adding sessions base entry")
-                self.conn.add(dn, attributes={'objectClass': ['top', 'organizationalUnit'], 'ou': ['sessions']})
+        dn = 'ou=sessions,o=gluu'
+        self.gluuInstaller.dbUtils.ldap_conn.search(
+                    search_base=dn, 
+                    search_scope=ldap3.SUBTREE, 
+                    search_filter='(objectClass=*)', 
+                    attributes=['*']
+                    )
+        if self.gluuInstaller.dbUtils.ldap_conn.response:
+            for session_entry in self.gluuInstaller.dbUtils.ldap_conn.response:
+                #? delete or modify?
+                #self.conn.delete(session_entry['dn'])
+                if ('oxAuthSessionId' in session_entry['attributes']['objectClass']) and (not 'sid' in session_entry['attributes']):
+                    self.gluuInstaller.dbUtils.ldap_conn.modify(
+                                session_entry['dn'], 
+                                {'sid': [ldap3.MODIFY_ADD, str(uuid.uuid4())]}
+                                )
+        else:
+            print("Adding sessions base entry")
+            self.gluuInstaller.dbUtils.ldap_conn.add(dn, attributes={'objectClass': ['top', 'organizationalUnit'], 'ou': ['sessions']})
 
     def download_apps(self):
 
@@ -1790,7 +1759,7 @@ class GluuUpdater:
 
 
         new_attributes = []
-        
+
         for dn, entry in attributes_ldif.entries:
             if not self.gluuInstaller.dbUtils.dn_exists(dn):
                 new_attributes.append((dn, entry))
@@ -1867,7 +1836,9 @@ updaterObj.prepare_persist_changes()
 #updaterObj.update_scopes()
 #updaterObj.update_attributes()
 
-updaterObj.fix_gluu_config()
+#updaterObj.fix_gluu_config()
+
+updaterObj.update_persistence_data()
 
 """
 
