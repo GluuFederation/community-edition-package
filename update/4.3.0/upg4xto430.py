@@ -488,7 +488,7 @@ class GluuUpdater:
 
     def fix_gluu_config(self):
         print("Fixing Gluu configuration files")
-        with open(self.setupObj.gluu_properties_fn) as f:
+        with open(self.Config.gluu_properties_fn) as f:
             gluu_prop = f.readlines()
 
         for l in gluu_prop:
@@ -500,8 +500,7 @@ class GluuUpdater:
                     gluu_prop.insert(i+1, 'fido2_ConfigurationEntryDN=ou=fido2,ou=configuration,o=gluu\n')
                     break
 
-            self.setupObj.writeFile(self.setupObj.gluu_properties_fn, ''.join(gluu_prop))
-
+            self.gluuInstaller.writeFile(self.Config.gluu_properties_fn, ''.join(gluu_prop))
 
         idp_default_fn = '/etc/default/idp'
 
@@ -519,18 +518,19 @@ class GluuUpdater:
                     elif options.startswith("'") and options.endswith("'"):
                         options = options.strip("'").strip()
 
-                    options += ' -Dpython.home=' + self.setupObj.jython_home
+                    options += ' -Dpython.home=' + self.Config.jython_home
                     idp_default[i] = 'JAVA_OPTIONS="{}"\n'.format(options)
-                    self.setupObj.writeFile(idp_default_fn, ''.join(idp_default))
+                    self.gluuInstaller.writeFile(idp_default_fn, ''.join(idp_default))
 
         passport_default_fn = '/etc/default/passport'
         if os.path.exists(passport_default_fn):
+            self.Config.templateRenderingDict['node_base'] = self.nodeInstaller.node_base
             passport_default = self.render_template(os.path.join(self.ces_dir, 'templates/node/passport'))
-            self.setupObj.writeFile(passport_default_fn, passport_default)
+            self.gluuInstaller.writeFile(passport_default_fn, passport_default)
 
 
-        if os.path.exists(self.setupObj.gluuCouchebaseProperties):
-            gluu_couchbase_prop_s = self.setupObj.readFile(self.setupObj.gluuCouchebaseProperties)
+        if os.path.exists(self.Config.gluuCouchebaseProperties):
+            gluu_couchbase_prop_s = self.gluuInstaller.readFile(self.setupObj.gluuCouchebaseProperties)
             gluu_couchbase_prop = gluu_couchbase_prop_s.splitlines()
             for i, l in enumerate(gluu_couchbase_prop[:]):
                 if l.startswith('bucket.gluu_token.mapping'):
@@ -540,7 +540,7 @@ class GluuUpdater:
                     if not 'sessions' in mapping_list:
                         mapping_list.append('sessions')
                         gluu_couchbase_prop[i] = 'bucket.gluu_token.mapping: {}'.format(', '.join(mapping_list))
-                        self.setupObj.writeFile(self.setupObj.gluuCouchebaseProperties, '\n'.join(gluu_couchbase_prop))
+                        self.gluuInstaller.writeFile(self.setupObj.gluuCouchebaseProperties, '\n'.join(gluu_couchbase_prop))
 
 
     def update_persistence_data(self):
@@ -1865,12 +1865,13 @@ updaterObj.prepare_persist_changes()
 #updaterObj.update_node()
 
 #updaterObj.update_scopes()
-updaterObj.update_attributes()
+#updaterObj.update_attributes()
+
+updaterObj.fix_gluu_config()
 
 """
 
 
-updaterObj.fix_gluu_config()
 updaterObj.update_persistence_data()
 updaterObj.update_jetty()
 updaterObj.update_war_files()
