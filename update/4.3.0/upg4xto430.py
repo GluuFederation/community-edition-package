@@ -909,7 +909,7 @@ class GluuUpdater:
                     ('https://ox.gluu.org/maven/org/gluu/scim-server/{0}{1}/scim-server-{0}{1}.war'.format(self.up_version, self.build_tag), os.path.join(self.app_dir, 'scim.war')),                   
                     ('https://repo1.maven.org/maven2/org/eclipse/jetty/jetty-distribution/{0}/jetty-distribution-{0}.tar.gz'.format(self.jetty_version), os.path.join(self.app_dir, 'jetty-distribution-{0}.tar.gz'.format(self.jetty_version))),
                     ('https://corretto.aws/downloads/resources/{0}/amazon-corretto-{0}-linux-x64.tar.gz'.format(self.corretto_version), os.path.join(self.app_dir, 'amazon-corretto-11-x64-linux-jdk.tar.gz')),
-                    ('https://repo1.maven.org/maven2/org/python/jython-installer/{0}/jython-installer-{0}.jar'.format(self.jython_version), os.path.join(self.app_dir, 'jython-installer-2.7.2.jar')),
+                    ('https://repo1.maven.org/maven2/org/python/jython-installer/{0}/jython-installer-{0}.jar'.format(self.jython_version), os.path.join(self.app_dir, 'jython-installer-{}.jar'.format(self.jython_version))),
                     ('https://raw.githubusercontent.com/GluuFederation/gluu-snap/master/facter/facter', '/usr/bin/facter'),
                     ('https://ox.gluu.org/maven/org/gluufederation/opendj/opendj-server-legacy/{0}/opendj-server-legacy-{0}.zip'.format(self.opendj_version), os.path.join(self.app_dir, 'opendj-server-{}.zip'.format(self.opendj_version))),
                     ]
@@ -1059,27 +1059,27 @@ class GluuUpdater:
             return
         print ("Upgrading Jython")
 
-        for jython in glob.glob(os.path.join(self.setupObj.distAppFolder,'jython-installer-*')):
+        for jython in glob.glob(os.path.join(self.Config.distAppFolder,'jython-installer-*')):
             if os.path.isfile(jython):
                 print("Deleting", jython)
-                self.setupObj.run(['rm', '-r', jython])
-                
+                self.gluuInstaller.run(['rm', '-r', '-f', jython])
 
-        self.setupObj.copyFile(
-                os.path.join(self.app_dir, 'jython-installer-2.7.2.jar'), 
-                self.setupObj.distAppFolder
+
+        self.gluuInstaller.copyFile(
+                os.path.join(self.app_dir, 'jython-installer-{}.jar'.format(self.jython_version)), 
+                self.Config.distAppFolder
                 )
  
         for cur_version in glob.glob('/opt/jython-2*'):
             if os.path.isdir(cur_version):
                 print("Deleting", cur_version)
-                self.setupObj.run(['rm', '-r', cur_version])
+                self.gluuInstaller.run(['rm', '-r', '-f', cur_version])
 
         if os.path.islink('/opt/jython'):
-            self.setupObj.run(['unlink', '/opt/jython'])
-        
+            self.gluuInstaller.run(['unlink', '/opt/jython'])
+
         print("Installing Jython")
-        self.setupObj.installJython()
+        self.jythonInstaller.start_installation()
 
     def update_war_files(self):
         for service in self.setupObj.jetty_app_configuration:
@@ -1840,9 +1840,9 @@ updaterObj.prepare_persist_changes()
 #updaterObj.update_java()
 #updaterObj.update_opendj()
 
+updaterObj.update_jython()
 
 """
-updaterObj.update_jython()
 
 updaterObj.update_scopes()
 updaterObj.updateAttributes()
