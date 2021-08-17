@@ -1770,59 +1770,43 @@ class GluuUpdater:
                                     self.cbm.exec_query(n1ql)
                                     break
 
-    def updateAttributes(self):
+    def update_attributes(self):
 
         attributes_ldif_fn = os.path.join(self.ces_dir, 'templates/attributes.ldif')
         attributes_ldif = self.myLdifParser(attributes_ldif_fn)
         attributes_ldif.parse()
 
-        if self.default_storage == 'ldap':
-            dn = 'inum=6049,ou=attributes,o=gluu'
-            self.conn.search(
-                    search_base=dn, 
-                    search_scope=ldap3.BASE, 
-                    search_filter='(objectClass=*)', 
-                    attributes=['*']
-                    )
-            result = self.conn.response
-            if not 'user_permission' in result[0]['attributes'].get('oxAuthClaimName', []):
+        dn = 'inum=6049,ou=attributes,o=gluu'
+
+        attribue_6049 = self.gluuInstaller.dbUtils.dn_exists(dn)
+        if attribue_6049:
+            perms = attribue_6049.get('oxAuthClaimName', [])
+            if isinstance(perms, str):
+                perms = [perms]
+            if not 'user_permission' in perms:
                 print("Modifying attribute", dn)
-                self.conn.modify(
-                            dn,
-                            {'oxAuthClaimName': [ldap3.MODIFY_ADD, 'user_permission']}
-                            )
+                perms.append('user_permission')
+                self.gluuInstaller.dbUtils.set_configuration('oxAuthClaimName', perms, dn)
 
-            self.conn.search(
-                    search_base='ou=attributes,o=gluu', 
-                    search_scope=ldap3.LEVEL, 
-                    search_filter='(objectClass=*)', 
-                    attributes=['inum']
-                    )
-            result = self.conn.response
 
-            current_attributes_list = [ e['dn'] for e in result ]
+        new_attributes = []
+        
+        for dn, entry in attributes_ldif.entries:
+            if not self.gluuInstaller.dbUtils.dn_exists(dn):
+                new_attributes.append((dn, entry))
 
-            for dn, entry in attributes_ldif.entries:
-                if not dn in current_attributes_list:
-                    print("Adding attribute", dn)
-                    self.conn.add(dn, attributes=entry)
+        if new_attributes:
+            print("Updating attributes")
+            attributes_ldif_fn = '/tmp/new_attributes_{}.ldif'.format(os.urandom(4).hex())
+            with open(attributes_ldif_fn, 'wb') as w:
+                ldif_attributes_writer = self.myLdifWriter(w, cols=1000)
+                for dn, endtry in new_attributes:
+                    print("Preparing attribute", dn)
+                    ldif_attributes_writer.unparse(dn, endtry)
+            print("Writing attributes to database")
+            self.gluuInstaller.dbUtils.import_ldif([attributes_ldif_fn])
+            os.remove(attributes_ldif_fn)
 
-        elif self.default_storage == 'couchbase':
-            result = self.cbm.exec_query('SELECT oxAuthClaimName FROM `{}` USE KEYS "attributes_6049"'.format(self.setupObj.couchbase_bucket_prefix))
-            data = result.json()
-
-            if not 'user_permission' == data.get('results')[0].get('oxAuthClaimName',''):
-                n1ql = 'UPDATE `{0}` USE KEYS "attributes_6049" SET {0}.oxAuthClaimName="user_permission"'.format(self.setupObj.couchbase_bucket_prefix)
-                print("Executing", n1ql)
-                result = self.cbm.exec_query(n1ql)
-
-            documents = self.get_documents_from_ldif(attributes_ldif_fn)
-            for k, doc in documents:
-                result = self.cbm.exec_query('SELECT inum FROM `{}` USE KEYS "{}"'.format(self.setupObj.couchbase_bucket_prefix, k))
-                if not result.json().get('results'):
-                    print("Adding attribute", k)
-                    n1ql = 'UPSERT INTO `%s` (KEY, VALUE) VALUES ("%s", %s)' % (self.setupObj.couchbase_bucket_prefix, k, json.dumps(doc))
-                    self.cbm.exec_query(n1ql)
 
 
     def update_scopes(self):
@@ -1880,11 +1864,12 @@ updaterObj.prepare_persist_changes()
 
 #updaterObj.update_node()
 
-updaterObj.update_scopes()
+#updaterObj.update_scopes()
+updaterObj.update_attributes()
 
 """
 
-updaterObj.updateAttributes()
+
 updaterObj.fix_gluu_config()
 updaterObj.update_persistence_data()
 updaterObj.update_jetty()
