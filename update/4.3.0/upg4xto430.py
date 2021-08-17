@@ -548,6 +548,9 @@ class GluuUpdater:
         if self.gluuInstaller.dbUtils.moddb == self.BackendTypes.LDAP:
            self.update_ldap()
 
+        if self.gluuInstaller.dbUtils.moddb == self.BackendTypes.COUCHBASE:
+           self.update_couchbase()
+
         for config_element, config_dn in self.persist_changes:
             print("Updating", config_element)
             ldap_filter = '({0}=*)'.format(config_element)
@@ -1099,19 +1102,34 @@ class GluuUpdater:
                             )
 
     def update_jetty(self):
-        
+
         if os.path.isdir('/opt/jetty-9.4/jetty-distribution-{}'.format(self.jetty_version)):
             print("Jetty is up to date")
             return
 
         print("Upgrading Jetty")
-        distAppFolder = self.setupObj.distAppFolder
-        self.setupObj.distAppFolder = self.app_dir
-        jetty_folder = os.readlink(self.setupObj.jetty_home)
-        self.setupObj.run(['unlink', self.setupObj.jetty_home])
-        self.setupObj.run(['rm', '-r', '-f', jetty_folder])
-        self.setupObj.installJetty()
-        self.setupObj.distAppFolder = distAppFolder
+
+        for jetty in glob.glob(os.path.join(self.Config.distAppFolder,'jetty-distribution-*.tar.gz')):
+            if os.path.isfile(jetty):
+                print("Deleting", jetty)
+                self.gluuInstaller.run(['rm', '-r', '-f', jetty])
+
+        self.gluuInstaller.copyFile(
+                os.path.join(self.app_dir, 'jetty-distribution-{0}.tar.gz'.format(self.jetty_version)),
+                self.Config.distAppFolder
+                )
+
+        for cur_version in glob.glob('/opt/jetty-*'):
+            if os.path.isdir(cur_version):
+                print("Deleting", cur_version)
+                self.gluuInstaller.run(['rm', '-r', cur_version])
+
+        if os.path.islink('/opt/jetty'):
+            self.gluuInstaller.run(['unlink', '/opt/jetty'])
+
+        print("Installing Jetty", self.jetty_version)
+        self.jettyInstaller.start_installation()
+
 
     def update_scripts(self):
         print("Updating Scripts")
@@ -1830,6 +1848,7 @@ updaterObj.prepare_persist_changes()
 #updaterObj.update_opendj()
 
 #updaterObj.update_jython()
+updaterObj.update_jetty()
 
 #updaterObj.update_node()
 
@@ -1838,13 +1857,12 @@ updaterObj.prepare_persist_changes()
 
 #updaterObj.fix_gluu_config()
 
-updaterObj.update_persistence_data()
+#updaterObj.update_persistence_data()
 
 """
 
 
-updaterObj.update_persistence_data()
-updaterObj.update_jetty()
+
 updaterObj.update_war_files()
 updaterObj.update_scripts()
 updaterObj.update_apache_conf()
