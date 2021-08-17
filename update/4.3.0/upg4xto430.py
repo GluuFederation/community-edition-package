@@ -247,7 +247,8 @@ class GluuUpdater:
         from setup_app.messages import msg
         from setup_app.config import Config
         from setup_app.utils.progress import gluuProgress
-
+        from setup_app.utils.ldif_utils import myLdifParser
+        from setup_app.pylib.ldif4.ldif import LDIFWriter
 
         from setup_app.setup_options import get_setup_options
         from setup_app.utils import printVersion
@@ -315,6 +316,8 @@ class GluuUpdater:
         self.jettyInstaller.calculate_selected_aplications_memory()
         self.gluuInstaller = GluuInstaller()
 
+        self.myLdifParser = myLdifParser
+        self.myLdifWriter = LDIFWriter
 
         """
         global Properties
@@ -1827,27 +1830,24 @@ class GluuUpdater:
         ldif_fn = os.path.join(self.ces_dir, 'templates/scopes.ldif')
         ldif_parser = self.myLdifParser(ldif_fn)
         ldif_parser.parse()
-        
-        if self.default_storage == 'ldap':
-            self.db_connection_ldap()
-            for dn, entry in ldif_parser.entries:
-                self.conn.search(
-                            search_base=dn, 
-                            search_scope=ldap3.BASE, 
-                            search_filter='(objectClass=*)', 
-                            attributes=['*']
-                            )
-                if not self.conn.response:
-                    print("Adding scope", dn)
-                    self.conn.add(dn, attributes=entry)
-        else:
-            documents = self.get_documents_from_ldif(ldif_fn)
-            for k, doc in documents:
-                result = self.cbm.exec_query('SELECT inum FROM `{}` USE KEYS "{}"'.format(self.setupObj.couchbase_bucket_prefix, k))
-                if not result.json().get('results'):
-                    print("Adding scope", k)
-                    n1ql = 'UPSERT INTO `%s` (KEY, VALUE) VALUES ("%s", %s)' % (self.setupObj.couchbase_bucket_prefix, k, json.dumps(doc))
-                    self.cbm.exec_query(n1ql)
+
+        new_scopes = []
+
+        for dn, entry in ldif_parser.entries:
+            if not self.gluuInstaller.dbUtils.dn_exists(dn):
+                new_scopes.append((dn, entry))
+
+        if new_scopes:
+            print("Updating scopes")
+            scope_ldif_fn = '/tmp/new_scopes_{}.ldif'.format(os.urandom(4).hex())
+            with open(scope_ldif_fn, 'wb') as w:
+                ldif_scopes_writer = self.myLdifWriter(w, cols=1000)
+                for dn, endtry in new_scopes:
+                    print("Preparing scope", dn)
+                    ldif_scopes_writer.unparse(dn, endtry)
+            print("Writing scopes to database")
+            self.gluuInstaller.dbUtils.import_ldif([scope_ldif_fn])
+            os.remove(scope_ldif_fn)
 
     def update_default_settings(self):
         print("Updating /etc/default files")
@@ -1878,11 +1878,12 @@ updaterObj.prepare_persist_changes()
 
 #updaterObj.update_jython()
 
-updaterObj.update_node()
+#updaterObj.update_node()
+
+updaterObj.update_scopes()
 
 """
 
-updaterObj.update_scopes()
 updaterObj.updateAttributes()
 updaterObj.fix_gluu_config()
 updaterObj.update_persistence_data()
@@ -1892,6 +1893,7 @@ updaterObj.update_scripts()
 updaterObj.update_apache_conf()
 updaterObj.update_shib()
 """
+
 updaterObj.update_passport()
 sys.exit()
 
