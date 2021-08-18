@@ -1275,28 +1275,25 @@ class GluuUpdater:
 
 
     def update_oxd(self):
-        oxd_root = '/opt/oxd-server/'
-        if not os.path.exists(oxd_root):
+        if not self.oxdInstaller.installed():
             return
 
         print("Updating oxd Server")
-        self.setupObj.copyFile(
+        self.oxdInstaller.copyFile(
                     os.path.join(self.app_dir, 'oxd-server.jar'),
-                    '/opt/oxd-server/lib'
+                    os.path.join(self.oxdInstaller.oxd_root, 'lib')
                     )
 
-        oxd_server_yml_fn = os.path.join(oxd_root, 'conf/oxd-server.yml')
-        yml_str = self.setupObj.readFile(oxd_server_yml_fn)
+        oxd_server_yml_fn = os.path.join(self.oxdInstaller.oxd_root, 'conf/oxd-server.yml')
+        yml_str = self.oxdInstaller.readFile(oxd_server_yml_fn)
         oxd_yaml = ruamel.yaml.load(yml_str, ruamel.yaml.RoundTripLoader)
 
-        ip = self.setupObj.detect_ip()
-
-        if os.path.exists(self.casa_base_dir) and hasattr(self, 'casa_oxd_host') and getattr(self, 'casa_oxd_host') in (self.setup_prop['hostname'], ip):
+        if self.casaInstaller.installed() and hasattr(self, 'casa_oxd_host') and getattr(self, 'casa_oxd_host') in (self.Config.hostname, self.Config.ip):
 
             write_oxd_yaml = False
             if 'bind_ip_addresses' in oxd_yaml:
-                if not ip in oxd_yaml['bind_ip_addresses']:
-                    oxd_yaml['bind_ip_addresses'].append(ip)
+                if not self.Config.ip in oxd_yaml['bind_ip_addresses']:
+                    oxd_yaml['bind_ip_addresses'].append(self.Config.ip)
                     write_oxd_yaml = True
             else:
                 for i, k in enumerate(oxd_yaml):
@@ -1304,12 +1301,12 @@ class GluuUpdater:
                         break
                 else:
                     i = 1
-                oxd_yaml.insert(i, 'bind_ip_addresses',  [ip])
+                oxd_yaml.insert(i, 'bind_ip_addresses',  [self.Config.ip])
                 write_oxd_yaml = True
 
             if write_oxd_yaml:
                 yml_str = ruamel.yaml.dump(oxd_yaml, Dumper=ruamel.yaml.RoundTripDumper)
-                self.setupObj.writeFile(oxd_server_yml_fn, yml_str)
+                self.oxdInstaller.writeFile(oxd_server_yml_fn, yml_str)
 
 
             #create oxd certificate if not CN=hostname
@@ -1318,28 +1315,28 @@ class GluuUpdater:
                 res = re.search('CN=(.*?.),', l)
                 if res:
                     cert_cn = res.groups()[0]
-                    if cert_cn != self.setup_prop['hostname']:
-                        self.setupObj.run([
-                            self.setupObj.opensslCommand,
+                    if cert_cn != self.Config.hostname:
+                        self.oxdInstaller.run([
+                            self.paths.cmd_openssl,
                             'req', '-x509', '-newkey', 'rsa:4096', '-nodes',
                             '-out', '/tmp/oxd.crt',
                             '-keyout', '/tmp/oxd.key',
                             '-days', '3650',
-                            '-subj', '/C={}/ST={}/L={}/O={}/CN={}/emailAddress={}'.format(self.setupObj.countryCode, self.setupObj.state, self.setupObj.city, self.setupObj.orgName, self.setupObj.hostname, self.setupObj.admin_email),
+                            '-subj', '/C={}/ST={}/L={}/O={}/CN={}/emailAddress={}'.format(self.Config.countryCode, self.Config.state, self.Config.city, self.Config.orgName, self.Config.hostname, self.Config.admin_email),
                             ])
 
-                        self.setupObj.run([
-                            self.setupObj.opensslCommand,
+                        self.oxdInstaller.run([
+                            self.paths.cmd_openssl,
                             'pkcs12', '-export',
                             '-in', '/tmp/oxd.crt',
                             '-inkey', '/tmp/oxd.key',
                             '-out', '/tmp/oxd.p12',
-                            '-name', self.setupObj.hostname,
+                            '-name', self.Config.hostname,
                             '-passout', 'pass:example'
                             ])
 
-                        self.setupObj.run([
-                            self.setupObj.cmd_keytool,
+                        self.oxdInstaller.run([
+                            self.Config.cmd_keytool,
                             '-importkeystore',
                             '-deststorepass', 'example',
                             '-destkeypass', 'example',
@@ -1347,25 +1344,33 @@ class GluuUpdater:
                             '-srckeystore', '/tmp/oxd.p12',
                             '-srcstoretype', 'PKCS12',
                             '-srcstorepass', 'example',
-                            '-alias', self.setupObj.hostname,
+                            '-alias', self.Config.hostname,
                             ])
 
-                        self.setupObj.backupFile(oxd_yaml['server']['applicationConnectors'][0]['keyStorePath'])
-                        self.setupObj.copyFile(
+                        self.oxdInstaller.backupFile(oxd_yaml['server']['applicationConnectors'][0]['keyStorePath'])
+                        self.oxdInstaller.copyFile(
                                 '/tmp/oxd.keystore', 
                                 oxd_yaml['server']['applicationConnectors'][0]['keyStorePath']
                                 )
-                        self.setupObj.run(['chown', 'jetty:jetty', oxd_yaml['server']['applicationConnectors'][0]['keyStorePath']])
+                        self.oxdInstaller.run(['chown', 'jetty:jetty', oxd_yaml['server']['applicationConnectors'][0]['keyStorePath']])
 
                         for f in ('/tmp/oxd.crt', '/tmp/oxd.key', '/tmp/oxd.p12', '/tmp/oxd.keystore'):
-                            self.setupObj.run(['rm', '-f', f])
-                        
-            print("Restarting oxd-server")
-            self.setupObj.run_service_command('oxd-server', 'stop')
-            self.setupObj.run_service_command('oxd-server', 'start')
-            time.sleep(5)
+                            self.oxdInstaller.run(['rm', '-f', f])
+
+        self.oxdInstaller.copyFile(
+                os.path.join(self.ces_dir, 'static/oxd/oxd-server.default'),
+                os.path.join(self.Config.osDefault, 'oxd-server')
+                )
+
+        print("Restarting oxd-server")
+        self.oxdInstaller.stop()
+        self.oxdInstaller.start()
+        time.sleep(5)
+
+
+        if self.Config.get('oxd_server_https'):
             print("Importing oxd certificate to cacerts")
-            self.setupObj.import_oxd_certificate()
+            self.casaInstaller.import_oxd_certificate()
 
     def update_casa(self):
 
@@ -1422,7 +1427,6 @@ class GluuUpdater:
             scr = self.casaInstaller.readFile(os.path.join(self.app_dir, 'casa.py'))
 
             al_dn = 'inum=BABA-CACA,ou=scripts,o=gluu'
-
 
             self.casaInstaller.dbUtils.set_configuration('oxScript', scr, dn=al_dn)
 
@@ -1487,6 +1491,7 @@ class GluuUpdater:
             oxConfApplication['oxd_config']['port'] = 8443
         if not oxConfApplication['oxd_config'].get('host'):
             oxConfApplication['oxd_config']['host'] = self.Config.get('oxd_hostname', self.Config.hostname)
+            self.casa_oxd_host = oxConfApplication['oxd_config']['host']
 
         if not 'protocol' in oxConfApplication['oxd_config']:
             oxConfApplication['oxd_config']['protocol'] = 'https'
@@ -1764,34 +1769,24 @@ updaterObj.download_ces()
 
 
 #updaterObj.stop_services()
-
-
 #updaterObj.update_java()
 #updaterObj.update_opendj()
-
 #updaterObj.update_jython()
 #updaterObj.update_jetty()
-
 #updaterObj.update_node()
-
 #updaterObj.update_scopes()
 #updaterObj.update_attributes()
-
 #updaterObj.fix_gluu_config()
-
 #updaterObj.update_persistence_data()
 #updaterObj.update_war_files()
-
 #updaterObj.update_scripts()
-
 #updaterObj.update_apache_conf()
 #updaterObj.update_passport()
 #updaterObj.update_radius()
-
 updaterObj.update_casa()
+updaterObj.update_oxd()
 
 """
-updaterObj.update_oxd()
 updaterObj.add_oxAuthUserId_pairwiseIdentifier()
 updaterObj.fix_fido2()
 updaterObj.update_shib()
