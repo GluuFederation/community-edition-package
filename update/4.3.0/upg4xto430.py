@@ -1580,44 +1580,20 @@ class GluuUpdater:
 
 
     def add_oxAuthUserId_pairwiseIdentifier(self):
-
-        print("Adding oxAuthUserId to pairwiseIdentifier.")
-        print("This may take several minutes depending on your user number")
-
-        if self.user_location == 'ldap':
-
-            self.conn.search(
-                            search_base='ou=people,o=gluu',
-                            search_scope=ldap3.SUBTREE, 
-                            search_filter='(objectClass=pairwiseIdentifier)', 
-                            attributes=['*']
-                            )
-            result = self.conn.response
-            for e in result:
-                if not 'oxAuthUserId' in e['attributes']:
-                    for dne in dnutils.parse_dn(e['dn']):
-                        if dne[0] == 'inum':
-                            oxAuthUserId =  dne[1]
-                            self.conn.modify(
-                                    e['dn'], 
-                                    {'oxAuthUserId': [ldap3.MODIFY_ADD, oxAuthUserId]}
-                                    )
-
-        else:
-            result = self.cbm.exec_query('SELECT META().id AS docid, * from `{}_user` WHERE `objectClass`="pairwiseIdentifier"'.format(self.setupObj.couchbase_bucket_prefix))
-            if result.ok:
-                data = result.json()
-                if data.get('results'):
-                    print("Populating oxAuthUserId for pairwiseIdentifier entries. Number of entries: {}".format(len(data['results'])))
-                    for user_entry in data['results']:
-                        doc = user_entry.get(self.setupObj.couchbase_bucket_prefix+'_user')
-                        if doc and not 'oxAuthUserId' in doc:
-                            dn = doc['dn']
-                            for dnr in dnutils.parse_dn(dn):
-                                if dnr[0] == 'inum':
-                                    n1ql = 'UPDATE `{}_user` USE KEYS "{}" SET `oxAuthUserId`="{}"'.format(self.setupObj.couchbase_bucket_prefix, user_entry['docid'], dnr[1])
-                                    self.cbm.exec_query(n1ql)
-                                    break
+        data = self.gluuInstaller.dbUtils.search('ou=people,o=gluu', search_filter='(objectClass=pairwiseIdentifier)', search_scope=ldap3.SUBTREE, fetchmany=True)
+        if data:
+            print("Adding oxAuthUserId to pairwiseIdentifier.")
+            print("This may take several minutes depending on your user number")
+            total_number = len(data)
+            for i, pdata in enumerate(data):
+                entry = pdata[1]
+                print("Processing {} of {} : {}".format(i+1, total_number, entry['dn']))
+                if not 'oxAuthUserId' in entry:
+                    for dne in dnutils.parse_dn(entry['dn']):
+                            if dne[0] == 'inum':
+                                oxAuthUserId =  dne[1]
+                                self.gluuInstaller.dbUtils.set_configuration('oxAuthUserId', oxAuthUserId, entry['dn'])
+                                break
 
     def fix_fido2(self):
 
@@ -1783,11 +1759,12 @@ updaterObj.download_ces()
 #updaterObj.update_apache_conf()
 #updaterObj.update_passport()
 #updaterObj.update_radius()
-updaterObj.update_casa()
-updaterObj.update_oxd()
+#updaterObj.update_casa()
+#updaterObj.update_oxd()
+updaterObj.add_oxAuthUserId_pairwiseIdentifier()
 
 """
-updaterObj.add_oxAuthUserId_pairwiseIdentifier()
+
 updaterObj.fix_fido2()
 updaterObj.update_shib()
 updaterObj.setupObj.deleteLdapPw()
