@@ -318,6 +318,7 @@ class GluuUpdater:
         self.myLdifParser = myLdifParser
         self.myLdifWriter = LDIFWriter
         self.BackendTypes = BackendTypes
+        self.paths = paths
 
         """
         global Properties
@@ -901,7 +902,7 @@ class GluuUpdater:
         if os.path.exists('/opt/gluu/node/passport'):
             downloads += [
                     ('https://ox.gluu.org/npm/passport/passport-{}.tgz'.format(self.up_version), os.path.join(self.app_dir, 'passport.tgz')),
-                    ('https://ox.gluu.org/npm/passport/passport-version_{}-node_modules.tar.gz'.format(self.up_version), os.path.join(self.app_dir, 'passport-node_modules.tar.gz')),
+                    ('https://ox.gluu.org/npm/passport/passport-version_{}-node_modules.tar.gz'.format(self.up_version), os.path.join(self.app_dir, 'passport-version_{}-node_modules.tar.gz'.format(self.up_version))),
                     ]
 
         if os.path.exists('/opt/gluu/radius'):
@@ -1540,10 +1541,10 @@ class GluuUpdater:
         self.setupObj.oxd_server_https = 'https://{}:{}'.format(oxConfApplication['oxd_config']['host'], oxConfApplication['oxd_config']['port'])
 
     def update_passport(self):
-
         if not self.passportInstaller.installed():
             return
 
+        print("Updating Passport Configuration")
         data = self.passportInstaller.dbUtils.dn_exists('ou=oxpassport,ou=configuration,o=gluu')
 
         if data and 'gluuPassportConfiguration' in data:
@@ -1571,42 +1572,37 @@ class GluuUpdater:
 
                         provider['options']['token_endpoint_auth_method'] = 'client_secret_post'
 
-                        print(provider)
-                        print("-"*20)
-
             self.passportInstaller.dbUtils.set_configuration('gluuPassportConfiguration', json.dumps(js_data), dn='ou=oxpassport,ou=configuration,o=gluu')
 
-        return
-
-        backup_folder = self.setupObj.gluu_passport_base + '_' + self.backup_time
-
-        self.setupObj.run(['mv', self.setupObj.gluu_passport_base, backup_folder])
-
-        print("Updating Passport")
-        
+        backup_folder = self.passportInstaller.gluu_passport_base + '_' + self.backup_time
         print("Stopping passport server")
-        
-        self.setupObj.run_service_command('passport', 'stop')
+        self.passportInstaller.stop()
+        self.passportInstaller.run(['mv', self.passportInstaller.gluu_passport_base, backup_folder])
+        print("Updating Passport")
 
-        self.setupObj.run(['mkdir', '-p', self.setupObj.gluu_passport_base])
+        for passport_file in glob.glob(os.path.join(self.Config.distGluuFolder, 'passport*node_modules.tar.gz')):
+            if os.path.isfile(passport_file):
+                print("Deleting", passport_file)
+                self.gluuInstaller.run(['rm', '-r', '-f', passport_file])
 
-        print("Extracting passport.tgz into " + self.setupObj.gluu_passport_base) 
-        self.setupObj.run(['tar', '--strip', '1', '-xzf', os.path.join(cur_dir, 'app', 'passport.tgz'),
-                         '-C', '/opt/gluu/node/passport', '--no-xattrs', '--no-same-owner', '--no-same-permissions'])
-    
-        print("Extracting passport node modules")
-        modules_dir = os.path.join(self.setupObj.gluu_passport_base, 'node_modules')
+        old_passport_file = os.path.join(self.Config.distGluuFolder, 'passport.tgz')
+        if os.path.isfile(old_passport_file):
+                print("Deleting", old_passport_file)
+                self.gluuInstaller.run(['rm', '-r', '-f', old_passport_file])
 
-        if not os.path.exists(modules_dir):
-            self.setupObj.run(['mkdir', '-p', modules_dir])
+        self.gluuInstaller.copyFile(
+                os.path.join(self.app_dir, 'passport.tgz'), 
+                self.Config.distGluuFolder
+                )
 
-        self.setupObj.run(['tar', '--strip', '1', '-xzf', os.path.join(cur_dir, 'app', 'passport-node_modules.tar.gz'),
-                         '-C', modules_dir, '--no-xattrs', '--no-same-owner', '--no-same-permissions'])
+        self.gluuInstaller.copyFile(
+                os.path.join(self.app_dir, 'passport-version_{}-node_modules.tar.gz'.format(self.up_version)),
+                self.Config.distGluuFolder
+                )
 
-        log_dir = '/opt/gluu/node/passport/server/logs'
-
-        if not os.path.exists(log_dir): 
-            self.setupObj.run(['mkdir',log_dir])
+        self.passportInstaller.create_folders()
+        self.passportInstaller.extract_passport()
+        self.passportInstaller.extract_modules()
 
         # copy mappings
         for m_path in glob.glob(os.path.join(backup_folder, 'server/mappings/*.js')):
@@ -1614,14 +1610,10 @@ class GluuUpdater:
                 fc = f.read()
                 if re.search('profile["[\s\S]*"]', fc):
                     mfn = os.path.basename(m_path)
-                    if not os.path.exists(os.path.join(self.setupObj.gluu_passport_base, 'server/mappings', mfn)):
-                        self.setupObj.copyFile(m_path, os.path.join(self.setupObj.gluu_passport_base, 'server/mappings'))
+                    if not os.path.exists(os.path.join(self.passportInstaller.gluu_passport_base, 'server/mappings', mfn)):
+                        self.passportInstaller.copyFile(m_path, os.path.join(self.passportInstaller.gluu_passport_base, 'server/mappings'))
 
-        #create empty log file
-        log_file = os.path.join(log_dir, 'start.log')
-        open(log_file,'w').close()
-
-        self.setupObj.run(['chown', '-R', 'node:node', '/opt/gluu/node/passport/'])
+        self.passportInstaller.run([self.paths.cmd_chown, '-R', 'node:node', self.passportInstaller.gluu_passport_base])
 
 
     def add_oxAuthUserId_pairwiseIdentifier(self):
@@ -1834,12 +1826,12 @@ updaterObj.download_ces()
 
 #updaterObj.update_scripts()
 
-updaterObj.update_apache_conf()
+#updaterObj.update_apache_conf()
+updaterObj.update_passport()
 
 
 """
 
-updaterObj.update_passport()
 updaterObj.update_radius()
 updaterObj.update_casa()
 updaterObj.update_oxd()
