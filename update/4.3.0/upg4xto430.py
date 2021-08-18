@@ -1364,39 +1364,39 @@ class GluuUpdater:
             self.setupObj.run_service_command('oxd-server', 'stop')
             self.setupObj.run_service_command('oxd-server', 'start')
             time.sleep(5)
-            print("Importing oxd certificate to cacerts")        
+            print("Importing oxd certificate to cacerts")
             self.setupObj.import_oxd_certificate()
 
     def update_casa(self):
-        
-        if not os.path.exists(self.casa_base_dir):
+
+        if not self.casaInstaller.installed():
             return
 
         print("Updating casa")
         casa_config_dn = 'ou=casa,ou=configuration,o=gluu'
         casa_config_json = {}
-        casa_cors_domains_fn = os.path.join(self.casa_base_dir, 'casa-cors-domains')
-        casa_config_json_fn = os.path.join(self.setupObj.configFolder, 'casa.json')
+        casa_cors_domains_fn = os.path.join(self.casaInstaller.casa_jetty_dir, 'casa-cors-domains')
+        casa_config_json_fn = os.path.join(self.Config.configFolder, 'casa.json')
 
         if os.path.exists(casa_config_json_fn):
-            casa_config_json_s = self.setupObj.readFile(casa_config_json_fn)
+            casa_config_json_s = self.casaInstaller.readFile(casa_config_json_fn)
             casa_config_json = json.loads(casa_config_json_s)
 
             if os.path.exists(casa_cors_domains_fn):
-                casa_cors_domains = self.setupObj.readFile(casa_cors_domains_fn)
+                casa_cors_domains = self.casaInstaller.readFile(casa_cors_domains_fn)
                 casa_cors_domains_list = [l.strip() for l in casa_cors_domains.splitlines()]
                 casa_config_json['allowed_cors_domains'] = casa_cors_domains_list
 
-        casa_plugins_dir = os.path.join(self.casa_base_dir, 'plugins')
-        self.setupObj.run_service_command('casa', 'stop')
-        
-        self.setupObj.copyFile(
+        casa_plugins_dir = os.path.join(self.casaInstaller.casa_jetty_dir, 'plugins')
+        self.casaInstaller.run_service_command('casa', 'stop')
+
+        self.casaInstaller.copyFile(
                         os.path.join(self.app_dir, 'casa.war'),
-                        os.path.join(self.casa_base_dir, 'webapps')
+                        os.path.join(self.casaInstaller.casa_jetty_dir, 'webapps')
                         )
 
         account_linking = None
-        
+
         # update plugins
         for plugin in glob.glob(os.path.join(casa_plugins_dir,'*.jar')):
             plugin_zip = zipfile.ZipFile(plugin, "r")
@@ -1408,26 +1408,23 @@ class GluuUpdater:
                     pid = ls[n+1:].strip()
                     if pid in self.casa_plugins:
                         jar_fn = os.path.join(self.app_dir, pid + '.jar')
-                        self.setupObj.run(['rm', '-f', plugin])
-                        self.setupObj.copyFile(jar_fn, casa_plugins_dir)
+                        self.casaInstaller.run(['rm', '-f', plugin])
+                        self.casaInstaller.copyFile(jar_fn, casa_plugins_dir)
                     if pid == 'account-linking':
                         account_linking = True
 
         if account_linking:
-            self.setupObj.copyFile(
+            self.casaInstaller.copyFile(
                     os.path.join(self.app_dir, 'login.xhtml'),
-                    os.path.join(self.setupObj.jetty_base, 'oxauth/custom/pages')
+                    os.path.join(self.Config.jetty_base, 'oxauth/custom/pages')
                     )
-            
-            scr = self.setupObj.readFile(os.path.join(self.app_dir, 'casa.py'))
 
-            if self.default_storage == 'couchbase':
-                result = self.cbm.exec_query('UPDATE `{}` USE KEYS "scripts_BABA-CACA" SET oxScript={}'.format(self.setupObj.couchbase_bucket_prefix, json.dumps(scr)))
-            elif self.default_storage == 'ldap':
-                self.conn.modify(
-                        'inum=BABA-CACA,ou=scripts,o=gluu', 
-                        {'oxScript':  [ldap3.MODIFY_REPLACE, scr]}
-                        )
+            scr = self.casaInstaller.readFile(os.path.join(self.app_dir, 'casa.py'))
+
+            al_dn = 'inum=BABA-CACA,ou=scripts,o=gluu'
+
+
+            self.casaInstaller.dbUtils.set_configuration('oxScript', scr, dn=al_dn)
 
             if casa_config_json:
                 casa_config_json['basic_2fa_settings'] = {
@@ -1447,47 +1444,24 @@ class GluuUpdater:
         if casa_config_json:
 
             casa_config_json_s = json.dumps(casa_config_json, indent=2)
-
-            if self.default_storage == 'ldap':
-
-                
-                self.conn.search(
-                                search_base=casa_config_dn,
-                                search_scope=ldap3.BASE, 
-                                search_filter='(objectClass=oxApplicationConfiguration)', 
-                                attributes=['oxConfApplication']
-                                )
+            print("Updating database for casa")
+            if self.casaInstaller.dbUtils.dn_exists(casa_config_dn):
+                self.casaInstaller.dbUtils.set_configuration('oxConfApplication', casa_config_json_s, dn=casa_config_dn)
+            else:
 
                 entry = {'objectClass': ['top', 'oxApplicationConfiguration'], 'ou': ['casa'], 'oxConfApplication': casa_config_json_s}
+                self.unparse_import([(casa_config_dn, entry)])
 
-                if not self.conn.response:
-                    print("Importing casa configuration ldif")
-                    self.conn.add(casa_config_dn, attributes=entry)
-                else:
-                    print("Modifying casa configuration ldif")
-                    self.conn.modify(
-                            casa_config_dn, 
-                            {'oxConfApplication':  [ldap3.MODIFY_REPLACE, casa_config_json_s]}
-                            )
+            self.casaInstaller.backupFile(casa_config_json_fn)
 
-            else:
-                k = 'configuration_casa'
-                doc = {'objectClass': 'oxApplicationConfiguration', 'ou': 'casa', 'oxConfApplication': casa_config_json}
-                print("Upserting casa configuration document")
-                n1ql = 'UPSERT INTO `%s` (KEY, VALUE) VALUES ("%s", %s)' % (self.setupObj.couchbase_bucket_prefix, k, json.dumps(doc))
-                self.cbm.exec_query(n1ql)
-
-            self.setupObj.backupFile(casa_config_json_fn)
-            #self.setupObj.run(['rm', '-f', casa_config_json_fn])
-        
-        pylib_dir = os.path.join(self.setupObj.gluuOptPythonFolder, 'libs')
+        pylib_dir = os.path.join(self.Config.gluuOptPythonFolder, 'libs')
         libdir_base_url = 'https://raw.githubusercontent.com/GluuFederation/community-edition-setup/version_{}/static/casa/scripts'.format(self.up_version)
         for casa_lib in glob.glob(os.path.join(pylib_dir, 'casa-external*.py')):
             casa_lib_fn = os.path.basename(casa_lib)
             try:
                 response = urllib.request.urlopen(os.path.join('https://raw.githubusercontent.com/GluuFederation/community-edition-setup/version_{}/static/casa/scripts'.format(self.up_version), casa_lib_fn))
                 if response.code == 200:
-                    self.setupObj.backupFile(casa_lib)
+                    self.casaInstaller.backupFile(casa_lib)
                     print ("Updating", casa_lib)
                     target_fn = os.path.join(pylib_dir, casa_lib_fn)
                     scr = response.read()
@@ -1496,55 +1470,33 @@ class GluuUpdater:
                         w.write(scr)
             except Exception as e:
                 print ("ERROR Updating", casa_lib_fn)
-                self.setupObj.logIt("ERROR Updating " + casa_lib_fn, True)
-                self.setupObj.logIt(str(e), True)
+                self.casaInstaller.logIt("ERROR Updating " + casa_lib_fn, True)
+                self.casaInstaller.logIt(str(e), True)
 
-        def fix_oxConfApplication(oxConfApplication):
-            if not oxConfApplication.get('oxd_config'):
-                oxConfApplication['oxd_config'] = {}
-                
-            oxConfApplication['oxd_config']['authz_redirect_uri'] = 'https://{}/casa'.format(self.setup_prop['hostname'])
-            oxConfApplication['oxd_config']['frontchannel_logout_uri'] = 'https://{}/casa/autologout'.format(self.setup_prop['hostname'])
-            oxConfApplication['oxd_config']['post_logout_uri'] = 'https://{}/casa/bye.zul'.format(self.setup_prop['hostname'])
+        data = self.casaInstaller.dbUtils.dn_exists(casa_config_dn)
+        oxConfApplication = json.loads(data['oxConfApplication'])
 
+        if not oxConfApplication.get('oxd_config'):
+            oxConfApplication['oxd_config'] = {}
             
-            if not oxConfApplication['oxd_config'].get('port'):
-                oxConfApplication['oxd_config']['port'] = 8443
-            if not oxConfApplication['oxd_config'].get('host'):
-                oxConfApplication['oxd_config']['host'] = self.setup_prop['hostname']
+        oxConfApplication['oxd_config']['authz_redirect_uri'] = 'https://{}/casa'.format(self.Config.hostname)
+        oxConfApplication['oxd_config']['frontchannel_logout_uri'] = 'https://{}/casa/autologout'.format(self.Config.hostname)
+        oxConfApplication['oxd_config']['post_logout_uri'] = 'https://{}/casa/bye.zul'.format(self.Config.hostname)
 
+        if not oxConfApplication['oxd_config'].get('port'):
+            oxConfApplication['oxd_config']['port'] = 8443
+        if not oxConfApplication['oxd_config'].get('host'):
+            oxConfApplication['oxd_config']['host'] = self.Config.get('oxd_hostname', self.Config.hostname)
 
-        if self.default_storage == 'ldap':
-            self.conn.search(
-                    search_base=casa_config_dn,
-                    search_scope=ldap3.BASE,
-                    search_filter='(objectclass=*)', attributes=['oxConfApplication']
-                )
+        if not 'protocol' in oxConfApplication['oxd_config']:
+            oxConfApplication['oxd_config']['protocol'] = 'https'
 
-            result = self.conn.response
+        if oxConfApplication.get('plugins_settings', {}).get('strong-authn-settings', {}).get('basic_2fa_settings'):
+            oxConfApplication['plugins_settings']['strong-authn-settings']['basic_2fa_settings']['allowSelectPreferred'] = False
 
-            if result:
-                oxConfApplication = json.loads(result[0]['attributes']['oxConfApplication'][0])
-                fix_oxConfApplication(oxConfApplication)
-                self.conn.modify(
-                        casa_config_dn, 
-                        {'oxConfApplication':  [ldap3.MODIFY_REPLACE, json.dumps(oxConfApplication)]}
-                        )
+        self.casaInstaller.dbUtils.set_configuration('oxConfApplication', json.dumps(oxConfApplication, indent=2), casa_config_dn)
 
-                self.casa_oxd_host = oxConfApplication['oxd_config']['host']
-
-        else:
-            result = self.cbm.exec_query('SELECT oxConfApplication FROM `{}` USE KEYS "configuration_casa"'.format(self.setupObj.couchbase_bucket_prefix))
-            if result.ok:
-                data = result.json()
-                oxConfApplication = data['results'][0]['oxConfApplication']
-                self.casa_oxd_host = oxConfApplication['oxd_config']['host']
-                fix_oxConfApplication(oxConfApplication)
-                n1ql = 'UPDATE `{}` USE KEYS "configuration_casa" SET {}.oxConfApplication={}'.format(self.setupObj.couchbase_bucket_prefix, self.setupObj.couchbase_bucket_prefix, json.dumps(oxConfApplication))
-                print("Executing", n1ql)
-                self.cbm.exec_query(n1ql)
-
-        self.setupObj.oxd_server_https = 'https://{}:{}'.format(oxConfApplication['oxd_config']['host'], oxConfApplication['oxd_config']['port'])
+        self.Config.oxd_server_https = 'https://{}:{}'.format(oxConfApplication['oxd_config']['host'], oxConfApplication['oxd_config']['port'])
 
     def update_passport(self):
         if not self.passportInstaller.installed():
@@ -1834,12 +1786,11 @@ updaterObj.download_ces()
 
 #updaterObj.update_apache_conf()
 #updaterObj.update_passport()
-updaterObj.update_radius()
-
-
-"""
+#updaterObj.update_radius()
 
 updaterObj.update_casa()
+
+"""
 updaterObj.update_oxd()
 updaterObj.add_oxAuthUserId_pairwiseIdentifier()
 updaterObj.fix_fido2()
