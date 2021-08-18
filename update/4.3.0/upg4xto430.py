@@ -1171,47 +1171,10 @@ class GluuUpdater:
         if new_scripts:
             self.unparse_import(new_scripts)
 
-
-    def update_scripts_couchbase(self, entries):
-        for dn, entry in self.parser.entries:
-            scr_key = 'scripts_{}'.format(entry['inum'][0])
-            print("Updating script:", scr_key)
-            result = self.cbm.exec_query('UPDATE `{}` USE KEYS "{}" SET oxScript={}'.format(self.setupObj.couchbase_bucket_prefix, scr_key, json.dumps(entry['oxScript'][0])))
-            result_data = result.json()
-            print("Result", result_data['status'])
- 
-    def update_scripts_ldap(self, entries):
-        for dn, entry in entries:
-            print("Updating script", dn)
-            if 1:
-            #try:
-                self.gluuInstaller.dbUtils.ldap_conn.modify(
-                    dn, 
-                    {'oxScript': [ldap3.MODIFY_REPLACE, entry['oxScript'][0]]}
-                    )
-            #except Exception as e:
-            #    self.gluuInstaller.dbUtils.ldap_conn.add(dn, attributes=entry)
-
     def update_apache_conf(self):
         print("Updating Apache Configuration")
-
-        self.setupObj.outputFolder = os.path.join(self.ces_dir, 'output')
-        self.setupObj.templateFolder = os.path.join(self.ces_dir, 'templates')
-
-        self.setupObj.apache2_conf = os.path.join(self.ces_dir, 'output', os.path.basename(self.setupObj.apache2_conf))
-        self.setupObj.apache2_ssl_conf = os.path.join(self.ces_dir, 'output', os.path.basename(self.setupObj.apache2_ssl_conf))
-        self.setupObj.apache2_24_conf = os.path.join(self.ces_dir, 'output', os.path.basename(self.setupObj.apache2_24_conf))
-        self.setupObj.apache2_ssl_24_conf = os.path.join(self.ces_dir, 'output', os.path.basename(self.setupObj.apache2_ssl_24_conf))
-
-        apache_templates = {
-                             self.setupObj.apache2_conf: False,
-                             self.setupObj.apache2_ssl_conf: False,
-                             self.setupObj.apache2_24_conf: False,
-                             self.setupObj.apache2_ssl_24_conf: False,
-                            }
-
-        self.setupObj.render_templates(apache_templates)
-        self.setupObj.configure_httpd()
+        self.httpdinstaller.configure()
+        self.httpdinstaller.write_httpd_config()
 
     def render_template(self, tmp_file):
 
@@ -1869,11 +1832,13 @@ updaterObj.download_ces()
 #updaterObj.update_persistence_data()
 #updaterObj.update_war_files()
 
-updaterObj.update_scripts()
+#updaterObj.update_scripts()
+
+updaterObj.update_apache_conf()
 
 
 """
-updaterObj.update_apache_conf()
+
 updaterObj.update_passport()
 updaterObj.update_radius()
 updaterObj.update_casa()
