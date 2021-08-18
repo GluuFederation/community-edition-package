@@ -1093,10 +1093,11 @@ class GluuUpdater:
 
 
     def update_war_files(self):
-        for service in self.setupObj.jetty_app_configuration:
-            service_webapps_dir = os.path.join(self.setupObj.jetty_base, service, 'webapps')
+        for service in self.jettyInstaller.jetty_app_configuration:
+            service_webapps_dir = os.path.join(self.Config.jetty_base, service, 'webapps')
             if os.path.exists(service_webapps_dir):
-                self.setupObj.copyFile(
+                print("Updating Gluu jetty war file: {}.war".format(service))
+                self.gluuInstaller.copyFile(
                             os.path.join(self.app_dir, service+'.war'),
                             service_webapps_dir
                             )
@@ -1848,7 +1849,7 @@ updaterObj.prepare_persist_changes()
 #updaterObj.update_opendj()
 
 #updaterObj.update_jython()
-updaterObj.update_jetty()
+#updaterObj.update_jetty()
 
 #updaterObj.update_node()
 
@@ -1858,12 +1859,9 @@ updaterObj.update_jetty()
 #updaterObj.fix_gluu_config()
 
 #updaterObj.update_persistence_data()
+updaterObj.update_war_files()
 
 """
-
-
-
-updaterObj.update_war_files()
 updaterObj.update_scripts()
 updaterObj.update_apache_conf()
 updaterObj.update_shib()
