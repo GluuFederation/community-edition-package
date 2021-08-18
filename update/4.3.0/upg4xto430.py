@@ -1250,22 +1250,28 @@ class GluuUpdater:
 
     def update_radius(self):
 
-        radius_dir = '/opt/gluu/radius'
+        radius_dir = self.radiusInstaller.radius_dir
+        radius_libs_dir = os.path.join(radius_dir, 'libs')
+
         if not os.path.exists(radius_dir):
             return
 
         print("Updating Gluu Radius Server")
-        
-        self.setupObj.copyFile(os.path.join(self.ces_dir, 'static/radius/etc/init.d/gluu-radius'), '/etc/init.d')
-        self.setupObj.run(['chmod', '+x', '/etc/init.d/gluu-radius'])
+
+        self.gluuInstaller.copyFile(os.path.join(self.ces_dir, 'static/radius/etc/init.d/gluu-radius'), '/etc/init.d')
+        self.gluuInstaller.run(['chmod', '+x', '/etc/init.d/gluu-radius'])
+
+        backup_folder = radius_libs_dir + '_' + self.backup_time
+
+        self.gluuInstaller.run(['mv', radius_libs_dir, backup_folder])
 
         radius_libs = os.path.join(self.app_dir, 'gluu-radius-libs.zip')
         radius_jar = os.path.join(self.app_dir, 'super-gluu-radius-server.jar')
 
-        self.setupObj.run(['unzip', '-o', '-q', radius_libs, '-d', radius_dir ])
-        self.setupObj.copyFile(radius_jar, radius_dir)
+        self.gluuInstaller.run(['unzip', '-o', '-q', radius_libs, '-d', radius_dir ])
+        self.gluuInstaller.copyFile(radius_jar, radius_dir)
 
-        self.setupObj.copyFile(os.path.join(self.ces_dir, 'static/radius/etc/default/gluu-radius'), self.setupObj.osDefault)
+        self.gluuInstaller.copyFile(os.path.join(self.ces_dir, 'static/radius/etc/default/gluu-radius'), self.Config.osDefault)
 
 
     def update_oxd(self):
@@ -1827,12 +1833,12 @@ updaterObj.download_ces()
 #updaterObj.update_scripts()
 
 #updaterObj.update_apache_conf()
-updaterObj.update_passport()
+#updaterObj.update_passport()
+updaterObj.update_radius()
 
 
 """
 
-updaterObj.update_radius()
 updaterObj.update_casa()
 updaterObj.update_oxd()
 updaterObj.add_oxAuthUserId_pairwiseIdentifier()
