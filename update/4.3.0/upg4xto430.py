@@ -547,8 +547,7 @@ class GluuUpdater:
 
         if self.gluuInstaller.dbUtils.moddb == self.BackendTypes.LDAP:
            self.update_ldap()
-
-        if self.gluuInstaller.dbUtils.moddb == self.BackendTypes.COUCHBASE:
+        elif self.gluuInstaller.dbUtils.moddb == self.BackendTypes.COUCHBASE:
            self.update_couchbase()
 
         for config_element, config_dn in self.persist_changes:
@@ -1134,31 +1133,46 @@ class GluuUpdater:
 
     def update_scripts(self):
         print("Updating Scripts")
-        if os.path.exists(self.setupObj.gluu_passport_base):
-            self.setupObj.enable_scim_access_policy = 'true'
+        self.Config.enable_scim_access_policy = 'true' if self.passportInstaller.installed() else 'false'
 
-        self.setupObj.prepare_base64_extension_scripts()
-        self.setupObj.renderTemplate(self.setupObj.ldif_scripts)
-        ldif_scripts_fn = os.path.join(self.setupObj.outputFolder, os.path.basename(self.setupObj.ldif_scripts))
-        self.setupObj.logIt("Parsing", ldif_scripts_fn)
+
+        self.gluuInstaller.prepare_base64_extension_scripts()
+
+        self.gluuInstaller.renderTemplate(self.oxtrustInstaller.ldif_scripts)
+
+        ldif_scripts_fn = os.path.join(self.Config.outputFolder, os.path.basename(self.oxtrustInstaller.ldif_scripts))
+        self.passportInstaller.logIt("Parsing", ldif_scripts_fn)
         print("Parsing", ldif_scripts_fn)
-        self.parser = self.myLdifParser(ldif_scripts_fn)
-        self.parser.parse()
 
-        if os.path.exists(self.casa_base_dir):
-            self.setupObj.renderTemplate(self.setupObj.ldif_scripts_casa)
-            ldif_casa_scripts_fn = os.path.join(self.setupObj.outputFolder, os.path.basename(self.setupObj.ldif_scripts_casa))
-            self.setupObj.logIt("Parsing", ldif_casa_scripts_fn)
-            print("Parsing", ldif_casa_scripts_fn)
-            casa_scripts_parser = self.myLdifParser(ldif_casa_scripts_fn)
+        parser = self.myLdifParser(ldif_scripts_fn)
+        parser.parse()
+
+        if self.casaInstaller.installed():
+            print("Rendering Casa scripts")
+            self.casaInstaller.render_import_templates(import_script=False)
+            self.gluuInstaller.renderTemplate(self.casaInstaller.ldif_scripts)
+            self.gluuInstaller.logIt("Parsing", self.casaInstaller.ldif_scripts)
+            print("Parsing", self.casaInstaller.ldif_scripts)
+            casa_scripts_parser = self.myLdifParser(self.casaInstaller.ldif_scripts)
             casa_scripts_parser.parse()
             for e in casa_scripts_parser.entries:
                 print("Adding casa script", e[0])
-                self.parser.entries.append(e)
+                parser.entries.append(e)
 
-        getattr(self, 'update_scripts_' + self.default_storage)()
+        new_scripts = []
 
-    def update_scripts_couchbase(self):
+        for dn, entry in parser.entries:
+            if self.gluuInstaller.dbUtils.dn_exists(dn):
+                print("Updating script", dn)
+                self.gluuInstaller.dbUtils.set_configuration('oxScript', entry['oxScript'][0], dn=dn)
+            else:
+                new_scripts.append((dn, entry))
+
+        if new_scripts:
+            self.unparse_import(new_scripts)
+
+
+    def update_scripts_couchbase(self, entries):
         for dn, entry in self.parser.entries:
             scr_key = 'scripts_{}'.format(entry['inum'][0])
             print("Updating script:", scr_key)
@@ -1166,17 +1180,17 @@ class GluuUpdater:
             result_data = result.json()
             print("Result", result_data['status'])
  
-    def update_scripts_ldap(self):
-        self.db_connection_ldap()
-        for dn, entry in self.parser.entries:
+    def update_scripts_ldap(self, entries):
+        for dn, entry in entries:
             print("Updating script", dn)
-            try:
-                self.conn.modify(
+            if 1:
+            #try:
+                self.gluuInstaller.dbUtils.ldap_conn.modify(
                     dn, 
                     {'oxScript': [ldap3.MODIFY_REPLACE, entry['oxScript'][0]]}
                     )
-            except Exception as e:
-                self.conn.add(dn, attributes=entry)
+            #except Exception as e:
+            #    self.gluuInstaller.dbUtils.ldap_conn.add(dn, attributes=entry)
 
     def update_apache_conf(self):
         print("Updating Apache Configuration")
@@ -1776,7 +1790,6 @@ class GluuUpdater:
                 perms.append('user_permission')
                 self.gluuInstaller.dbUtils.set_configuration('oxAuthClaimName', perms, dn)
 
-
         new_attributes = []
 
         for dn, entry in attributes_ldif.entries:
@@ -1785,16 +1798,19 @@ class GluuUpdater:
 
         if new_attributes:
             print("Updating attributes")
-            attributes_ldif_fn = '/tmp/new_attributes_{}.ldif'.format(os.urandom(4).hex())
-            with open(attributes_ldif_fn, 'wb') as w:
-                ldif_attributes_writer = self.myLdifWriter(w, cols=1000)
-                for dn, endtry in new_attributes:
-                    print("Preparing attribute", dn)
-                    ldif_attributes_writer.unparse(dn, endtry)
-            print("Writing attributes to database")
-            self.gluuInstaller.dbUtils.import_ldif([attributes_ldif_fn])
-            os.remove(attributes_ldif_fn)
+            self.unparse_import(new_attributes)
 
+
+    def unparse_import(self, entries):
+        ldif_fn = '/tmp/gluu_updater_{}.ldif'.format(os.urandom(4).hex())
+        with open(ldif_fn, 'wb') as w:
+            ldif_writer = self.myLdifWriter(w, cols=1000)
+            for dn, endtry in entries:
+                print("Preparing", dn)
+                ldif_writer.unparse(dn, endtry)
+        print("Writing {} to database".format(dn))
+        self.gluuInstaller.dbUtils.import_ldif([ldif_fn])
+        os.remove(ldif_fn)
 
 
     def update_scopes(self):
@@ -1811,15 +1827,7 @@ class GluuUpdater:
 
         if new_scopes:
             print("Updating scopes")
-            scope_ldif_fn = '/tmp/new_scopes_{}.ldif'.format(os.urandom(4).hex())
-            with open(scope_ldif_fn, 'wb') as w:
-                ldif_scopes_writer = self.myLdifWriter(w, cols=1000)
-                for dn, endtry in new_scopes:
-                    print("Preparing scope", dn)
-                    ldif_scopes_writer.unparse(dn, endtry)
-            print("Writing scopes to database")
-            self.gluuInstaller.dbUtils.import_ldif([scope_ldif_fn])
-            os.remove(scope_ldif_fn)
+            self.unparse_import(new_scopes)
 
     def update_default_settings(self):
         print("Updating /etc/default files")
@@ -1832,10 +1840,10 @@ class GluuUpdater:
 
 updaterObj = GluuUpdater()
 #updaterObj.download_sqlalchemy()
-updaterObj.download_gcs()
+#updaterObj.download_gcs()
 updaterObj.download_ces()
 
-updaterObj.prepare_persist_changes()
+#updaterObj.prepare_persist_changes()
 #updaterObj.download_apps()
 
 
@@ -1859,24 +1867,25 @@ updaterObj.prepare_persist_changes()
 #updaterObj.fix_gluu_config()
 
 #updaterObj.update_persistence_data()
-updaterObj.update_war_files()
+#updaterObj.update_war_files()
 
-"""
 updaterObj.update_scripts()
-updaterObj.update_apache_conf()
-updaterObj.update_shib()
+
+
 """
-
+updaterObj.update_apache_conf()
 updaterObj.update_passport()
-sys.exit()
-
 updaterObj.update_radius()
 updaterObj.update_casa()
 updaterObj.update_oxd()
 updaterObj.add_oxAuthUserId_pairwiseIdentifier()
 updaterObj.fix_fido2()
-
+updaterObj.update_shib()
 updaterObj.setupObj.deleteLdapPw()
+"""
+
+sys.exit()
+
 
 print()
 for msg in updaterObj.postmessages:
