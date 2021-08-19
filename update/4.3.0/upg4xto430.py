@@ -162,7 +162,7 @@ class GluuUpdater:
         self.corretto_version = '11.0.12.7.1'
         self.jython_version = '2.7.2'
         self.jetty_version = '9.4.43.v20210629'
-        self.opendj_version = '4.4.10'
+        self.opendj_version = '4.4.11'
         self.node_version = 'v14.16.1'
 
         self.casa_plugins = {
@@ -203,23 +203,36 @@ class GluuUpdater:
             ces_url = 'https://github.com/GluuFederation/community-edition-setup/archive/version_{}.zip'.format(self.up_version)
 
             print("Downloading Community Edition Setup {}".format(self.up_version))
-            target_fn = os.path.join(cur_dir, 'version_{}.zip'.format(self.up_version))
-
-            os.system('wget -q {} -O {}'.format(ces_url, target_fn))
             
+            target_fn = os.path.join(self.app_dir, 'version_{}.zip'.format(self.up_version))
+            self.download(ces_url, target_fn)
+            ces_tmp_dir = '/tmp/ces_{}'.format(os.urandom(4).hex())
             #determine path
             ces_zip = zipfile.ZipFile(target_fn, "r")
             ces_zip_path = ces_zip.namelist()[0]
 
             print("Extracting CES package")
-            os.system('unzip -o -qq {}'.format(target_fn))
-            extracted_path = os.path.join(cur_dir, ces_zip_path)
-            os.system('mv {} {}'.format(extracted_path, self.ces_dir))
-            os.system('wget -nv https://raw.githubusercontent.com/GluuFederation/community-edition-setup/master/pylib/generate_properties.py -O {}'.format(os.path.join(self.ces_dir, 'pylib', 'generate_properties.py')))
-            os.system('rm ' + target_fn)
+            ces_zip.extractall(ces_tmp_dir)
+            extracted_path = os.path.join(ces_tmp_dir, ces_zip_path)
+            shutil.copytree(extracted_path, os.path.join(cur_dir, 'ces_current'))
+            shutil.rmtree(ces_tmp_dir)
 
-        open(os.path.join(self.ces_dir, '__init__.py'),'w').close()
-        sys.path.append('ces_current')
+            print("Downloading sqlalchemy")
+            target_dir = os.path.join(self.ces_dir, 'setup_app/pylib/sqlalchemy')
+            self.download('https://github.com/sqlalchemy/sqlalchemy/archive/rel_1_3_23.zip', os.path.join(self.app_dir, 'sqlalchemy.zip'))
+            sqlalchemy_zfn = os.path.join(self.app_dir, 'sqlalchemy.zip')
+            sqlalchemy_zip = zipfile.ZipFile(sqlalchemy_zfn, "r")
+            sqlalchemy_par_dir = sqlalchemy_zip.namelist()[0]
+            tmp_dir = '/tmp/sqla_{}'.format(os.urandom(4).hex())
+            sqlalchemy_zip.extractall(tmp_dir)
+            shutil.copytree(
+                    os.path.join(tmp_dir, sqlalchemy_par_dir, 'lib/sqlalchemy'), 
+                    target_dir
+                    )
+            shutil.rmtree(tmp_dir)
+
+        open(os.path.join(self.ces_dir, '__init__.py'), 'w').close()
+        sys.path.append(os.path.join(cur_dir, 'ces_current'))
 
         from setup_app.utils.arg_parser import arg_parser
 
@@ -358,22 +371,6 @@ class GluuUpdater:
 
             shutil.rmtree(tmp_dir)
 
-    def download_sqlalchemy(self):
-        print("Downloading sqlalchemy")
-        target_dir = os.path.join(self.ces_dir, 'setup_app/pylib/sqlalchemy')
-        if not os.path.exists(target_dir):
-            self.download('https://github.com/sqlalchemy/sqlalchemy/archive/rel_1_3_23.zip', os.path.join(self.app_dir, 'sqlalchemy.zip'))
-            sqlalchemy_zfn = os.path.join(self.app_dir, 'sqlalchemy.zip')
-            sqlalchemy_zip = zipfile.ZipFile(sqlalchemy_zfn, "r")
-            sqlalchemy_par_dir = sqlalchemy_zip.namelist()[0]
-            tmp_dir = os.path.join('/tmp', os.urandom(2).hex())
-            sqlalchemy_zip.extractall(tmp_dir)
-            shutil.copytree(
-                    os.path.join(tmp_dir, sqlalchemy_par_dir, 'lib/sqlalchemy'), 
-                    target_dir
-                    )
-            shutil.rmtree(tmp_dir)
-    
 
     def prepare_persist_changes(self):
         self.persist_changes = { 
@@ -1607,36 +1604,30 @@ class GluuUpdater:
                 self.gluuInstaller.writeFile(default_fn, default_)
 
 updaterObj = GluuUpdater()
-#updaterObj.download_sqlalchemy()
-#updaterObj.download_gcs()
+updaterObj.download_gcs()
 updaterObj.download_ces()
-
-#updaterObj.prepare_persist_changes()
-#updaterObj.download_apps()
-
-
-#updaterObj.update_default_settings()
-
-
-#updaterObj.stop_services()
-#updaterObj.update_java()
-#updaterObj.update_opendj()
-#updaterObj.update_jython()
-#updaterObj.update_jetty()
-#updaterObj.update_node()
-#updaterObj.update_scopes()
-#updaterObj.update_attributes()
-#updaterObj.fix_gluu_config()
-#updaterObj.update_persistence_data()
-#updaterObj.update_war_files()
-#updaterObj.update_scripts()
-#updaterObj.update_apache_conf()
-#updaterObj.update_passport()
-#updaterObj.update_radius()
-#updaterObj.update_casa()
-#updaterObj.update_oxd()
-#updaterObj.add_oxAuthUserId_pairwiseIdentifier()
-#updaterObj.fix_fido2()
+updaterObj.prepare_persist_changes()
+updaterObj.download_apps()
+updaterObj.update_default_settings()
+updaterObj.stop_services()
+updaterObj.update_java()
+updaterObj.update_opendj()
+updaterObj.update_jython()
+updaterObj.update_jetty()
+updaterObj.update_node()
+updaterObj.update_scopes()
+updaterObj.update_attributes()
+updaterObj.fix_gluu_config()
+updaterObj.update_persistence_data()
+updaterObj.update_war_files()
+updaterObj.update_scripts()
+updaterObj.update_apache_conf()
+updaterObj.update_passport()
+updaterObj.update_radius()
+updaterObj.update_casa()
+updaterObj.update_oxd()
+updaterObj.add_oxAuthUserId_pairwiseIdentifier()
+updaterObj.fix_fido2()
 updaterObj.update_shib()
 
 print()
