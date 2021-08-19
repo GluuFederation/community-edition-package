@@ -1098,7 +1098,6 @@ class GluuUpdater:
 
     def update_apache_conf(self):
         print("Updating Apache Configuration")
-        self.httpdinstaller.configure()
         self.httpdinstaller.write_httpd_config()
 
     def render_template(self, tmp_file):
