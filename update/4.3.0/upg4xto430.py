@@ -165,6 +165,8 @@ class GluuUpdater:
         self.opendj_version = '4.4.11'
         self.node_version = 'v14.16.1'
 
+        self.delete_from_configuration = ['gluuFreeDiskSpace', 'gluuFreeMemory', 'gluuFreeSwap', 'gluuGroupCount', 'gluuIpAddress', 'gluuPersonCount', 'gluuSystemUptime']
+
         self.casa_plugins = {
             'strong-authn-settings': 'https://ox.gluu.org/maven/org/gluu/casa/plugins/strong-authn-settings/{0}{1}/strong-authn-settings-{0}{1}-jar-with-dependencies.jar',
             'account-linking': 'https://ox.gluu.org/maven/org/gluu/casa/plugins/account-linking/{0}{1}/account-linking-{0}{1}-jar-with-dependencies.jar',
@@ -184,7 +186,7 @@ class GluuUpdater:
             os.makedirs(pardir)
         print("Downloading", url, "to", dst)
         request.urlretrieve(url, dst)
-    
+
 
     def stop_services(self):
         print("Stopping Gluu Services")
@@ -198,12 +200,12 @@ class GluuUpdater:
 
 
     def download_ces(self):
-        
+
         if not os.path.exists(self.ces_dir):
             ces_url = 'https://github.com/GluuFederation/community-edition-setup/archive/version_{}.zip'.format(self.up_version)
 
             print("Downloading Community Edition Setup {}".format(self.up_version))
-            
+
             target_fn = os.path.join(self.app_dir, 'version_{}.zip'.format(self.up_version))
             self.download(ces_url, target_fn)
             ces_tmp_dir = '/tmp/ces_{}'.format(os.urandom(4).hex())
@@ -294,8 +296,6 @@ class GluuUpdater:
 
         # we must initilize SetupUtils after initilizing Config
         SetupUtils.init()
-
-        
 
         collectProperties = CollectProperties()
 
@@ -750,6 +750,23 @@ class GluuUpdater:
 
 
     def update_ldap(self):
+        dn = 'ou=configuration,o=gluu'
+
+        self.gluuInstaller.dbUtils.ldap_conn.search(
+                    search_base=dn, 
+                    search_scope=ldap3.BASE,
+                    search_filter='(objectclass=*)',
+                    attributes=self.delete_from_configuration
+                    )
+        
+        result = self.gluuInstaller.dbUtils.ldap_conn.response
+        if result:
+            for k in result[0]['attributes']:
+                if result[0]['attributes'][k]:
+                        self.gluuInstaller.dbUtils.ldap_conn.modify(
+                        dn, 
+                        {k: [ldap3.MODIFY_DELETE, result[0]['attributes'][k]]}
+                        )
 
         # we need to delete index oxAuthExpiration before restarting opendj
         oxAuthExpiration_index_dn = 'ds-cfg-attribute=oxAuthExpiration,cn=Index,ds-cfg-backend-id=userRoot,cn=Backends,cn=config'
