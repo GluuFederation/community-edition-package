@@ -1597,74 +1597,34 @@ class GluuUpdater:
 
     def fix_fido2(self):
 
-        self.setupObj.renderTemplate(self.setupObj.fido2_dynamic_conf_json)
-        self.setupObj.renderTemplate(self.setupObj.fido2_static_conf_json)
+        if not self.fidoInstaller.installed():
+            return
 
-        self.setupObj.templateRenderingDict['fido2_dynamic_conf_base64'] = self.setupObj.generate_base64_ldap_file(self.setupObj.fido2_dynamic_conf_json)
-        self.setupObj.templateRenderingDict['fido2_static_conf_base64'] = self.setupObj.generate_base64_ldap_file(self.setupObj.fido2_static_conf_json)
-        self.setupObj.renderTemplate(self.setupObj.ldif_fido2)
+        print("Updating Fido2 Configuration")
+        self.fidoInstaller.render_import_templates(do_import=False)
+        fido2_config_dn = 'ou=fido2,ou=configuration,o=gluu'
 
-        self.setupObj.copyFile(self.setupObj.ldif_fido2, '/tmp')
-        ldif_fido2 = os.path.join('/tmp', os.path.basename(self.setupObj.ldif_fido2))
-
-        if self.default_storage == 'ldap':
-            self.conn.search(
-                    search_base='ou=fido2,ou=configuration,o=gluu', 
-                    search_scope=ldap3.BASE, 
-                    search_filter='(objectClass=*)', 
-                    attributes=['*']
-                    )
-            if not self.conn.response:
-                print("Importing fido2 configuration ldif")
-                self.setupObj.import_ldif_opendj([ldif_fido2])
-
+        if self.fidoInstaller.dbUtils.dn_exists(fido2_config_dn):
+            gluuConfDynamic = self.fidoInstaller.readFile(self.fidoInstaller.fido2_dynamic_conf_json)
+            self.fidoInstaller.dbUtils.set_configuration('gluuConfDynamic', gluuConfDynamic, dn=fido2_config_dn)
         else:
-            result = self.cbm.exec_query('SELECT gluuConfStatic FROM `{}` USE KEYS "configuration_fido2"'.format(self.setupObj.couchbase_bucket_prefix))
-            if result.ok:
-                data = result.json()
-                if not data.get('results'):
-                    print("Importing fido2 configuration ldif")
-                    self.setupObj.import_ldif_couchebase([ldif_fido2])
+            self.fidoInstaller.dbUtils.import_ldif([self.fidoInstaller.ldif_fido2])
 
-        if self.user_location == 'ldap':
-            self.conn.search(
-                        search_base='ou=people,o=gluu', 
-                        search_scope=ldap3.SUBTREE, 
-                        search_filter='(objectclass=oxDeviceRegistration)', 
-                        attributes=['*']
-                        )
-
-            result = self.conn.response
-            if result:
-                print("Populating personInum for fido2 entries. Number of entries: {}".format(len(result)))
-                for entry in result:
-                    dn = entry['dn']
-                    if not 'personInum' in entry['attributes']:
-                        for dnr in dnutils.parse_dn(dn):
-                            if dnr[0] == 'inum':
-                                inum = dnr[1]
-                                self.conn.modify(
-                                        dn, 
-                                        {'personInum': [ldap3.MODIFY_ADD, inum]}
-                                        )
+        data = self.gluuInstaller.dbUtils.search('ou=people,o=gluu', search_filter='(objectClass=oxDeviceRegistration)', search_scope=ldap3.SUBTREE, fetchmany=True)
+        if data:
+            print("Adding personInum to oxDeviceRegistration")
+            print("This may take several minutes depending on your user number")
+            total_number = len(data)
+            for i, pdata in enumerate(data):
+                entry = pdata[1]
+                print("Processing {} of {} : {}".format(i+1, total_number, entry['dn']))
+                if not 'personInum' in entry:
+                    for dne in dnutils.parse_dn(entry['dn']):
+                            if dne[0] == 'inum':
+                                oxAuthUserId =  dne[1]
+                                self.gluuInstaller.dbUtils.set_configuration('personInum', oxAuthUserId, entry['dn'])
                                 break
 
-        else:
-            result = self.cbm.exec_query('SELECT META().id AS docid, * from `{}_user` WHERE `objectClass`="oxDeviceRegistration"'.format(self.setupObj.couchbase_bucket_prefix))
-            if result.ok:
-                data = result.json()
-                if data.get('results'):
-                    print("Populating personInum for fido2 entries. Number of entries: {}".format(len(data['results'])))
-                    for user_entry in data['results']:
-                        doc = user_entry.get(self.setupObj.couchbase_bucket_prefix+'_user')
-                        if doc and not 'personInum' in doc:
-                            dn = doc['dn']
-                            for dnr in dnutils.parse_dn(dn):
-                                if dnr[0][0] == 'inum':
-                                    print((user_entry['docid']))
-                                    n1ql = 'UPDATE `{}_user` USE KEYS "{}" SET `personInum`="{}"'.format(self.setupObj.couchbase_bucket_prefix, user_entry['docid'], dnr[1])
-                                    self.cbm.exec_query(n1ql)
-                                    break
 
     def update_attributes(self):
 
@@ -1761,11 +1721,10 @@ updaterObj.download_ces()
 #updaterObj.update_radius()
 #updaterObj.update_casa()
 #updaterObj.update_oxd()
-updaterObj.add_oxAuthUserId_pairwiseIdentifier()
+#updaterObj.add_oxAuthUserId_pairwiseIdentifier()
+updaterObj.fix_fido2()
 
 """
-
-updaterObj.fix_fido2()
 updaterObj.update_shib()
 updaterObj.setupObj.deleteLdapPw()
 """
