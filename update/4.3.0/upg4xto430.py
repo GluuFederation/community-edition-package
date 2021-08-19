@@ -320,54 +320,6 @@ class GluuUpdater:
         self.BackendTypes = BackendTypes
         self.paths = paths
 
-        """
-        global Properties
-        global pyDes
-        global ObjectClass
-
-        from ces_current import setup
-        from ces_current.pylib.cbm import CBM
-        from ces_current.pylib import pyDes
-        from ces_current.pylib.jproperties import Properties
-        from ces_current.pylib.generate_properties import generate_properties
-        from ces_current.pylib.gluu_utils import myLdifParser, get_documents_from_ldif, get_key_from
-        from ces_current.pylib.schema import ObjectClass
-
-        self.get_documents_from_ldif = get_documents_from_ldif
-        self.get_key_from = get_key_from
-        self.cbm_obj = CBM
-        self.setup = setup
-        self.setupObj = self.setup.Setup(self.ces_dir)
-        self.setupObj.log = os.path.join(self.ces_dir, 'update.log')
-        self.setupObj.logError = os.path.join(self.ces_dir, 'update_error.log')
-        self.setupObj.os_type, self.setupObj.os_version = self.setupObj.detect_os_type()
-        self.setupObj.os_initdaemon = self.setupObj.detect_initd()
-        self.setupObj.apache_version = self.setupObj.determineApacheVersionForOS()
-
-        self.setupObj.properties_password = properties_password
-        self.setupObj.jetty_version = self.jetty_version
-        self.setupObj.jre_version = self.corretto_version
-        self.myLdifParser = myLdifParser
-
-        print("Collecting properties")
-        self.setup_prop = generate_properties(True)
-        
-        if not 'oxtrust_admin_password' in self.setup_prop:
-            self.setup_prop['oxtrust_admin_password'] = self.setup_prop['ldapPass']
-
-        for setup_key in self.setup_prop:
-            setattr(self.setupObj, setup_key, self.setup_prop[setup_key])
-
-        self.setupObj.ldapCertFn = self.setupObj.opendj_cert_fn
-        self.setupObj.ldapTrustStoreFn = self.setupObj.opendj_p12_fn
-        self.setupObj.calculate_selected_aplications_memory()
-        self.setupObj.encode_passwords()
-
-        self.casa_base_dir = os.path.join(self.setupObj.jetty_base, 'casa')
-
-        self.setupObj.set_systemd_timeout()
-        """
-
     def download_gcs(self):
 
         if not os.path.exists(os.path.join(self.gapp_dir, 'gcs')):
@@ -778,31 +730,6 @@ class GluuUpdater:
         self.setupObj.couchbaseProperties()
 
 
-    def db_connection_ldap(self):
-        gluu_ldap_prop = get_properties(self.setupObj.ox_ldap_properties)
-        
-        ldap_server_string = gluu_ldap_prop['servers'].split(',')[0].strip()
-        self.ldap_host, self.ldap_port = ldap_server_string.split(':')
-        self.ldap_bind_dn = gluu_ldap_prop['bindDN']
-        self.ldap_bind_pw = unobscure(gluu_ldap_prop['bindPassword'])
-
-        self.setupObj.createLdapPw()
-
-        for i in range(5):
-            
-            ldap_server = ldap3.Server(self.ldap_host, port=int(self.ldap_port), use_ssl=True)
-            self.conn = ldap3.Connection(ldap_server, user=self.ldap_bind_dn, password=self.ldap_bind_pw)
-
-            try:
-                self.conn.bind()
-                return
-            except Exception as e:
-                print(e)
-                print("Can't connect to LDAP Server. Retrying in 5 secs ...")
-                time.sleep(5)
-
-        sys.exit("Max retry reached. Exiting...")
-
     def apply_persist_changes(self, js_conf, data):
         for key, change_type, how_change, value in data:
             if change_type == 'add':
@@ -1193,60 +1120,47 @@ class GluuUpdater:
 
     def update_shib(self):
 
-        saml_meta_data_fn = '/opt/shibboleth-idp/metadata/idp-metadata.xml'
-
-        if not os.path.exists(saml_meta_data_fn):
+        if not self.samlInstaller.installed():
             return
 
         print("Updadting shibboleth-idp")
 
-        shib_backup_dir = '/opt/shibboleth-idp.back-'+time.strftime("%Y%m%d-%H.%M.%S")
+        saml_meta_data_fn = os.path.join(self.samlInstaller.idp3Folder, 'metadata', self.samlInstaller.idp3_metadata)
+        shib_backup_dir = self.samlInstaller.idp3Folder + '.back-' + self.backup_time
 
         print("Backing up to", shib_backup_dir)
         
-        self.setupObj.copyTree('/opt/shibboleth-idp', shib_backup_dir)
+        self.samlInstaller.copyTree(self.samlInstaller.idp3Folder, shib_backup_dir)
+        print("Unpacking shibboleth-idp.jar")
+
+        self.samlInstaller.copyFile(
+            os.path.join(self.app_dir, 'shibboleth-idp.jar'),
+            self.Config.distGluuFolder
+            )
+
+        self.samlInstaller.unpack_idp3()
         
         print("Updating idp-metadata.xml")
-        self.setupObj.templateRenderingDict['idp3SigningCertificateText'] = open('/etc/certs/idp-signing.crt').read().replace('-----BEGIN CERTIFICATE-----','').replace('-----END CERTIFICATE-----','')
-        self.setupObj.templateRenderingDict['idp3EncryptionCertificateText'] = open('/etc/certs/idp-encryption.crt').read().replace('-----BEGIN CERTIFICATE-----','').replace('-----END CERTIFICATE-----','')
+        self.Config.templateRenderingDict['idp3SigningCertificateText'] = self.samlInstaller.readFile('/etc/certs/idp-signing.crt').replace('-----BEGIN CERTIFICATE-----','').replace('-----END CERTIFICATE-----','')
+        self.Config.templateRenderingDict['idp3EncryptionCertificateText'] = self.samlInstaller.readFile('/etc/certs/idp-encryption.crt').replace('-----BEGIN CERTIFICATE-----','').replace('-----END CERTIFICATE-----','')
 
-        self.setupObj.backupFile(saml_meta_data_fn)
-
-        os.chdir('/opt')
-        self.setupObj.run(['/opt/jre/bin/jar', 'xf', os.path.join(self.app_dir,'shibboleth-idp.jar')])
-        self.setupObj.run(['rm', '-r', '/opt/META-INF'])
-        
-        idp_tmp_dir = '/tmp/{0}'.format(str(int(time.time()*1000)))
-        self.setupObj.run(['mkdir','-p', idp_tmp_dir])
-        
-        os.chdir(idp_tmp_dir)
-
-        self.setupObj.run(['/opt/jre/bin/jar', 'xf', os.path.join(self.app_dir, 'idp.war')])
-        self.setupObj.run(['rm', '-f', '/opt/shibboleth-idp/webapp/WEB-INF/lib/*'])
-        self.setupObj.copyTree(
-                os.path.join(idp_tmp_dir, 'WEB-INF/'), 
-                '/opt/shibboleth-idp/webapp',
-                overwrite=True
-                )
+        self.samlInstaller.backupFile(saml_meta_data_fn)
 
         #Recreate idp-metadata.xml with new format
         temp_fn = os.path.join(self.ces_dir, 'static/idp3/metadata/idp-metadata.xml')
         new_saml_meta_data = self.render_template(temp_fn)
-        self.setupObj.writeFile(saml_meta_data_fn, new_saml_meta_data)
+        self.samlInstaller.writeFile(saml_meta_data_fn, new_saml_meta_data)
 
         for prop_fn in ('idp.properties', 'ldap.properties', 'services.properties','saml-nameid.properties'):
             print("Updating", prop_fn)
             properties = self.render_template(os.path.join(self.ces_dir, 'static/idp3/conf', prop_fn))
-            self.setupObj.writeFile(os.path.join('/opt/shibboleth-idp/conf', prop_fn), properties)
+            self.samlInstaller.writeFile(os.path.join('/opt/shibboleth-idp/conf', prop_fn), properties)
 
-        self.setupObj.copyFile(
+        self.samlInstaller.copyFile(
                     os.path.join(cur_dir, 'app/saml-nameid.properties.vm'), 
                     '/opt/gluu/jetty/identity/conf/shibboleth3/idp/'
                     )
-        self.setupObj.run(['chown', '-R', 'jetty:jetty', '/opt/shibboleth-idp'])
-        self.setupObj.run(['rm', '-r', '-f', idp_tmp_dir])
-
-        os.chdir(cur_dir)
+        self.samlInstaller.run(['chown', '-R', 'jetty:jetty', '/opt/shibboleth-idp'])
 
     def update_radius(self):
 
@@ -1722,15 +1636,8 @@ updaterObj.download_ces()
 #updaterObj.update_casa()
 #updaterObj.update_oxd()
 #updaterObj.add_oxAuthUserId_pairwiseIdentifier()
-updaterObj.fix_fido2()
-
-"""
+#updaterObj.fix_fido2()
 updaterObj.update_shib()
-updaterObj.setupObj.deleteLdapPw()
-"""
-
-sys.exit()
-
 
 print()
 for msg in updaterObj.postmessages:
