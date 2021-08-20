@@ -15,6 +15,7 @@ import uuid
 import urllib.request
 from urllib import request
 import ssl
+import random
 
 if os.environ.get('gldev') != 'true':
     print("This scirpt is under development. Not for use.")
@@ -185,8 +186,17 @@ class GluuUpdater:
         if not os.path.exists(pardir):
             os.makedirs(pardir)
         print("Downloading", url, "to", dst)
-        request.urlretrieve(url, dst)
-
+        for i in range(3):
+            try:
+                request.urlretrieve(url, dst)
+                break
+            except:
+                rantom_time = random.randint(3,7)
+                print("Download failed. Retry will begin in {} seconds".format(rantom_time))
+                time.sleep(rantom_time)
+        else:
+            print("Download failed. Giving up ...")
+            sys.exit()
 
     def stop_services(self):
         print("Stopping Gluu Services")
