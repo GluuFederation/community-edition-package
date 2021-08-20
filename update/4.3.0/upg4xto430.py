@@ -1142,7 +1142,8 @@ class GluuUpdater:
         print("Updating oxd Server")
         self.oxdInstaller.copyFile(
                     os.path.join(self.app_dir, 'oxd-server.jar'),
-                    os.path.join(self.oxdInstaller.oxd_root, 'lib')
+                    os.path.join(self.oxdInstaller.oxd_root, 'lib'),
+                    backup=False
                     )
 
         oxd_server_yml_fn = os.path.join(self.oxdInstaller.oxd_root, 'conf/oxd-server.yml')
