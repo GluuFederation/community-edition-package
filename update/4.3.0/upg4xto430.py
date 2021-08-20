@@ -1583,10 +1583,9 @@ class GluuUpdater:
                 self.gluuInstaller.writeFile(default_fn, default_)
 
 updaterObj = GluuUpdater()
-#updaterObj.download_gcs()
+updaterObj.download_gcs()
 updaterObj.download_ces()
 updaterObj.prepare_persist_changes()
-"""
 updaterObj.download_apps()
 updaterObj.update_default_settings()
 updaterObj.stop_services()
@@ -1600,9 +1599,7 @@ updaterObj.update_attributes()
 updaterObj.fix_gluu_config()
 updaterObj.update_persistence_data()
 updaterObj.update_war_files()
-"""
 updaterObj.update_scripts()
-sys.exit()
 updaterObj.update_apache_conf()
 updaterObj.update_passport()
 updaterObj.update_radius()
