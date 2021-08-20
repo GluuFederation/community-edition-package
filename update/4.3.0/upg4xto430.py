@@ -342,6 +342,7 @@ class GluuUpdater:
         self.myLdifWriter = LDIFWriter
         self.BackendTypes = BackendTypes
         self.paths = paths
+        self.base = base
 
     def download_gcs(self):
 
@@ -1035,6 +1036,24 @@ class GluuUpdater:
                 print("Adding casa script", e[0])
                 parser.entries.append(e)
 
+        if self.passportInstaller.installed():
+            print("Rendering Passport scripts")
+            self.Config.passport_rp_client_jks_fn = self.passportInstaller.passport_rp_client_jks_fn
+            self.Config.passport_rp_client_jks_pass = 'secret'
+
+            scripts_template = os.path.join(self.passportInstaller.passport_templates_folder, os.path.basename(self.passportInstaller.ldif_scripts_fn))
+            extensions = self.base.find_script_names(scripts_template)
+            self.passportInstaller.prepare_base64_extension_scripts(extensions=extensions)
+            self.passportInstaller.renderTemplateInOut(self.passportInstaller.ldif_scripts_fn, self.passportInstaller.passport_templates_folder, os.path.join(self.Config.outputFolder,'passport'))
+
+            self.gluuInstaller.logIt("Parsing", self.passportInstaller.ldif_scripts_fn)
+            print("Parsing", self.passportInstaller.ldif_scripts_fn)
+            passport_scripts_parser = self.myLdifParser(self.passportInstaller.ldif_scripts_fn)
+            passport_scripts_parser.parse()
+            for e in passport_scripts_parser.entries:
+                print("Adding passport script", e[0])
+                parser.entries.append(e)
+
         new_scripts = []
 
         for dn, entry in parser.entries:
@@ -1314,8 +1333,7 @@ class GluuUpdater:
             if self.casaInstaller.dbUtils.dn_exists(casa_config_dn):
                 self.casaInstaller.dbUtils.set_configuration('oxConfApplication', casa_config_json_s, dn=casa_config_dn)
             else:
-
-                entry = {'objectClass': ['top', 'oxApplicationConfiguration'], 'ou': ['casa'], 'oxConfApplication': casa_config_json_s}
+                entry = {'objectClass': ['top', 'oxApplicationConfiguration'], 'ou': ['casa'], 'oxConfApplication': [casa_config_json_s]}
                 self.unparse_import([(casa_config_dn, entry)])
 
             self.casaInstaller.backupFile(casa_config_json_fn)
@@ -1342,7 +1360,8 @@ class GluuUpdater:
 
         data = self.casaInstaller.dbUtils.dn_exists(casa_config_dn)
         if data:
-            oxConfApplication = json.loads(data['oxConfApplication'])
+            casa_conf = data['oxConfApplication'][0] if isinstance(data['oxConfApplication'], list) else data['oxConfApplication']
+            oxConfApplication = json.loads(casa_conf) if isinstance(casa_conf, str) else casa_conf
         else:
             oxConfApplication = json.load(open('/etc/gluu/conf/casa.json'))
 
@@ -1564,9 +1583,10 @@ class GluuUpdater:
                 self.gluuInstaller.writeFile(default_fn, default_)
 
 updaterObj = GluuUpdater()
-updaterObj.download_gcs()
+#updaterObj.download_gcs()
 updaterObj.download_ces()
 updaterObj.prepare_persist_changes()
+"""
 updaterObj.download_apps()
 updaterObj.update_default_settings()
 updaterObj.stop_services()
@@ -1580,7 +1600,9 @@ updaterObj.update_attributes()
 updaterObj.fix_gluu_config()
 updaterObj.update_persistence_data()
 updaterObj.update_war_files()
+"""
 updaterObj.update_scripts()
+sys.exit()
 updaterObj.update_apache_conf()
 updaterObj.update_passport()
 updaterObj.update_radius()
