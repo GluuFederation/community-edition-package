@@ -491,10 +491,10 @@ class GluuUpdater:
 
     def update_persistence_data(self):
 
-        #if self.gluuInstaller.dbUtils.moddb == self.BackendTypes.LDAP:
-        #   self.update_ldap()
-        #elif self.gluuInstaller.dbUtils.moddb == self.BackendTypes.COUCHBASE:
-        #   self.update_couchbase()
+        if self.gluuInstaller.dbUtils.moddb == self.BackendTypes.LDAP:
+           self.update_ldap()
+        elif self.gluuInstaller.dbUtils.moddb == self.BackendTypes.COUCHBASE:
+           self.update_couchbase()
 
         for config_element, config_dn in self.persist_changes:
             print("Updating", config_element)
