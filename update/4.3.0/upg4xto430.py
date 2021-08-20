@@ -489,33 +489,19 @@ class GluuUpdater:
             self.gluuInstaller.writeFile(passport_default_fn, passport_default)
 
 
-        if os.path.exists(self.Config.gluuCouchebaseProperties):
-            gluu_couchbase_prop_s = self.gluuInstaller.readFile(self.setupObj.gluuCouchebaseProperties)
-            gluu_couchbase_prop = gluu_couchbase_prop_s.splitlines()
-            for i, l in enumerate(gluu_couchbase_prop[:]):
-                if l.startswith('bucket.gluu_token.mapping'):
-                    n = l.find(':')
-                    mapping = l[n+1:].strip()
-                    mapping_list = [m.strip() for m in mapping.split(',')]
-                    if not 'sessions' in mapping_list:
-                        mapping_list.append('sessions')
-                        gluu_couchbase_prop[i] = 'bucket.gluu_token.mapping: {}'.format(', '.join(mapping_list))
-                        self.gluuInstaller.writeFile(self.setupObj.gluuCouchebaseProperties, '\n'.join(gluu_couchbase_prop))
-
-
     def update_persistence_data(self):
 
-        if self.gluuInstaller.dbUtils.moddb == self.BackendTypes.LDAP:
-           self.update_ldap()
-        elif self.gluuInstaller.dbUtils.moddb == self.BackendTypes.COUCHBASE:
-           self.update_couchbase()
+        #if self.gluuInstaller.dbUtils.moddb == self.BackendTypes.LDAP:
+        #   self.update_ldap()
+        #elif self.gluuInstaller.dbUtils.moddb == self.BackendTypes.COUCHBASE:
+        #   self.update_couchbase()
 
         for config_element, config_dn in self.persist_changes:
             print("Updating", config_element)
             ldap_filter = '({0}=*)'.format(config_element)
             result = self.gluuInstaller.dbUtils.search(config_dn, search_filter=ldap_filter, search_scope=ldap3.BASE)
 
-            js_conf = json.loads(result[config_element])
+            js_conf = json.loads(result[config_element]) if isinstance(result[config_element], str) else result[config_element]
             self.apply_persist_changes(js_conf, self.persist_changes[(config_element, config_dn)])
             new_conf = json.dumps(js_conf,indent=2)
             self.gluuInstaller.dbUtils.set_configuration(config_element, new_conf, dn=config_dn)
@@ -538,54 +524,30 @@ class GluuUpdater:
             if  'oxCacheEntity' in obj.names:
                 return True
 
-    def db_connection_couchbase(self):
-        gluu_cb_prop = get_properties(self.setupObj.gluuCouchebaseProperties)
-        cb_serevr = gluu_cb_prop['servers'].split(',')[0].strip()
-        cb_admin = gluu_cb_prop['auth.userName']
-        self.encoded_cb_password = gluu_cb_prop['auth.userPassword']
-        cb_passwd = unobscure(self.encoded_cb_password)
-
-        self.cbm = self.cbm_obj(cb_serevr, cb_admin, cb_passwd)
-        self.setupObj.cbm = self.cbm
-
-        for p in ('couchbase_hostname', 'couchebaseClusterAdmin', 
-                    'encoded_cb_password',
-                    'encoded_couchbaseTrustStorePass'):
-            
-            setattr(self.setupObj, p, self.setup_prop[p])
-
-        gluu_cb_prop = get_properties(self.setupObj.gluuCouchebaseProperties)
-        cb_passwd = gluu_cb_prop['auth.userPassword']
-        self.setupObj.mappingLocations = self.setup_prop['mappingLocations']
-        self.setupObj.encoded_cb_password = self.encoded_cb_password
-
-        self.setupObj.couchbaseBuckets = [ b.strip() for b in gluu_cb_prop['buckets'].split(',') ]
-
-
     def drop_index(self, bucket, index_name):
         cmd = 'DROP INDEX `{}`.`{}` USING GSI'.format(bucket, index_name)
         print("Removing index", index_name)
-        self.cbm.exec_query(cmd)
+        self.gluuInstaller.dbUtils.cbm.exec_query(cmd)
 
     def add_index(self, bucket, ind):
-        cmd, index_name = self.setupObj.couchbaseMakeIndex(bucket, ind)
+        cmd, index_name = self.couchbaseInstaller.couchbaseMakeIndex(bucket, ind)
         if 'defer_build' in cmd:
             if not bucket in self.new_cb_indexes:
                 self.new_cb_indexes[bucket] = []
             self.new_cb_indexes[bucket].append(index_name)
         print("Executing", cmd)
-        self.cbm.exec_query(cmd)
+        self.gluuInstaller.dbUtils.cbm.exec_query(cmd)
 
     def cb_indexes(self):
         print("Updating Couchbase indexes")
 
         self.new_cb_indexes = {}
         new_index_json_fn = os.path.join(self.ces_dir, 'static/couchbase/index.json')
-        new_index_json_s = self.setupObj.readFile(new_index_json_fn)
-        new_index_json_s = new_index_json_s.replace('!bucket_prefix!', self.setupObj.couchbase_bucket_prefix)
+        new_index_json_s = self.gluuInstaller.readFile(new_index_json_fn)
+        new_index_json_s = new_index_json_s.replace('!bucket_prefix!', self.Config.couchbase_bucket_prefix)
         new_indexes = json.loads(new_index_json_s)
 
-        data_result = self.cbm.exec_query('SELECT * FROM system:indexes')
+        data_result = self.gluuInstaller.dbUtils.cbm.exec_query('SELECT * FROM system:indexes')
         current_indexes = data_result.json()['results']
 
         for inds in current_indexes:
@@ -614,7 +576,7 @@ class GluuUpdater:
                     else:
                         self.drop_index(bucket, ind['name'])
 
-        for bucket in self.setupObj.couchbaseBuckets:
+        for bucket in self.Config.couchbaseBuckets:
             for ind in new_indexes[bucket]['attributes']:
                 new_index_key = make_key(ind)
                 for cur_inds in current_indexes:
@@ -643,11 +605,11 @@ class GluuUpdater:
         for bucket in self.new_cb_indexes:
             cmd = 'BUILD INDEX ON `%s` (%s) USING GSI' % (bucket, ', '.join(self.new_cb_indexes[bucket]))
             print("Executing", cmd)
-            self.cbm.exec_query(cmd)
+            self.gluuInstaller.dbUtils.cbm.exec_query(cmd)
 
     def get_existing_buckets(self):
         existing_buckets = []
-        r = self.cbm.get_buckets()
+        r = self.gluuInstaller.dbUtils.cbm.get_buckets()
 
         if r.ok:
             b_ = r.json()
@@ -657,84 +619,46 @@ class GluuUpdater:
 
     def update_couchbase(self):
 
-        if self.setupObj.couchbase_bucket_prefix+'_token' in self.setupObj.couchbaseBuckets:
-            session_bucket = self.setupObj.couchbase_bucket_prefix + '_session'
-            self.setupObj.couchbaseBuckets.append(session_bucket)
-            self.setupObj.mappingLocations['session'] = 'couchbase'
+        if self.Config.couchbase_bucket_prefix+'_token' in self.Config.couchbaseBuckets:
+            session_bucket = self.Config.couchbase_bucket_prefix + '_session'
+            self.Config.couchbaseBuckets.append(session_bucket)
+            self.Config.mappingLocations['session'] = 'couchbase'
             
             #add missing buckets:
             existing_buckets = self.get_existing_buckets()
-            
+
             if not session_bucket in  existing_buckets:
-                bcr = self.cbm.add_bucket(session_bucket, self.setupObj.couchbaseBucketDict['session']['memory_allocation'])
+                bcr = self.gluuInstaller.dbUtils.cbm.add_bucket(session_bucket, self.Config.couchbaseBucketDict['session']['memory_allocation'])
                 
                 if not bcr.ok:
                     print("Failed to create bucket {}, reason: {}".format(session_bucket, bcr.text))
                     print("Please solve the issue. Exiting for now.")
+                    sys.exit()
                 else:
                     print("Bucket {} created".format(session_bucket))
                     self.postmessages.append("Please use couchbase administrator panel and adjust Memory Quota for bucket {}".format(session_bucket))
 
             #check if bucket is ready for five times
             for i in range(5):
-                time.sleep(2)
+                time.sleep(random.randint(1,3))
                 existing_buckets = self.get_existing_buckets()
                 if session_bucket in existing_buckets:
                     break
 
             # get all sessions from gluu_token, add sid if not exists and move to gluu_session
-            result = self.cbm.exec_query('SELECT META().id FROM `{}_token` WHERE exp > "" and objectClass = "oxAuthSessionId"'.format(self.setupObj.couchbase_bucket_prefix))
+            result = self.gluuInstaller.dbUtils.cbm.exec_query('SELECT META().id FROM `{}_token` WHERE exp > "" and objectClass = "oxAuthSessionId"'.format(self.Config.couchbase_bucket_prefix))
 
             if result.ok:
                 data = result.json()
                 for d in data.get('results',[]):
                     docid = d['id']
                     #remove session entry:
-                    self.cbm.exec_query('DELETE FROM `{}_token` USE KEYS "{}"'.format(self.setupObj.couchbase_bucket_prefix, docid))
+                    self.gluuInstaller.dbUtils.cbm.exec_query('DELETE FROM `{}_token` USE KEYS "{}"'.format(self.Config.couchbase_bucket_prefix, docid))
 
-                    #rsid = self.cbm.exec_query('SELECT * FROM `{}_token` USE KEYS "{}"'.format(self.setupObj.couchbase_bucket_prefix, docid))
-                    #if rsid.ok:
-                    #    dsid = rsid.json()
-                    #    docc = dsid.get('results',[{}])[0]
-                    #    if docc:
-                    #        doc = docc[self.setupObj.couchbase_bucket_prefix+'_token']
-                    #        if not 'sid' in doc:
-                    #            doc['sid'] = str(uuid.uuid4())
-                    #        if not 'session_id' in doc['oxAuthSessionAttribute']:
-                    #            doc['oxAuthSessionAttribute']['session_id'] = str(uuid.uuid4())
-                    #    print("Moving", docid, "to", self.setupObj.couchbase_bucket_prefix+'_session')
-                    #    n1ql = 'UPSERT INTO `%s_session` (KEY, VALUE) VALUES ("%s", %s)' % (self.setupObj.couchbase_bucket_prefix, docid, json.dumps(doc))
-                    #    radds = self.cbm.exec_query(n1ql)
-                    #    print(radds.json())
-                    #    if radds.ok and radds.json()['status'] == 'success':
-                    #        rx = self.cbm.exec_query('DELETE FROM `{}_token` USE KEYS "{}"'.format(self.setupObj.couchbase_bucket_prefix, docid))
-
-            self.setupObj.couchbaseProperties()
+        self.couchbaseInstaller.couchbaseProperties()
 
         self.cb_indexes()
 
-        for n, dn in self.persist_changes:
-            k = self.get_key_from(dn)
-            result = self.cbm.exec_query('SELECT {} FROM `{}` USE KEYS "{}"'.format(n, self.setupObj.couchbase_bucket_prefix, k))
-            result_json = result.json()
-            js_conf = result_json['results'][0][n]
-
-            self.apply_persist_changes(js_conf, self.persist_changes[(n, dn)])
-
-            n1ql = 'UPDATE `{}` USE KEYS "{}" SET {}.{}={}'.format(self.setupObj.couchbase_bucket_prefix, k, self.setupObj.couchbase_bucket_prefix, n, json.dumps(js_conf))
-            print("Executing", n1ql)
-            result = self.cbm.exec_query(n1ql)
-
-
-
-
-        #copy sessions from gluu_token to gluu_session and add sid
-
-        #self.update_gluu_couchbase()
-
-
-    def update_gluu_couchbase(self):
-        self.setupObj.couchbaseProperties()
 
 
     def apply_persist_changes(self, js_conf, data):
@@ -1448,7 +1372,8 @@ class GluuUpdater:
         data = self.passportInstaller.dbUtils.dn_exists('ou=oxpassport,ou=configuration,o=gluu')
 
         if data and 'gluuPassportConfiguration' in data:
-            js_data = json.loads(data['gluuPassportConfiguration'][0])
+            passport_config = data['gluuPassportConfiguration'][0] if isinstance(data['gluuPassportConfiguration'], list) else data['gluuPassportConfiguration']
+            js_data = json.loads(passport_config) if isinstance(passport_config, str) else passport_config
 
             if 'providers' in js_data:
 
