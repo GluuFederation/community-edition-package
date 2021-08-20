@@ -1338,8 +1338,12 @@ class GluuUpdater:
                 self.casaInstaller.logIt("ERROR Updating " + casa_lib_fn, True)
                 self.casaInstaller.logIt(str(e), True)
 
+
         data = self.casaInstaller.dbUtils.dn_exists(casa_config_dn)
-        oxConfApplication = json.loads(data['oxConfApplication'])
+        if data:
+            oxConfApplication = json.loads(data['oxConfApplication'])
+        else:
+            oxConfApplication = json.load(open('/etc/gluu/conf/casa.json'))
 
         if not oxConfApplication.get('oxd_config'):
             oxConfApplication['oxd_config'] = {}
