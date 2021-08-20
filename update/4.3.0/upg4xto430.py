@@ -1364,7 +1364,11 @@ class GluuUpdater:
         if oxConfApplication.get('plugins_settings', {}).get('strong-authn-settings', {}).get('basic_2fa_settings'):
             oxConfApplication['plugins_settings']['strong-authn-settings']['basic_2fa_settings']['allowSelectPreferred'] = False
 
-        self.casaInstaller.dbUtils.set_configuration('oxConfApplication', json.dumps(oxConfApplication, indent=2), casa_config_dn)
+        if data:
+            self.casaInstaller.dbUtils.set_configuration('oxConfApplication', json.dumps(oxConfApplication, indent=2), casa_config_dn)
+        else:
+            entry = {'objectClass': ['top', 'oxApplicationConfiguration'], 'ou': ['casa'], 'oxConfApplication': [json.dumps(oxConfApplication, indent=2)]}
+            self.unparse_import([('ou=casa,ou=configuration,o=gluu', entry)])
 
         self.Config.oxd_server_https = 'https://{}:{}'.format(oxConfApplication['oxd_config']['host'], oxConfApplication['oxd_config']['port'])
 
