@@ -1,8 +1,13 @@
 #!/usr/bin/python3
 import warnings
 warnings.filterwarnings("ignore")
-import os
 import sys
+
+if sys.version_info.major < 3:
+    print("This script runs under Python 3")
+    sys.exit()
+
+import os
 import shutil
 import re
 import time
@@ -16,6 +21,7 @@ import urllib.request
 from urllib import request
 import ssl
 import random
+import argparse
 
 if os.environ.get('gldev') != 'true':
     print("This scirpt is under development. Not for use.")
@@ -24,9 +30,13 @@ if os.environ.get('gldev') != 'true':
 
 ssl._create_default_https_context = ssl._create_unverified_context
 
-if sys.version_info.major < 3:
-    print("This script runs under Python 3")
-    sys.exit()
+
+
+
+parser = argparse.ArgumentParser("This script upgrades gluu server 4.x to 4.3.0")
+parser.add_argument('-n', help="No interactive prompt before upgrade starts, 'Y' to all prompts.", action='store_true') 
+parser.add_argument('-application-max-ram', help="Application max ram in MB", type=int)
+argsp = parser.parse_args()
 
 installer = shutil.which('yum') if shutil.which('yum') else shutil.which('apt')
 
@@ -87,7 +97,7 @@ packages = ' '.join(missing_packages)
 if packages:
     print("This script requires", packages)
     cmd = installer +' install -y ' + packages
-    prompt = 'y' if '-n' in sys.argv else input("Install with command {}? [Y/n] ".format(cmd))
+    prompt = 'y' if argsp.n else input("Install with command {}? [Y/n] ".format(cmd))
     if not prompt.strip() or prompt[0].lower() == 'y':
         if installer.endswith('apt'):
             cmd_up = 'apt-get -y update'
@@ -105,11 +115,22 @@ from ldap3.utils import dn as dnutils
 cur_dir = os.path.dirname(os.path.realpath(__file__))
 properties_password = None
 
-result = 'y' if '-n' in sys.argv else input("Starting upgrade. CONTINUE? (y|N): ")
+result = 'y' if argsp.n else input("Starting upgrade. CONTINUE? (y|N): ")
 
 if not result.strip() or (result.strip() and result.strip().lower()[0] != 'y'):
     print("You can re-run this script to upgrade. Bye now ...")
     sys.exit()
+
+
+script_replacement_prompt = ('This upgrade replaces all the default Gluu Server scripts WITH SCRIPTS FROM 4.3.0',
+            'and removes other custom scripts. (This will replace any customization you may',
+            'have made to these default script entries) Do you want to continue? (y|N): ')
+result = 'y' if argsp.n else input('\n'.join(script_replacement_prompt))
+
+if not result.strip() or (result.strip() and result.strip().lower()[0] != 'y'):
+    print("You can re-run this script to upgrade. Bye now ...")
+    sys.exit()
+
 
 def get_properties(prop_fn):
     
@@ -335,6 +356,8 @@ class GluuUpdater:
         self.radiusInstaller = RadiusInstaller()
 
         self.rdbmInstaller.packageUtils = packageUtils
+        if argsp.application_max_ram:
+            Config.application_max_ram = argsp.application_max_ram
         self.jettyInstaller.calculate_selected_aplications_memory()
         self.gluuInstaller = GluuInstaller()
 
@@ -765,6 +788,7 @@ class GluuUpdater:
                     ('https://nodejs.org/dist/{0}/node-{0}-linux-x64.tar.xz'.format(self.node_version), os.path.join(self.app_dir, 'node-{0}-linux-x64.tar.xz'.format(self.node_version))),
                     ('https://raw.githubusercontent.com/GluuFederation/gluu-snap/master/facter/facter', '/usr/bin/facter'),
                     ('https://ox.gluu.org/maven/org/gluufederation/opendj/opendj-server-legacy/{0}/opendj-server-legacy-{0}.zip'.format(self.opendj_version), os.path.join(self.app_dir, 'opendj-server-{}.zip'.format(self.opendj_version))),
+                    ('https://ox.gluu.org/maven/org/gluu/oxauth-client/{0}{1}/oxauth-client-{0}{1}-jar-with-dependencies.jar'.format(self.up_version, self.build_tag), os.path.join(self.app_dir, 'oxauth-client-jar-with-dependencies.jar')),
                     ]
 
         if os.path.exists('/opt/shibboleth-idp'):
@@ -1010,8 +1034,15 @@ class GluuUpdater:
 
     def update_scripts(self):
         print("Updating Scripts")
-        self.Config.enable_scim_access_policy = 'true' if self.passportInstaller.installed() else 'false'
 
+        self.gluuInstaller.copyFile(
+            os.path.join(self.app_dir, 'oxauth-client-jar-with-dependencies.jar'),
+            self.Config.distGluuFolder
+            )
+
+        self.gluuInstaller.determine_key_gen_path()
+        self.Config.enable_scim_access_policy = 'true' if self.passportInstaller.installed() else 'false'
+        self.oxtrustInstaller.generate_configuration()
 
         self.gluuInstaller.prepare_base64_extension_scripts()
 
