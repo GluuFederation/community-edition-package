@@ -175,16 +175,16 @@ class GluuUpdater:
     def __init__(self):
         self.ces_dir = os.path.join(cur_dir, 'ces_current')
         self.up_version = '4.3.0'
-        self.build_tag = '-SNAPSHOT'
+        self.build_tag = '.Final'
         self.backup_time = time.strftime('%Y-%m-%d.%H:%M:%S')
         self.app_dir = os.path.join(cur_dir, 'app')
         self.postmessages = []
 
         # app versions
-        self.corretto_version = '11.0.12.7.1'
+        self.corretto_version = '11.0.8.10.1'
         self.jython_version = '2.7.2'
         self.jetty_version = '9.4.43.v20210629'
-        self.opendj_version = '4.4.11'
+        self.opendj_version = '4.4.12'
         self.node_version = 'v14.16.1'
 
         self.delete_from_configuration = ['gluuFreeDiskSpace', 'gluuFreeMemory', 'gluuFreeSwap', 'gluuGroupCount', 'gluuIpAddress', 'gluuPersonCount', 'gluuSystemUptime']
