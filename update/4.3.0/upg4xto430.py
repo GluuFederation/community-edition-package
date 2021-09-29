@@ -221,7 +221,7 @@ class GluuUpdater:
 
     def stop_services(self):
         print("Stopping Gluu Services")
-        for service in ('oxauth', 'identity', 'idp', 'oxauth-rp',  'oxd-server', 'casa', 'scim', 'fido2', 'passport'):
+        for service in ('oxauth', 'identity', 'idp', 'oxauth-rp', 'oxd-server', 'casa', 'scim', 'fido2', 'passport'):
             if os.path.exists(os.path.join('/etc/default', service)):
                 print("Stopping", service)
                 self.gluuInstaller.stop(service)
@@ -779,7 +779,6 @@ class GluuUpdater:
         downloads = [
                     ('https://ox.gluu.org/maven/org/gluu/oxtrust-server/{0}{1}/oxtrust-server-{0}{1}.war'.format(self.up_version, self.build_tag), os.path.join(self.app_dir, 'identity.war')),
                     ('https://ox.gluu.org/maven/org/gluu/oxauth-server/{0}{1}/oxauth-server-{0}{1}.war'.format(self.up_version, self.build_tag), os.path.join(self.app_dir, 'oxauth.war')),
-                    ('https://ox.gluu.org/maven/org/gluu/oxauth-rp/{0}{1}/oxauth-rp-{0}{1}.war'.format(self.up_version, self.build_tag), os.path.join(self.app_dir, 'oxauth-rp.war')),
                     ('https://ox.gluu.org/maven/org/gluu/fido2-server/{0}{1}/fido2-server-{0}{1}.war'.format(self.up_version, self.build_tag), os.path.join(self.app_dir, 'fido2.war')),
                     ('https://ox.gluu.org/maven/org/gluu/scim-server/{0}{1}/scim-server-{0}{1}.war'.format(self.up_version, self.build_tag), os.path.join(self.app_dir, 'scim.war')),                   
                     ('https://repo1.maven.org/maven2/org/eclipse/jetty/jetty-distribution/{0}/jetty-distribution-{0}.tar.gz'.format(self.jetty_version), os.path.join(self.app_dir, 'jetty-distribution-{0}.tar.gz'.format(self.jetty_version))),
@@ -1606,7 +1605,7 @@ class GluuUpdater:
 
     def update_default_settings(self):
         print("Updating /etc/default files")
-        for service in ('casa', 'fido2', 'identity', 'idp', 'oxauth', 'oxauth-rp', 'scim'):
+        for service in ('casa', 'fido2', 'identity', 'idp', 'oxauth', 'scim'):
             default_fn = os.path.join('/etc/default', service)
             print("Updating default file", service)
             if os.path.exists(default_fn):
