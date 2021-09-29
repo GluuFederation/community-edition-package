@@ -23,15 +23,11 @@ import ssl
 import random
 import argparse
 
-if os.environ.get('gldev') != 'true':
-    print("This scirpt is under development. Not for use.")
-    sys.exit()
-
+#if os.environ.get('gldev') != 'true':
+#    print("This scirpt is under development. Not for use.")
+#    sys.exit()
 
 ssl._create_default_https_context = ssl._create_unverified_context
-
-
-
 
 parser = argparse.ArgumentParser("This script upgrades gluu server 4.x to 4.3.0")
 parser.add_argument('-n', help="No interactive prompt before upgrade starts, 'Y' to all prompts.", action='store_true') 
