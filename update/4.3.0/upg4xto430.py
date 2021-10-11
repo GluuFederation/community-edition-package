@@ -192,6 +192,13 @@ class GluuUpdater:
             'custom-branding': 'https://ox.gluu.org/maven/org/gluu/casa/plugins/custom-branding/{0}{1}/custom-branding-{0}{1}-jar-with-dependencies.jar',
             }
 
+
+        if os.path.exists(self.app_dir):
+            shutil.move(self.app_dir, self.app_dir + '.' + self.backup_time)
+
+        if os.path.exists(self.ces_dir):
+            shutil.move(self.ces_dir, self.ces_dir + '.' + self.backup_time)
+
         if not os.path.exists(self.app_dir):
             os.mkdir(self.app_dir)
 
