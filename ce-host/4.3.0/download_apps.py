@@ -22,7 +22,7 @@ app_versions = {
               "JETTY_VERSION": "9.4.35.v20201120", 
               "AMAZON_CORRETTO_VERSION": "11-x64", 
               "OX_GITVERISON": ".Final", 
-              "OX_VERSION": "4.3.0", 
+              "OX_VERSION": "4.4.0", 
               "JYTHON_VERSION": "2.7.2",
               "NODE_VERSION": "v12.19.0",
               "SETUP_BRANCH": "version_4.3.0",
