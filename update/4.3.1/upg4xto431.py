@@ -40,6 +40,11 @@ parser.add_argument('-n', help="No interactive prompt before upgrade starts, 'Y'
 parser.add_argument('-application-max-ram', help="Application max ram in MB", type=int)
 argsp = parser.parse_args()
 
+argsd = {}
+argsd['n'] = argsp.n
+if argsp.application_max_ram:
+    argsd['application_max_ram'] = argsp.application_max_ram
+
 installer = shutil.which('yum') if shutil.which('yum') else shutil.which('apt')
 
 if not argsp.d and not os.path.exists('/etc/gluu/conf'):
@@ -356,6 +361,8 @@ class GluuUpdater:
     def prepare_ces(self):
         # we don't want to pass any argument to setup
         sys.argv = [sys.argv[0]]
+        if argsd.get('n'):
+            sys.argv.append('-n')
 
         sys.path.append(self.ces_dir)
 
@@ -451,9 +458,24 @@ class GluuUpdater:
         self.passportInstaller = PassportInstaller()
         self.radiusInstaller = RadiusInstaller()
 
+        for sinstaller, sinstallarg in (
+                    (self.oxauthInstaller, 'installOxAuth'),
+                    (self.oxtrustInstaller, 'installOxTrust'),
+                    (self.fidoInstaller, 'installFido2'),
+                    (self.scimInstaller, 'installScimServer'),
+                    (self.samlInstaller, 'installSaml'),
+                    (self.oxdInstaller, 'installOxd'),
+                    (self.casaInstaller, 'installCasa'),
+                    (self.passportInstaller, 'installPassport'),
+                    (self.radiusInstaller, 'installGluuRadius'),
+                    ):
+            if getattr(sinstaller, 'installed')():
+                setattr(self.Config, sinstallarg, True)
+
+
         self.rdbmInstaller.packageUtils = packageUtils
-        if argsp.application_max_ram:
-            Config.application_max_ram = argsp.application_max_ram
+        if argsd.get('application_max_ram'):
+            Config.application_max_ram = argsd['application_max_ram']
         self.jettyInstaller.calculate_selected_aplications_memory()
         self.gluuInstaller = GluuInstaller()
 
@@ -527,7 +549,7 @@ class GluuUpdater:
                     ('oxConfApplication', 'ou=oxidp,ou=configuration,o=gluu'): [
                             ('scriptDn', 'add', 'entry', 'ou=scripts,o=gluu'),
                     ],
-                    
+
                     ('oxTrustConfCacheRefresh', 'ou=oxtrust,ou=configuration,o=gluu'): [
                         ('inumConfig', 'change', 'subentry', ('bindDN', self.Config.ldap_binddn)),
                     ]
