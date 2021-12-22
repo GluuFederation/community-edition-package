@@ -34,6 +34,11 @@ parser.add_argument('-n', help="No interactive prompt before upgrade starts, 'Y'
 parser.add_argument('-application-max-ram', help="Application max ram in MB", type=int)
 argsp = parser.parse_args()
 
+argsd = {}
+argsd['n'] = argsp.n
+if argsp.application_max_ram:
+    argsd['application_max_ram'] = argsp.application_max_ram
+
 installer = shutil.which('yum') if shutil.which('yum') else shutil.which('apt')
 
 if not os.path.exists('/etc/gluu/conf'):
@@ -267,6 +272,11 @@ class GluuUpdater:
                     )
             shutil.rmtree(tmp_dir)
 
+        sys.argv = [sys.argv[0]]
+        if argsd.get('n'):
+            sys.argv.append('-n')
+
+
         open(os.path.join(self.ces_dir, '__init__.py'), 'w').close()
         sys.path.append(os.path.join(cur_dir, 'ces_current'))
 
@@ -357,6 +367,20 @@ class GluuUpdater:
         self.casaInstaller = CasaInstaller()
         self.passportInstaller = PassportInstaller()
         self.radiusInstaller = RadiusInstaller()
+
+        for sinstaller, sinstallarg in (
+                    (self.oxauthInstaller, 'installOxAuth'),
+                    (self.oxtrustInstaller, 'installOxTrust'),
+                    (self.fidoInstaller, 'installFido2'),
+                    (self.scimInstaller, 'installScimServer'),
+                    (self.samlInstaller, 'installSaml'),
+                    (self.oxdInstaller, 'installOxd'),
+                    (self.casaInstaller, 'installCasa'),
+                    (self.passportInstaller, 'installPassport'),
+                    (self.radiusInstaller, 'installGluuRadius'),
+                    ):
+            if getattr(sinstaller, 'installed')():
+                setattr(self.Config, sinstallarg, True)
 
         self.rdbmInstaller.packageUtils = packageUtils
         if argsp.application_max_ram:
