@@ -42,6 +42,8 @@ argsp = parser.parse_args()
 
 argsd = {}
 argsd['n'] = argsp.n
+argsd['offline'] = argsp.offline
+
 if argsp.application_max_ram:
     argsd['application_max_ram'] = argsp.application_max_ram
 
@@ -98,8 +100,23 @@ except:
         missing_packages.append('python36-ruamel-yaml')
     else:
         missing_packages.append('python3-ruamel-yaml')
-    
+
+try:
+    from distutils import util
+except:
+    missing_packages.append('python3-distutils')
+
+try:
+    import pymysql
+except:
+    missing_packages.append('python3-pymysql')
+
 packages = ' '.join(missing_packages)
+
+if argsd.get('offline') and missing_packages:
+    print("This script needs the following packages to continue. Please install missing packages and re-run this script.")
+    print(packages)
+    sys.exit()
 
 if packages:
     print("This script requires", packages)
