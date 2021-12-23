@@ -109,7 +109,13 @@ except:
 try:
     import pymysql
 except:
-    missing_packages.append('python3-pymysql')
+    if installer.endswith('apt'):
+        missing_packages.append('python3-pymysql')
+    elif installer.endswith('yum') and os_version == '7':
+        missing_packages.append('python36-PyMySQL')
+    else:
+        missing_packages.append('python3-PyMySQL')
+
 
 packages = ' '.join(missing_packages)
 
