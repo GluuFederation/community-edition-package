@@ -29,6 +29,34 @@ wait_stop() {
     return 1
 }
 
+update_limits_conf() {
+        LIMITS_FILE="/etc/security/limits.conf"
+        LIMITS_ORG="/etc/security/limits.conf.org"
+        'cp' $LIMITS_FILE $LIMITS_ORG
+        # Update no of files
+        grep -v "$1" $LIMITS_FILE > ${LIMITS_FILE}.bak
+        mv ${LIMITS_FILE}.bak $LIMITS_FILE
+        echo "$1" >> $LIMITS_FILE
+}
+
+tune_os() {
+        update_limits_conf '* soft nofile 65535'
+        update_limits_conf '* hard nofile 262144'
+
+        if [ -f '/proc/sys/fs/file-max' ]; then
+                CURRENT_FILES_LIMIT=`cat /proc/sys/fs/file-max`
+                if [ $CURRENT_FILES_LIMIT -le 262144 ]; then
+                        echo "The current max files limit is: $CURRENT_FILES_LIMIT";
+                        echo "Setting to 262144";
+                else
+                        echo "The current max files limit $CURRENT_FILES_LIMIT seems sufficient for current requirements.";
+                fi
+        else
+                echo "The file /proc/sys/fs/file-max does not exist."
+                echo "Please check the corresponding file for your OS..."
+        fi
+}
+
 case "$1" in
         start)
             systemctl start systemd-nspawn@gluu-server.service
@@ -67,7 +95,10 @@ case "$1" in
 	    systemctl disable systemd-nspawn@gluu-server.service
             systemctl disable machines.target
             ;; 
+	tune_os) 
+            tune_os
+            ;; 
 	*)
-            echo $"Usage: $0 {enable|start|restart|ready|login|stop|disable|status}"
+            echo $"Usage: $0 {enable|start|restart|ready|login|stop|disable|tune_os|status}"
             exit 1
 esac
