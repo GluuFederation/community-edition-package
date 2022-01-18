@@ -26,9 +26,9 @@ import argparse
 
 os.umask(0o022)
 
-if os.environ.get('gldev') != 'true':
-    print("This scirpt is under development. Not for use.")
-    sys.exit()
+#if os.environ.get('gldev') != 'true':
+#    print("This scirpt is under development. Not for use.")
+#    sys.exit()
 
 ssl._create_default_https_context = ssl._create_unverified_context
 up_version = "4.3.1"
