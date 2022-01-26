@@ -1196,7 +1196,7 @@ class GluuUpdater:
             if 'inum' in new_entry:
 
                 if not oxAuthClient:
-                    if self.keep_user_inum and not ('ou=groups' in dn or 'ou=people' in dn):
+                    if not (self.keep_user_inum and ('ou=groups' in dn or 'ou=people' in dn)):
                         new_entry['inum'] = [self.inum2uuid(new_entry['inum'][0])]
 
                 new_dn = self.inum2uuid(new_dn, oxAuthClient)
