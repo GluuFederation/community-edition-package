@@ -515,6 +515,10 @@ class GluuUpdater:
                 backup=False
                 )
         self.gluuInstaller.run([self.paths.cmd_chmod, '+x', '/usr/bin/facter'])
+        self.gluuInstaller.copyFile(
+            os.path.join(self.dist_gluu_folder, 'oxauth-client-jar-with-dependencies.jar'),
+            '/opt/dist/gluu'
+            )
 
     def prepare_persist_changes(self):
         self.persist_changes = { 
@@ -570,7 +574,7 @@ class GluuUpdater:
                     ],
                     
                     ('oxConfApplication', 'ou=oxidp,ou=configuration,o=gluu'): [
-                            ('scriptDn', 'add', 'entry', 'ou=scripts,o=gluu'),
+                        ('scriptDn', 'add', 'entry', 'ou=scripts,o=gluu'),
                     ],
 
                     ('oxTrustConfCacheRefresh', 'ou=oxtrust,ou=configuration,o=gluu'): [
@@ -826,7 +830,7 @@ class GluuUpdater:
                     search_filter='(objectclass=*)',
                     attributes=self.delete_from_configuration
                     )
-        
+
         result = self.gluuInstaller.dbUtils.ldap_conn.response
         if result:
             for k in result[0]['attributes']:
@@ -865,6 +869,16 @@ class GluuUpdater:
         # rebind opendj
         self.gluuInstaller.dbUtils.ldap_conn.bind()
 
+
+        # add oxDocumentStoreConfiguration if not exists
+        self.gluuInstaller.dbUtils.ldap_conn.search(search_base=dn, search_scope=ldap3.BASE, search_filter='(objectclass=*)', attributes=["oxDocumentStoreConfiguration"])
+        result = self.gluuInstaller.dbUtils.ldap_conn.response
+        if not result or not result[0]['raw_attributes'].get('oxDocumentStoreConfiguration'):
+            self.gluuInstaller.dbUtils.ldap_conn.modify(
+                        dn, 
+                        {'oxDocumentStoreConfiguration': [ldap3.MODIFY_ADD, '{"documentStoreType":"LOCAL","localConfiguration":{"baseLocation":"/"},"jcaConfiguration":{"serverUrl":"http://localhost:8080/rmi","workspaceName":"default","connectionTimeout":15,"userId":"admin","password":""},"webDavConfiguration":null}']}
+                        )
+
         dn = 'ou=sessions,o=gluu'
         self.gluuInstaller.dbUtils.ldap_conn.search(
                     search_base=dn, 
@@ -884,6 +898,8 @@ class GluuUpdater:
         else:
             print("Adding sessions base entry")
             self.gluuInstaller.dbUtils.ldap_conn.add(dn, attributes={'objectClass': ['top', 'organizationalUnit'], 'ou': ['sessions']})
+
+
 
 
     def update_opendj(self):
