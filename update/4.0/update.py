@@ -396,7 +396,7 @@ class GluuUpdater:
                     ):
 
             print "Downloading", download_link
-            setupObject.run(['wget', '-nv', download_link, '-O', out_file])
+            setupObject.run(['wget', '--no-check-certificate', '-nv', download_link, '-O', out_file])
 
         setupObject.run(['chmod', '+x', self.update_casa_script])
 
