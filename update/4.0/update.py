@@ -1305,11 +1305,9 @@ class GluuUpdater:
                                     new_entry['gluuPassportConfiguration'][0]
                                 )
                 try:
-                
                     self.fix_passport_config(new_dn, new_entry)
-                
                 except Exception as e:
-                    err_str = "ERROR fixing passport: " + e
+                    err_str = "ERROR fixing passport: " + str(e)
                     print err_str
                     setupObject.logIt(err_str, True)
                     

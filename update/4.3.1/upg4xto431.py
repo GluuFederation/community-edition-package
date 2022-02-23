@@ -639,6 +639,9 @@ class GluuUpdater:
             ldap_filter = '({0}=*)'.format(config_element)
             result = self.gluuInstaller.dbUtils.search(config_dn, search_filter=ldap_filter, search_scope=ldap3.BASE)
 
+            if not result:
+                continue
+
             js_conf = json.loads(result[config_element]) if isinstance(result[config_element], str) else result[config_element]
             self.apply_persist_changes(js_conf, self.persist_changes[(config_element, config_dn)])
             new_conf = json.dumps(js_conf,indent=2)
