@@ -398,7 +398,7 @@ case "$1" in
         ;;
     *)
 
-        echo "Usage:  {start|stop|status|restart|login|ready|clear-logs}"
+        echo "Usage:  {start|stop|status|restart|login|ready|clear-logs|tune_os}"
         exit 1
         ;;
 esac

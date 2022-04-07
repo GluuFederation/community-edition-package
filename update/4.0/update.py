@@ -150,7 +150,7 @@ def get_as_bool(val):
 
 class GluuUpdater:
     def __init__(self):
-
+        self.keep_user_inum = False
         self.update_dir = cur_dir
         self.app_dir = os.path.join(self.update_dir,'app')
         self.war_dir = os.path.join(self.update_dir,'war')
@@ -396,7 +396,7 @@ class GluuUpdater:
                     ):
 
             print "Downloading", download_link
-            setupObject.run(['wget', '-nv', download_link, '-O', out_file])
+            setupObject.run(['wget', '--no-check-certificate', '-nv', download_link, '-O', out_file])
 
         setupObject.run(['chmod', '+x', self.update_casa_script])
 
@@ -564,6 +564,9 @@ class GluuUpdater:
                 print "Passport IDP-Initated flow Client was added"
 
     def inum2uuid(self, s, oxAuthClient=False):
+
+        if self.keep_user_inum and ('ou=groups' in s or 'ou=people' in s):
+            return s
 
         tmps = s
 
@@ -1192,11 +1195,10 @@ class GluuUpdater:
 
             if 'inum' in new_entry:
 
-                
-
                 if not oxAuthClient:
-                    new_entry['inum'] = [self.inum2uuid(new_entry['inum'][0])]
-                
+                    if not (self.keep_user_inum and ('ou=groups' in dn or 'ou=people' in dn)):
+                        new_entry['inum'] = [self.inum2uuid(new_entry['inum'][0])]
+
                 new_dn = self.inum2uuid(new_dn, oxAuthClient)
 
                 if new_entry['inum'][0] in ['8CAD-B06D', '8CAD-B06E']:
@@ -1303,11 +1305,9 @@ class GluuUpdater:
                                     new_entry['gluuPassportConfiguration'][0]
                                 )
                 try:
-                
                     self.fix_passport_config(new_dn, new_entry)
-                
                 except Exception as e:
-                    err_str = "ERROR fixing passport: " + e
+                    err_str = "ERROR fixing passport: " + str(e)
                     print err_str
                     setupObject.logIt(err_str, True)
                     
@@ -1985,6 +1985,12 @@ if __name__ == '__main__':
         print "Can't continue wtihout replacing custom scripts. Exiting ..."
         sys.exit()
 
+    keep_user_inum = False
+    ask_keep_user_inum = raw_input("Keep users' inum as it is? (y|N) ")
+    if ask_keep_user_inum and ask_keep_user_inum[0].lower() == 'y':
+        keep_user_inum = True
+
+
     from setup.pylib.ldif import LDIFParser, LDIFWriter, ParseLDIF
     from setup.pylib.cbm import CBM
     from setup.setup import *
@@ -2008,6 +2014,8 @@ if __name__ == '__main__':
         setup_porperties['encode_salt'] = str(setup_porperties['encode_salt'])
 
     updaterObj = GluuUpdater()
+    updaterObj.keep_user_inum = keep_user_inum
+    
     updaterObj.determine_ldap_type()
 
     setup_install_dir = os.path.join(cur_dir,'setup')
@@ -2023,7 +2031,7 @@ if __name__ == '__main__':
             setup_val = str(setup_val)
         setattr(setupObject, setup_key, setup_val)
 
-    if argsp.online or not os.path.exists('setup'):
+    if argsp.online or not os.path.exists(os.path.join(cur_dir, 'setup')):
         updaterObj.download_apps()
 
     sdb_files = []

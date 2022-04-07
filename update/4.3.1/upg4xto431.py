@@ -1,4 +1,5 @@
 #!/usr/bin/python3
+
 import warnings
 warnings.filterwarnings("ignore")
 import sys
@@ -23,25 +24,32 @@ import ssl
 import random
 import argparse
 
+os.umask(0o022)
+
 #if os.environ.get('gldev') != 'true':
 #    print("This scirpt is under development. Not for use.")
 #    sys.exit()
 
 ssl._create_default_https_context = ssl._create_unverified_context
-
-parser = argparse.ArgumentParser("This script upgrades gluu server 4.x to 4.3.0")
+up_version = "4.3.1"
+maven_base = 'https://jenkins.gluu.org/maven'
+parser = argparse.ArgumentParser("This script upgrades gluu server 4.x to {}".format(up_version))
+parser.add_argument('-d', help="Download applications and exit", action='store_true')
+parser.add_argument('--offline', help="Offline upgrade", action='store_true')
 parser.add_argument('-n', help="No interactive prompt before upgrade starts, 'Y' to all prompts.", action='store_true') 
 parser.add_argument('-application-max-ram', help="Application max ram in MB", type=int)
 argsp = parser.parse_args()
 
 argsd = {}
 argsd['n'] = argsp.n
+argsd['offline'] = argsp.offline
+
 if argsp.application_max_ram:
     argsd['application_max_ram'] = argsp.application_max_ram
 
 installer = shutil.which('yum') if shutil.which('yum') else shutil.which('apt')
 
-if not os.path.exists('/etc/gluu/conf'):
+if not argsp.d and not os.path.exists('/etc/gluu/conf'):
     sys.exit('Please run this script inside Gluu container.')
 
 if sys.version_info.major < 3:
@@ -92,8 +100,29 @@ except:
         missing_packages.append('python36-ruamel-yaml')
     else:
         missing_packages.append('python3-ruamel-yaml')
-    
+
+try:
+    from distutils import util
+except:
+    missing_packages.append('python3-distutils')
+
+try:
+    import pymysql
+except:
+    if installer.endswith('apt'):
+        missing_packages.append('python3-pymysql')
+    elif installer.endswith('yum') and os_version == '7':
+        missing_packages.append('python36-PyMySQL')
+    else:
+        missing_packages.append('python3-PyMySQL')
+
+
 packages = ' '.join(missing_packages)
+
+if argsd.get('offline') and missing_packages:
+    print("This script needs the following packages to continue. Please install missing packages and re-run this script.")
+    print(packages)
+    sys.exit()
 
 if packages:
     print("This script requires", packages)
@@ -123,7 +152,7 @@ if not result.strip() or (result.strip() and result.strip().lower()[0] != 'y'):
     sys.exit()
 
 
-script_replacement_prompt = ('This upgrade replaces all the default Gluu Server scripts WITH SCRIPTS FROM 4.3.0',
+script_replacement_prompt = ('This upgrade replaces all the default Gluu Server scripts WITH SCRIPTS FROM {}'.format(up_version),
             'and removes other custom scripts. (This will replace any customization you may',
             'have made to these default script entries) Do you want to continue? (y|N): ')
 result = 'y' if argsp.n else input('\n'.join(script_replacement_prompt))
@@ -152,11 +181,10 @@ def get_properties(prop_fn):
 
     return p
 
-
-with open("/etc/gluu/conf/salt") as f:
-    salt_property = f.read().strip()
-    key = salt_property.split("=")[1].strip()
-
+if not argsp.d:
+    with open("/etc/gluu/conf/salt") as f:
+        salt_property = f.read().strip()
+        key = salt_property.split("=")[1].strip()
 
 def unobscure(s):
     cipher = pyDes.triple_des(key)
@@ -174,50 +202,50 @@ def make_key(l):
 
 class GluuUpdater:
     def __init__(self):
-        self.ces_dir = os.path.join(cur_dir, 'ces_current')
-        self.up_version = '4.3.0'
+
         self.build_tag = '.Final'
         self.backup_time = time.strftime('%Y-%m-%d.%H:%M:%S')
-        self.app_dir = os.path.join(cur_dir, 'app')
+        self.dist_folder = '/opt/upd/{}/dist'.format(up_version)
+
+        self.ces_dir = '/install/community_edition_setup_{}'.format(up_version)
+
+        self.dist_app_folder = os.path.join(self.dist_folder, 'app')
+        self.dist_gluu_folder = os.path.join(self.dist_folder, 'gluu')
+        self.dist_tmp_folder = os.path.join(self.dist_folder, 'tmp')
+        self.grpcio_folder = os.path.join(self.dist_app_folder, 'grpcio')
+
+        self.maven_base = maven_base.rstrip('/')
+        self.maven_root = '/'.join(maven_base.split('/')[:-1]).rstrip('/')
+
         self.postmessages = []
 
         # app versions
-        self.corretto_version = '11.0.8.10.1'
-        self.jython_version = '2.7.2'
-        self.jetty_version = '9.4.43.v20210629'
+        self.corretto_version = '11.0.13.8.1'
+        self.jython_version = '2.7.3'
+        self.jetty_version = '9.4.44.v20210927'
         self.opendj_version = '4.4.12'
         self.node_version = 'v14.16.1'
 
         self.delete_from_configuration = ['gluuFreeDiskSpace', 'gluuFreeMemory', 'gluuFreeSwap', 'gluuGroupCount', 'gluuIpAddress', 'gluuPersonCount', 'gluuSystemUptime']
 
         self.casa_plugins = {
-            'strong-authn-settings': 'https://ox.gluu.org/maven/org/gluu/casa/plugins/strong-authn-settings/{0}{1}/strong-authn-settings-{0}{1}-jar-with-dependencies.jar',
-            'account-linking': 'https://ox.gluu.org/maven/org/gluu/casa/plugins/account-linking/{0}{1}/account-linking-{0}{1}-jar-with-dependencies.jar',
-            'authorized-clients': 'https://ox.gluu.org/maven/org/gluu/casa/plugins/authorized-clients/{0}{1}/authorized-clients-{0}{1}-jar-with-dependencies.jar',
-            'custom-branding': 'https://ox.gluu.org/maven/org/gluu/casa/plugins/custom-branding/{0}{1}/custom-branding-{0}{1}-jar-with-dependencies.jar',
+            'strong-authn-settings': self.maven_base + '/org/gluu/casa/plugins/strong-authn-settings/{0}{1}/strong-authn-settings-{0}{1}-jar-with-dependencies.jar',
+            'account-linking': self.maven_base + '/org/gluu/casa/plugins/account-linking/{0}{1}/account-linking-{0}{1}-jar-with-dependencies.jar',
+            'authorized-clients': self.maven_base + '/org/gluu/casa/plugins/authorized-clients/{0}{1}/authorized-clients-{0}{1}-jar-with-dependencies.jar',
+            'custom-branding': self.maven_base + '/org/gluu/casa/plugins/custom-branding/{0}{1}/custom-branding-{0}{1}-jar-with-dependencies.jar',
             }
-
-
-        if os.path.exists(self.app_dir):
-            shutil.move(self.app_dir, self.app_dir + '.' + self.backup_time)
-
-        if os.path.exists(self.ces_dir):
-            shutil.move(self.ces_dir, self.ces_dir + '.' + self.backup_time)
-
-        if not os.path.exists(self.app_dir):
-            os.mkdir(self.app_dir)
 
         self.gapp_dir = '/opt/dist/app'
 
     def download(self, url, target_fn):
-        dst = os.path.join(self.app_dir, target_fn)
-        pardir, fn = os.path.split(dst)
-        if not os.path.exists(pardir):
-            os.makedirs(pardir)
-        print("Downloading", url, "to", dst)
+
+        if os.path.exists(target_fn):
+            return
+
+        print("Downloading", url, "to", target_fn)
         for i in range(3):
             try:
-                request.urlretrieve(url, dst)
+                request.urlretrieve(url, target_fn)
                 break
             except:
                 rantom_time = random.randint(3,7)
@@ -225,6 +253,70 @@ class GluuUpdater:
                 time.sleep(rantom_time)
         else:
             print("Download failed. Giving up ...")
+            sys.exit()
+
+    def download_apps(self):
+
+        if argsp.offline:
+            return
+
+        for dist_foler in (self.dist_app_folder, self.dist_gluu_folder, self.dist_tmp_folder, self.grpcio_folder):
+            if not os.path.exists(dist_foler):
+                os.makedirs(dist_foler)
+
+        downloads = [
+                    (self.maven_base + '/org/gluu/oxtrust-server/{0}{1}/oxtrust-server-{0}{1}.war'.format(up_version, self.build_tag), os.path.join(self.dist_gluu_folder, 'identity.war')),
+                    (self.maven_base + '/org/gluu/oxauth-server/{0}{1}/oxauth-server-{0}{1}.war'.format(up_version, self.build_tag), os.path.join(self.dist_gluu_folder, 'oxauth.war')),
+                    (self.maven_base + '/org/gluu/fido2-server/{0}{1}/fido2-server-{0}{1}.war'.format(up_version, self.build_tag), os.path.join(self.dist_gluu_folder, 'fido2.war')),
+                    (self.maven_base + '/org/gluu/scim-server/{0}{1}/scim-server-{0}{1}.war'.format(up_version, self.build_tag), os.path.join(self.dist_gluu_folder, 'scim.war')),
+                    ('https://repo1.maven.org/maven2/org/eclipse/jetty/jetty-distribution/{0}/jetty-distribution-{0}.tar.gz'.format(self.jetty_version), os.path.join(self.dist_app_folder, 'jetty-distribution-{0}.tar.gz'.format(self.jetty_version))),
+                    ('https://corretto.aws/downloads/resources/{0}/amazon-corretto-{0}-linux-x64.tar.gz'.format(self.corretto_version), os.path.join(self.dist_app_folder, 'amazon-corretto-{0}-linux-x64.tar.gz'.format(self.corretto_version))),
+                    (self.maven_base + '/org/gluufederation/jython-installer/{0}/jython-installer-{0}.jar'.format(self.jython_version), os.path.join(self.dist_app_folder, 'jython-installer-{}.jar'.format(self.jython_version))),
+                    ('https://nodejs.org/dist/{0}/node-{0}-linux-x64.tar.xz'.format(self.node_version), os.path.join(self.dist_app_folder, 'node-{0}-linux-x64.tar.xz'.format(self.node_version))),
+                    ('https://raw.githubusercontent.com/GluuFederation/gluu-snap/master/facter/facter', os.path.join(self.dist_gluu_folder, os.path.join(self.dist_gluu_folder, 'facter'))),
+                    (self.maven_base + '/org/gluufederation/opendj/opendj-server-legacy/{0}/opendj-server-legacy-{0}.zip'.format(self.opendj_version), os.path.join(self.dist_app_folder, 'opendj-server-{}.zip'.format(self.opendj_version))),
+                    (self.maven_base + '/org/gluu/oxauth-client/{0}{1}/oxauth-client-{0}{1}-jar-with-dependencies.jar'.format(up_version, self.build_tag), os.path.join(self.dist_gluu_folder, 'oxauth-client-jar-with-dependencies.jar')),
+                    ('https://github.com/GluuFederation/community-edition-setup/archive/version_{}.zip'.format(up_version), os.path.join(self.dist_gluu_folder, 'community-edition-setup.zip')),
+                    ('https://ox.gluu.org/icrby8xcvbcv/spanner/gcs.tgz', os.path.join(self.dist_app_folder, 'gcs.tgz')),
+                    ('https://github.com/sqlalchemy/sqlalchemy/archive/rel_1_3_23.zip', os.path.join(self.dist_app_folder, 'sqlalchemy.zip')),
+                    (self.maven_base + '/org/gluu/oxshibbolethIdp/{0}{1}/oxshibbolethIdp-{0}{1}.war'.format(up_version, self.build_tag), os.path.join(self.dist_gluu_folder, 'idp.war')),
+                    (self.maven_base + '/org/gluu/oxShibbolethStatic/{0}{1}/oxShibbolethStatic-{0}{1}.jar'.format(up_version, self.build_tag), os.path.join(self.dist_gluu_folder, 'shibboleth-idp.jar')),
+                    (self.maven_base + '/org/gluu/oxShibbolethKeyGenerator/{0}{1}/oxShibbolethKeyGenerator-{0}{1}.jar'.format(up_version, self.build_tag), os.path.join(self.dist_gluu_folder, 'idp3_cml_keygenerator.jar')),
+                    ('https://raw.githubusercontent.com/GluuFederation/oxTrust/master/configuration/src/main/resources/META-INF/shibboleth3/idp/saml-nameid.properties.vm', os.path.join(self.dist_gluu_folder, 'saml-nameid.properties.vm')),
+                    (self.maven_root + '/npm/passport/passport-{}.tgz'.format(up_version), os.path.join(self.dist_gluu_folder, 'passport.tgz')),
+                    (self.maven_root + '/npm/passport/passport-version_{}-node_modules.tar.gz'.format(up_version), os.path.join(self.dist_gluu_folder, 'passport-version_{}-node_modules.tar.gz'.format(up_version))),
+                    (self.maven_base + '/org/gluu/super-gluu-radius-server/{0}{1}/super-gluu-radius-server-{0}{1}-distribution.zip'.format(up_version, self.build_tag), os.path.join(self.dist_gluu_folder, 'gluu-radius-libs.zip')),
+                    (self.maven_base + '/org/gluu/super-gluu-radius-server/{0}{1}/super-gluu-radius-server-{0}{1}.jar'.format(up_version, self.build_tag), os.path.join(self.dist_gluu_folder, 'super-gluu-radius-server.jar')),
+                    (self.maven_base + '/org/gluu/oxd-server/{0}{1}/oxd-server-{0}{1}.jar'.format(up_version, self.build_tag), os.path.join(self.dist_gluu_folder, 'oxd-server.jar')),
+                    (self.maven_base + '/org/gluu/casa/{0}{1}/casa-{0}{1}.war'.format(up_version, self.build_tag), os.path.join(self.dist_gluu_folder, 'casa.war')),
+                    ('https://raw.githubusercontent.com/GluuFederation/community-edition-setup/version_{0}/static/casa/scripts/casa-external_smpp.py'.format(up_version), os.path.join(self.dist_gluu_folder, 'casa-external_smpp.py')),
+                    ]
+        for p in self.casa_plugins:
+            downloads.append((self.casa_plugins[p].format(up_version, self.build_tag), os.path.join(self.dist_gluu_folder, p + '.jar')))
+
+        downloads += [
+                ('https://raw.githubusercontent.com/GluuFederation/casa/version_{}/plugins/account-linking/extras/login.xhtml'.format(up_version), os.path.join(self.dist_gluu_folder, 'login.xhtml')),
+                ('https://raw.githubusercontent.com/GluuFederation/casa/version_{}/plugins/account-linking/extras/casa.py'.format(up_version), os.path.join(self.dist_gluu_folder, 'casa.py')),
+                ]
+
+        for download_link, out_file in downloads:
+            self.download(download_link, out_file)
+
+
+        req = request.urlopen('https://pypi.org/pypi/grpcio/1.37.0/json')
+        data_s = req.read()
+        data = json.loads(data_s)
+
+        for package in data['releases']['1.37.0']:
+            ppyversion = package['python_version']
+            if len(ppyversion) < 5:
+                ppyversion += '0'
+            if ppyversion >= 'cp350' and 'manylinux' in package['filename'] and package['filename'].endswith('manylinux2014_x86_64.whl') and package.get('url'):
+                target_whl_fn = os.path.join(self.grpcio_folder, package['filename'])
+                self.download(package['url'], target_whl_fn)
+
+        if argsp.d:
+            print("Download requested. Exiting ...")
             sys.exit()
 
     def stop_services(self):
@@ -238,47 +330,64 @@ class GluuUpdater:
         os.system('rm -r -f /opt/jetty-9.4/temp/*')
 
 
-    def download_ces(self):
+    def prepare_gcs(self):
 
-        if not os.path.exists(self.ces_dir):
-            ces_url = 'https://github.com/GluuFederation/community-edition-setup/archive/version_{}.zip'.format(self.up_version)
+        if not os.path.exists(os.path.join(self.gapp_dir, 'gcs')):
+            print("Preparing Spanner modules")
+            shutil.unpack_archive(os.path.join(self.dist_app_folder, 'gcs.tgz'), self.gapp_dir)
+            pyversion = 'cp{0}{1}'.format(sys.version_info.major, sys.version_info.minor)
+            for grpcio_package in glob.glob(os.path.join(self.grpcio_folder, '*.whl')):
+                if grpcio_package.find(pyversion) > 0:
+                    whl_zip = zipfile.ZipFile(grpcio_package)
+                    for member in  whl_zip.filelist:
+                        fn = os.path.basename(member.filename)
+                        if fn.startswith('cygrpc.cpython') and fn.endswith('x86_64-linux-gnu.so'):
+                            whl_zip.extract(member, os.path.join(self.gapp_dir, 'gcs'))
+                    whl_zip.close()
+                    break
+            else:
+                print("Can't find cygrpc.cpython module for python version", sys.version_info)
+                sys.exit()
 
-            print("Downloading Community Edition Setup {}".format(self.up_version))
+    def unzip_ces(self):
+        if os.path.exists(self.ces_dir):
+            return
 
-            target_fn = os.path.join(self.app_dir, 'version_{}.zip'.format(self.up_version))
-            self.download(ces_url, target_fn)
-            ces_tmp_dir = '/tmp/ces_{}'.format(os.urandom(4).hex())
-            #determine path
-            ces_zip = zipfile.ZipFile(target_fn, "r")
-            ces_zip_path = ces_zip.namelist()[0]
+        ces_tmp_dir = os.path.join(self.dist_tmp_folder, 'ces_{}'.format(os.urandom(4).hex()))
+        #determine path
+        ces_zip_fn = os.path.join(self.dist_gluu_folder, 'community-edition-setup.zip')
+        ces_zip = zipfile.ZipFile(ces_zip_fn, "r")
+        ces_zip_path = ces_zip.namelist()[0]
 
-            print("Extracting CES package")
-            ces_zip.extractall(ces_tmp_dir)
-            extracted_path = os.path.join(ces_tmp_dir, ces_zip_path)
-            shutil.copytree(extracted_path, os.path.join(cur_dir, 'ces_current'))
-            shutil.rmtree(ces_tmp_dir)
+        print("Extracting CES package")
+        ces_zip.extractall(ces_tmp_dir)
+        extracted_path = os.path.join(ces_tmp_dir, ces_zip_path)
+        shutil.copytree(extracted_path, self.ces_dir)
+        shutil.rmtree(ces_tmp_dir)
 
-            print("Downloading sqlalchemy")
-            target_dir = os.path.join(self.ces_dir, 'setup_app/pylib/sqlalchemy')
-            self.download('https://github.com/sqlalchemy/sqlalchemy/archive/rel_1_3_23.zip', os.path.join(self.app_dir, 'sqlalchemy.zip'))
-            sqlalchemy_zfn = os.path.join(self.app_dir, 'sqlalchemy.zip')
-            sqlalchemy_zip = zipfile.ZipFile(sqlalchemy_zfn, "r")
-            sqlalchemy_par_dir = sqlalchemy_zip.namelist()[0]
-            tmp_dir = '/tmp/sqla_{}'.format(os.urandom(4).hex())
-            sqlalchemy_zip.extractall(tmp_dir)
-            shutil.copytree(
-                    os.path.join(tmp_dir, sqlalchemy_par_dir, 'lib/sqlalchemy'), 
-                    target_dir
-                    )
-            shutil.rmtree(tmp_dir)
+        print("Extracting sqlalchemy")
+        target_dir = os.path.join(self.ces_dir, 'setup_app/pylib/sqlalchemy')
+        sqlalchemy_zfn = os.path.join(self.dist_app_folder, 'sqlalchemy.zip')
+        sqlalchemy_zip = zipfile.ZipFile(sqlalchemy_zfn, "r")
+        sqlalchemy_par_dir = sqlalchemy_zip.namelist()[0]
+        tmp_dir = os.path.join(self.dist_tmp_folder, 'sqla_{}'.format(os.urandom(4).hex()))
+        sqlalchemy_zip.extractall(tmp_dir)
+        shutil.copytree(
+                os.path.join(tmp_dir, sqlalchemy_par_dir, 'lib/sqlalchemy'), 
+                target_dir
+                )
+        shutil.rmtree(tmp_dir)
 
+        open(os.path.join(self.ces_dir, '__init__.py'), 'w').close()
+
+
+    def prepare_ces(self):
+        # we don't want to pass any argument to setup
         sys.argv = [sys.argv[0]]
         if argsd.get('n'):
             sys.argv.append('-n')
 
-
-        open(os.path.join(self.ces_dir, '__init__.py'), 'w').close()
-        sys.path.append(os.path.join(cur_dir, 'ces_current'))
+        sys.path.append(self.ces_dir)
 
         from setup_app.utils.arg_parser import arg_parser
 
@@ -335,6 +444,10 @@ class GluuUpdater:
         from setup_app.installers.casa import CasaInstaller
         from setup_app.installers.rdbm import RDBMInstaller
 
+
+        Config.gluuOptFolder
+        Config.distFolder = self.dist_folder
+
         Config.init(paths.INSTALL_DIR)
         Config.determine_version()
 
@@ -382,9 +495,10 @@ class GluuUpdater:
             if getattr(sinstaller, 'installed')():
                 setattr(self.Config, sinstallarg, True)
 
+
         self.rdbmInstaller.packageUtils = packageUtils
-        if argsp.application_max_ram:
-            Config.application_max_ram = argsp.application_max_ram
+        if argsd.get('application_max_ram'):
+            Config.application_max_ram = argsd['application_max_ram']
         self.jettyInstaller.calculate_selected_aplications_memory()
         self.gluuInstaller = GluuInstaller()
 
@@ -394,44 +508,17 @@ class GluuUpdater:
         self.paths = paths
         self.base = base
 
-    def download_gcs(self):
-
-        if not os.path.exists(os.path.join(self.gapp_dir, 'gcs')):
-            print("Downloading Spanner modules")
-            gcs_download_url = 'http://162.243.99.240/icrby8xcvbcv/spanner/gcs.tgz'
-            tmp_dir = '/tmp/' + os.urandom(5).hex()
-            target_fn = os.path.join(tmp_dir, 'gcs.tgz')
-            self.download(gcs_download_url, target_fn)
-            shutil.unpack_archive(target_fn, self.gapp_dir)
-
-            req = request.urlopen('https://pypi.org/pypi/grpcio/1.37.0/json')
-            data_s = req.read()
-            data = json.loads(data_s)
-
-            pyversion = 'cp{0}{1}'.format(sys.version_info.major, sys.version_info.minor)
-
-            package = {}
-
-            for package_ in data['urls']:
-
-                if package_['python_version'] == pyversion and 'manylinux' in package_['filename'] and package_['filename'].endswith('x86_64.whl'):
-                    if package_['upload_time'] > package.get('upload_time',''):
-                        package = package_
-
-            if package.get('url'):
-                target_whl_fn = os.path.join(tmp_dir, os.path.basename(package['url']))
-                self.download(package['url'], target_whl_fn)
-                whl_zip = zipfile.ZipFile(target_whl_fn)
-
-                for member in  whl_zip.filelist:
-                    fn = os.path.basename(member.filename)
-                    if fn.startswith('cygrpc.cpython') and fn.endswith('x86_64-linux-gnu.so'):
-                        whl_zip.extract(member, os.path.join(self.gapp_dir, 'gcs'))
-
-                whl_zip.close()
-
-            shutil.rmtree(tmp_dir)
-
+    def copy_files(self):
+        self.gluuInstaller.copyFile(
+                os.path.join(self.dist_gluu_folder, 'facter'),
+                '/usr/bin/',
+                backup=False
+                )
+        self.gluuInstaller.run([self.paths.cmd_chmod, '+x', '/usr/bin/facter'])
+        self.gluuInstaller.copyFile(
+            os.path.join(self.dist_gluu_folder, 'oxauth-client-jar-with-dependencies.jar'),
+            '/opt/dist/gluu'
+            )
 
     def prepare_persist_changes(self):
         self.persist_changes = { 
@@ -487,9 +574,9 @@ class GluuUpdater:
                     ],
                     
                     ('oxConfApplication', 'ou=oxidp,ou=configuration,o=gluu'): [
-                            ('scriptDn', 'add', 'entry', 'ou=scripts,o=gluu'),
+                        ('scriptDn', 'add', 'entry', 'ou=scripts,o=gluu'),
                     ],
-                    
+
                     ('oxTrustConfCacheRefresh', 'ou=oxtrust,ou=configuration,o=gluu'): [
                         ('inumConfig', 'change', 'subentry', ('bindDN', self.Config.ldap_binddn)),
                     ]
@@ -551,6 +638,9 @@ class GluuUpdater:
             print("Updating", config_element)
             ldap_filter = '({0}=*)'.format(config_element)
             result = self.gluuInstaller.dbUtils.search(config_dn, search_filter=ldap_filter, search_scope=ldap3.BASE)
+
+            if not result:
+                continue
 
             js_conf = json.loads(result[config_element]) if isinstance(result[config_element], str) else result[config_element]
             self.apply_persist_changes(js_conf, self.persist_changes[(config_element, config_dn)])
@@ -743,7 +833,7 @@ class GluuUpdater:
                     search_filter='(objectclass=*)',
                     attributes=self.delete_from_configuration
                     )
-        
+
         result = self.gluuInstaller.dbUtils.ldap_conn.response
         if result:
             for k in result[0]['attributes']:
@@ -771,7 +861,8 @@ class GluuUpdater:
         # update opendj schema and restart
         self.gluuInstaller.copyFile(
                             os.path.join(self.ces_dir, 'static/opendj/101-ox.ldif'),
-                            self.openDjInstaller.openDjSchemaFolder
+                            self.openDjInstaller.openDjSchemaFolder,
+                            backup=False
                             )
 
         print("Restarting OpenDJ ...")
@@ -780,6 +871,16 @@ class GluuUpdater:
 
         # rebind opendj
         self.gluuInstaller.dbUtils.ldap_conn.bind()
+
+
+        # add oxDocumentStoreConfiguration if not exists
+        self.gluuInstaller.dbUtils.ldap_conn.search(search_base=dn, search_scope=ldap3.BASE, search_filter='(objectclass=*)', attributes=["oxDocumentStoreConfiguration"])
+        result = self.gluuInstaller.dbUtils.ldap_conn.response
+        if not result or not result[0]['raw_attributes'].get('oxDocumentStoreConfiguration'):
+            self.gluuInstaller.dbUtils.ldap_conn.modify(
+                        dn, 
+                        {'oxDocumentStoreConfiguration': [ldap3.MODIFY_ADD, '{"documentStoreType":"LOCAL","localConfiguration":{"baseLocation":"/"},"jcaConfiguration":{"serverUrl":"http://localhost:8080/rmi","workspaceName":"default","connectionTimeout":15,"userId":"admin","password":""},"webDavConfiguration":null}']}
+                        )
 
         dn = 'ou=sessions,o=gluu'
         self.gluuInstaller.dbUtils.ldap_conn.search(
@@ -801,65 +902,7 @@ class GluuUpdater:
             print("Adding sessions base entry")
             self.gluuInstaller.dbUtils.ldap_conn.add(dn, attributes={'objectClass': ['top', 'organizationalUnit'], 'ou': ['sessions']})
 
-    def download_apps(self):
 
-        downloads = [
-                    ('https://ox.gluu.org/maven/org/gluu/oxtrust-server/{0}{1}/oxtrust-server-{0}{1}.war'.format(self.up_version, self.build_tag), os.path.join(self.app_dir, 'identity.war')),
-                    ('https://ox.gluu.org/maven/org/gluu/oxauth-server/{0}{1}/oxauth-server-{0}{1}.war'.format(self.up_version, self.build_tag), os.path.join(self.app_dir, 'oxauth.war')),
-                    ('https://ox.gluu.org/maven/org/gluu/fido2-server/{0}{1}/fido2-server-{0}{1}.war'.format(self.up_version, self.build_tag), os.path.join(self.app_dir, 'fido2.war')),
-                    ('https://ox.gluu.org/maven/org/gluu/scim-server/{0}{1}/scim-server-{0}{1}.war'.format(self.up_version, self.build_tag), os.path.join(self.app_dir, 'scim.war')),                   
-                    ('https://repo1.maven.org/maven2/org/eclipse/jetty/jetty-distribution/{0}/jetty-distribution-{0}.tar.gz'.format(self.jetty_version), os.path.join(self.app_dir, 'jetty-distribution-{0}.tar.gz'.format(self.jetty_version))),
-                    ('https://corretto.aws/downloads/resources/{0}/amazon-corretto-{0}-linux-x64.tar.gz'.format(self.corretto_version), os.path.join(self.app_dir, 'amazon-corretto-11-x64-linux-jdk.tar.gz')),
-                    ('https://repo1.maven.org/maven2/org/python/jython-installer/{0}/jython-installer-{0}.jar'.format(self.jython_version), os.path.join(self.app_dir, 'jython-installer-{}.jar'.format(self.jython_version))),
-                    ('https://nodejs.org/dist/{0}/node-{0}-linux-x64.tar.xz'.format(self.node_version), os.path.join(self.app_dir, 'node-{0}-linux-x64.tar.xz'.format(self.node_version))),
-                    ('https://raw.githubusercontent.com/GluuFederation/gluu-snap/master/facter/facter', '/usr/bin/facter'),
-                    ('https://ox.gluu.org/maven/org/gluufederation/opendj/opendj-server-legacy/{0}/opendj-server-legacy-{0}.zip'.format(self.opendj_version), os.path.join(self.app_dir, 'opendj-server-{}.zip'.format(self.opendj_version))),
-                    ('https://ox.gluu.org/maven/org/gluu/oxauth-client/{0}{1}/oxauth-client-{0}{1}-jar-with-dependencies.jar'.format(self.up_version, self.build_tag), os.path.join(self.app_dir, 'oxauth-client-jar-with-dependencies.jar')),
-                    ]
-
-        if os.path.exists('/opt/shibboleth-idp'):
-            downloads += [
-                    ('https://ox.gluu.org/maven/org/gluu/oxshibbolethIdp/{0}{1}/oxshibbolethIdp-{0}{1}.war'.format(self.up_version, self.build_tag), os.path.join(self.app_dir, 'idp.war')),
-                    ('https://ox.gluu.org/maven/org/gluu/oxShibbolethStatic/{0}{1}/oxShibbolethStatic-{0}{1}.jar'.format(self.up_version, self.build_tag), os.path.join(self.app_dir, 'shibboleth-idp.jar')),
-                    ('https://ox.gluu.org/maven/org/gluu/oxShibbolethKeyGenerator/{0}{1}/oxShibbolethKeyGenerator-{0}{1}.jar'.format(self.up_version, self.build_tag), os.path.join(self.app_dir, 'idp3_cml_keygenerator.jar')),
-                    ('https://raw.githubusercontent.com/GluuFederation/oxTrust/master/configuration/src/main/resources/META-INF/shibboleth3/idp/saml-nameid.properties.vm', os.path.join(self.app_dir, 'saml-nameid.properties.vm')),
-                    ]
-
-        if os.path.exists('/opt/gluu/node/passport'):
-            downloads += [
-                    ('https://ox.gluu.org/npm/passport/passport-{}.tgz'.format(self.up_version), os.path.join(self.app_dir, 'passport.tgz')),
-                    ('https://ox.gluu.org/npm/passport/passport-version_{}-node_modules.tar.gz'.format(self.up_version), os.path.join(self.app_dir, 'passport-version_{}-node_modules.tar.gz'.format(self.up_version))),
-                    ]
-
-        if os.path.exists('/opt/gluu/radius'):
-            downloads += [
-                    ('https://ox.gluu.org/maven/org/gluu/super-gluu-radius-server/{0}{1}/super-gluu-radius-server-{0}{1}-distribution.zip'.format(self.up_version, self.build_tag), os.path.join(self.app_dir, 'gluu-radius-libs.zip')),
-                    ('https://ox.gluu.org/maven/org/gluu/super-gluu-radius-server/{0}{1}/super-gluu-radius-server-{0}{1}.jar'.format(self.up_version, self.build_tag), os.path.join(self.app_dir, 'super-gluu-radius-server.jar')),
-                    ]
-
-        if os.path.exists('/opt/oxd-server'):
-            downloads += [
-                    ('https://ox.gluu.org/maven/org/gluu/oxd-server/{0}{1}/oxd-server-{0}{1}.jar'.format(self.up_version, self.build_tag), os.path.join(self.app_dir, 'oxd-server.jar')),
-                    ]
-
-        if os.path.exists('/opt/gluu/jetty/casa'):
-            downloads += [
-                    ('https://ox.gluu.org/maven/org/gluu/casa/{0}{1}/casa-{0}{1}.war'.format(self.up_version, self.build_tag), os.path.join(self.app_dir, 'casa.war')),
-                    ('https://raw.githubusercontent.com/GluuFederation/community-edition-setup/version_{0}/static/casa/scripts/casa-external_smpp.py'.format(self.up_version), '/opt/gluu/python/libs/casa-external_smpp.py'),
-                    ]
-            for p in self.casa_plugins:
-                downloads.append((self.casa_plugins[p].format(self.up_version, self.build_tag), os.path.join(self.app_dir, p + '.jar')))
-
-            downloads += [
-                    ('https://raw.githubusercontent.com/GluuFederation/casa/version_{}/plugins/account-linking/extras/login.xhtml'.format(self.up_version), os.path.join(self.app_dir, 'login.xhtml')),
-                    ('https://raw.githubusercontent.com/GluuFederation/casa/version_{}/plugins/account-linking/extras/casa.py'.format(self.up_version), os.path.join(self.app_dir, 'casa.py')),
-                    ]
-
-        for download_link, out_file in downloads:
-            print("Downloading", download_link)
-            self.download(download_link, out_file)
-
-        self.gluuInstaller.run(['chmod', '+x', '/usr/bin/facter'])
 
 
     def update_opendj(self):
@@ -869,7 +912,7 @@ class GluuUpdater:
             return
 
         # check if opendj needs to be updated
-        opendj_fn = os.path.join(self.app_dir, 'opendj-server-{}.zip'.format(self.opendj_version))
+        opendj_fn = os.path.join(self.dist_app_folder, 'opendj-server-{}.zip'.format(self.opendj_version))
         opendj_zip = zipfile.ZipFile(opendj_fn)
         latest_build = opendj_zip.read('opendj/template/config/buildinfo').decode()
         with open('/opt/opendj/config/buildinfo') as f:
@@ -921,17 +964,6 @@ class GluuUpdater:
                     crt_file = os.path.join(cur_dir, ls[0]+'.crt')
                     self.gluuInstaller.run(['/opt/jre/bin/keytool', '-export', '-alias', alias, '-file', crt_file, '-keystore', '/opt/jre/jre/lib/security/cacerts', '-storepass', 'changeit'])
                     cacerts.append((alias, crt_file))
-
-        for corretto in glob.glob(os.path.join(self.Config.distAppFolder,'amazon-corretto-*')):
-            if os.path.isfile(corretto):
-                print("Deleting", corretto)
-                self.gluuInstaller.run(['rm', '-r', '-f', corretto])
-
-
-        self.gluuInstaller.copyFile(
-                os.path.join(self.app_dir, 'amazon-corretto-11-x64-linux-jdk.tar.gz'), 
-                self.Config.distAppFolder
-                )
  
         for cur_version in glob.glob('/opt/amazon-corretto*'):
             if os.path.isdir(cur_version):
@@ -962,17 +994,6 @@ class GluuUpdater:
             return
         print ("Upgrading Jython")
 
-        for jython in glob.glob(os.path.join(self.Config.distAppFolder,'jython-installer-*')):
-            if os.path.isfile(jython):
-                print("Deleting", jython)
-                self.gluuInstaller.run(['rm', '-r', '-f', jython])
-
-
-        self.gluuInstaller.copyFile(
-                os.path.join(self.app_dir, 'jython-installer-{}.jar'.format(self.jython_version)), 
-                self.Config.distAppFolder
-                )
- 
         for cur_version in glob.glob('/opt/jython-2*'):
             if os.path.isdir(cur_version):
                 print("Deleting", cur_version)
@@ -994,18 +1015,6 @@ class GluuUpdater:
 
         print("Upgrading Node")
 
-        for node in glob.glob(os.path.join(self.Config.distAppFolder,'node-*-linux-x64.tar.xz')):
-            if os.path.isfile(node):
-                print("Deleting", node)
-                self.gluuInstaller.run(['rm', '-r', '-f', node])
-
-
-        self.gluuInstaller.copyFile(
-                os.path.join(self.app_dir, 'node-{}-linux-x64.tar.xz'.format(self.node_version)), 
-                self.Config.distAppFolder
-                )
-
-
         for cur_version in glob.glob('/opt/node-v*'):
             if os.path.isdir(cur_version):
                 print("Deleting", cur_version)
@@ -1019,13 +1028,25 @@ class GluuUpdater:
 
 
     def update_war_files(self):
+        gluu_app_dir = '/opt/dist/gluu'
+        if not os.path.exists(gluu_app_dir):
+            os.makedirs(gluu_app_dir)
+
         for service in self.jettyInstaller.jetty_app_configuration:
             service_webapps_dir = os.path.join(self.Config.jetty_base, service, 'webapps')
             if os.path.exists(service_webapps_dir):
                 print("Updating Gluu jetty war file: {}.war".format(service))
+                src_war_fn = os.path.join(self.dist_gluu_folder, service+'.war')
                 self.gluuInstaller.copyFile(
-                            os.path.join(self.app_dir, service+'.war'),
-                            service_webapps_dir
+                            src_war_fn,
+                            service_webapps_dir,
+                            backup=False
+                            )
+                #let's also copy these files into /opt/dist/gluu
+                self.gluuInstaller.copyFile(
+                            src_war_fn,
+                            gluu_app_dir,
+                            backup=False
                             )
 
     def update_jetty(self):
@@ -1035,16 +1056,6 @@ class GluuUpdater:
             return
 
         print("Upgrading Jetty")
-
-        for jetty in glob.glob(os.path.join(self.Config.distAppFolder,'jetty-distribution-*.tar.gz')):
-            if os.path.isfile(jetty):
-                print("Deleting", jetty)
-                self.gluuInstaller.run(['rm', '-r', '-f', jetty])
-
-        self.gluuInstaller.copyFile(
-                os.path.join(self.app_dir, 'jetty-distribution-{0}.tar.gz'.format(self.jetty_version)),
-                self.Config.distAppFolder
-                )
 
         for cur_version in glob.glob('/opt/jetty-*'):
             if os.path.isdir(cur_version):
@@ -1060,11 +1071,6 @@ class GluuUpdater:
 
     def update_scripts(self):
         print("Updating Scripts")
-
-        self.gluuInstaller.copyFile(
-            os.path.join(self.app_dir, 'oxauth-client-jar-with-dependencies.jar'),
-            self.Config.distGluuFolder
-            )
 
         self.gluuInstaller.determine_key_gen_path()
         self.Config.enable_scim_access_policy = 'true' if self.passportInstaller.installed() else 'false'
@@ -1156,11 +1162,6 @@ class GluuUpdater:
         self.samlInstaller.copyTree(self.samlInstaller.idp3Folder, shib_backup_dir)
         print("Unpacking shibboleth-idp.jar")
 
-        self.samlInstaller.copyFile(
-            os.path.join(self.app_dir, 'shibboleth-idp.jar'),
-            self.Config.distGluuFolder
-            )
-
         self.samlInstaller.unpack_idp3()
         
         print("Updating idp-metadata.xml")
@@ -1180,8 +1181,9 @@ class GluuUpdater:
             self.samlInstaller.writeFile(os.path.join('/opt/shibboleth-idp/conf', prop_fn), properties)
 
         self.samlInstaller.copyFile(
-                    os.path.join(cur_dir, 'app/saml-nameid.properties.vm'), 
-                    '/opt/gluu/jetty/identity/conf/shibboleth3/idp/'
+                    os.path.join(self.dist_gluu_folder, 'saml-nameid.properties.vm'), 
+                    '/opt/gluu/jetty/identity/conf/shibboleth3/idp/',
+                    backup=False
                     )
         self.samlInstaller.run(['chown', '-R', 'jetty:jetty', '/opt/shibboleth-idp'])
 
@@ -1195,20 +1197,29 @@ class GluuUpdater:
 
         print("Updating Gluu Radius Server")
 
-        self.gluuInstaller.copyFile(os.path.join(self.ces_dir, 'static/radius/etc/init.d/gluu-radius'), '/etc/init.d')
+        self.gluuInstaller.copyFile(
+                os.path.join(self.ces_dir, 'static/radius/etc/init.d/gluu-radius'),
+                '/etc/init.d',
+                backup=False
+                )
+
         self.gluuInstaller.run(['chmod', '+x', '/etc/init.d/gluu-radius'])
 
         backup_folder = radius_libs_dir + '_' + self.backup_time
 
         self.gluuInstaller.run(['mv', radius_libs_dir, backup_folder])
 
-        radius_libs = os.path.join(self.app_dir, 'gluu-radius-libs.zip')
-        radius_jar = os.path.join(self.app_dir, 'super-gluu-radius-server.jar')
+        radius_libs = os.path.join(self.dist_gluu_folder, 'gluu-radius-libs.zip')
+        radius_jar = os.path.join(self.dist_gluu_folder, 'super-gluu-radius-server.jar')
 
         self.gluuInstaller.run(['unzip', '-o', '-q', radius_libs, '-d', radius_dir ])
-        self.gluuInstaller.copyFile(radius_jar, radius_dir)
+        self.gluuInstaller.copyFile(radius_jar, radius_dir, backup=False)
 
-        self.gluuInstaller.copyFile(os.path.join(self.ces_dir, 'static/radius/etc/default/gluu-radius'), self.Config.osDefault)
+        self.gluuInstaller.copyFile(
+                    os.path.join(self.ces_dir, 'static/radius/etc/default/gluu-radius'),
+                    self.Config.osDefault,
+                    backup=False
+                    )
 
 
     def update_oxd(self):
@@ -1217,7 +1228,7 @@ class GluuUpdater:
 
         print("Updating oxd Server")
         self.oxdInstaller.copyFile(
-                    os.path.join(self.app_dir, 'oxd-server.jar'),
+                    os.path.join(self.dist_gluu_folder, 'oxd-server.jar'),
                     os.path.join(self.oxdInstaller.oxd_root, 'lib'),
                     backup=False
                     )
@@ -1257,8 +1268,8 @@ class GluuUpdater:
                         self.oxdInstaller.run([
                             self.paths.cmd_openssl,
                             'req', '-x509', '-newkey', 'rsa:4096', '-nodes',
-                            '-out', '/tmp/oxd.crt',
-                            '-keyout', '/tmp/oxd.key',
+                            '-out', os.path.join(self.dist_tmp_folder, 'oxd.crt'),
+                            '-keyout', os.path.join(self.dist_tmp_folder, 'oxd.key'),
                             '-days', '3650',
                             '-subj', '/C={}/ST={}/L={}/O={}/CN={}/emailAddress={}'.format(self.Config.countryCode, self.Config.state, self.Config.city, self.Config.orgName, self.Config.hostname, self.Config.admin_email),
                             ])
@@ -1266,9 +1277,9 @@ class GluuUpdater:
                         self.oxdInstaller.run([
                             self.paths.cmd_openssl,
                             'pkcs12', '-export',
-                            '-in', '/tmp/oxd.crt',
-                            '-inkey', '/tmp/oxd.key',
-                            '-out', '/tmp/oxd.p12',
+                            '-in', os.path.join(self.dist_tmp_folder, 'oxd.crt'),
+                            '-inkey', os.path.join(self.dist_tmp_folder, 'oxd.key'),
+                            '-out', os.path.join(self.dist_tmp_folder, 'oxd.p12'),
                             '-name', self.Config.hostname,
                             '-passout', 'pass:example'
                             ])
@@ -1278,8 +1289,8 @@ class GluuUpdater:
                             '-importkeystore',
                             '-deststorepass', 'example',
                             '-destkeypass', 'example',
-                            '-destkeystore', '/tmp/oxd.keystore',
-                            '-srckeystore', '/tmp/oxd.p12',
+                            '-destkeystore', os.path.join(self.dist_tmp_folder, 'oxd.keystore'),
+                            '-srckeystore', os.path.join(self.dist_tmp_folder, 'oxd.p12'),
                             '-srcstoretype', 'PKCS12',
                             '-srcstorepass', 'example',
                             '-alias', self.Config.hostname,
@@ -1287,17 +1298,20 @@ class GluuUpdater:
 
                         self.oxdInstaller.backupFile(oxd_yaml['server']['applicationConnectors'][0]['keyStorePath'])
                         self.oxdInstaller.copyFile(
-                                '/tmp/oxd.keystore', 
-                                oxd_yaml['server']['applicationConnectors'][0]['keyStorePath']
+                                os.path.join(self.dist_tmp_folder, 'oxd.keystore'),
+                                oxd_yaml['server']['applicationConnectors'][0]['keyStorePath'],
+                                backup=False
                                 )
                         self.oxdInstaller.run(['chown', 'jetty:jetty', oxd_yaml['server']['applicationConnectors'][0]['keyStorePath']])
 
-                        for f in ('/tmp/oxd.crt', '/tmp/oxd.key', '/tmp/oxd.p12', '/tmp/oxd.keystore'):
+                        for f in ('oxd.crt', 'oxd.key', 'oxd.p12', 'oxd.keystore'):
+                            fp = os.path.join(self.dist_tmp_folder, f)
                             self.oxdInstaller.run(['rm', '-f', f])
 
         self.oxdInstaller.copyFile(
                 os.path.join(self.ces_dir, 'static/oxd/oxd-server.default'),
-                os.path.join(self.Config.osDefault, 'oxd-server')
+                os.path.join(self.Config.osDefault, 'oxd-server'),
+                backup=False
                 )
 
         print("Restarting oxd-server")
@@ -1334,8 +1348,9 @@ class GluuUpdater:
         self.casaInstaller.run_service_command('casa', 'stop')
 
         self.casaInstaller.copyFile(
-                        os.path.join(self.app_dir, 'casa.war'),
-                        os.path.join(self.casaInstaller.casa_jetty_dir, 'webapps')
+                        os.path.join(self.dist_gluu_folder, 'casa.war'),
+                        os.path.join(self.casaInstaller.casa_jetty_dir, 'webapps'),
+                        backup=False
                         )
 
         account_linking = None
@@ -1350,19 +1365,20 @@ class GluuUpdater:
                     n = ls.find(':')
                     pid = ls[n+1:].strip()
                     if pid in self.casa_plugins:
-                        jar_fn = os.path.join(self.app_dir, pid + '.jar')
+                        jar_fn = os.path.join(self.dist_gluu_folder, pid + '.jar')
                         self.casaInstaller.run(['rm', '-f', plugin])
-                        self.casaInstaller.copyFile(jar_fn, casa_plugins_dir)
+                        self.casaInstaller.copyFile(jar_fn, casa_plugins_dir, backup=False)
                     if pid == 'account-linking':
                         account_linking = True
 
         if account_linking:
             self.casaInstaller.copyFile(
-                    os.path.join(self.app_dir, 'login.xhtml'),
-                    os.path.join(self.Config.jetty_base, 'oxauth/custom/pages')
+                    os.path.join(self.dist_gluu_folder, 'login.xhtml'),
+                    os.path.join(self.Config.jetty_base, 'oxauth/custom/pages'),
+                    backup=False
                     )
 
-            scr = self.casaInstaller.readFile(os.path.join(self.app_dir, 'casa.py'))
+            scr = self.casaInstaller.readFile(os.path.join(self.dist_gluu_folder, 'casa.py'))
 
             al_dn = 'inum=BABA-CACA,ou=scripts,o=gluu'
 
@@ -1396,11 +1412,11 @@ class GluuUpdater:
             self.casaInstaller.backupFile(casa_config_json_fn)
 
         pylib_dir = os.path.join(self.Config.gluuOptPythonFolder, 'libs')
-        libdir_base_url = 'https://raw.githubusercontent.com/GluuFederation/community-edition-setup/version_{}/static/casa/scripts'.format(self.up_version)
+        libdir_base_url = 'https://raw.githubusercontent.com/GluuFederation/community-edition-setup/version_{}/static/casa/scripts'.format(up_version)
         for casa_lib in glob.glob(os.path.join(pylib_dir, 'casa-external*.py')):
             casa_lib_fn = os.path.basename(casa_lib)
             try:
-                response = urllib.request.urlopen(os.path.join('https://raw.githubusercontent.com/GluuFederation/community-edition-setup/version_{}/static/casa/scripts'.format(self.up_version), casa_lib_fn))
+                response = urllib.request.urlopen(os.path.join('https://raw.githubusercontent.com/GluuFederation/community-edition-setup/version_{}/static/casa/scripts'.format(up_version), casa_lib_fn))
                 if response.code == 200:
                     self.casaInstaller.backupFile(casa_lib)
                     print ("Updating", casa_lib)
@@ -1487,28 +1503,7 @@ class GluuUpdater:
         backup_folder = self.passportInstaller.gluu_passport_base + '_' + self.backup_time
         print("Stopping passport server")
         self.passportInstaller.stop()
-        self.passportInstaller.run(['mv', self.passportInstaller.gluu_passport_base, backup_folder])
         print("Updating Passport")
-
-        for passport_file in glob.glob(os.path.join(self.Config.distGluuFolder, 'passport*node_modules.tar.gz')):
-            if os.path.isfile(passport_file):
-                print("Deleting", passport_file)
-                self.gluuInstaller.run(['rm', '-r', '-f', passport_file])
-
-        old_passport_file = os.path.join(self.Config.distGluuFolder, 'passport.tgz')
-        if os.path.isfile(old_passport_file):
-                print("Deleting", old_passport_file)
-                self.gluuInstaller.run(['rm', '-r', '-f', old_passport_file])
-
-        self.gluuInstaller.copyFile(
-                os.path.join(self.app_dir, 'passport.tgz'), 
-                self.Config.distGluuFolder
-                )
-
-        self.gluuInstaller.copyFile(
-                os.path.join(self.app_dir, 'passport-version_{}-node_modules.tar.gz'.format(self.up_version)),
-                self.Config.distGluuFolder
-                )
 
         self.passportInstaller.create_folders()
         self.passportInstaller.extract_passport()
@@ -1521,7 +1516,11 @@ class GluuUpdater:
                 if re.search('profile["[\s\S]*"]', fc):
                     mfn = os.path.basename(m_path)
                     if not os.path.exists(os.path.join(self.passportInstaller.gluu_passport_base, 'server/mappings', mfn)):
-                        self.passportInstaller.copyFile(m_path, os.path.join(self.passportInstaller.gluu_passport_base, 'server/mappings'))
+                        self.passportInstaller.copyFile(
+                            m_path,
+                            os.path.join(self.passportInstaller.gluu_passport_base, 'server/mappings'),
+                            backup=False
+                            )
 
         self.passportInstaller.run([self.paths.cmd_chown, '-R', 'node:node', self.passportInstaller.gluu_passport_base])
 
@@ -1603,7 +1602,7 @@ class GluuUpdater:
 
 
     def unparse_import(self, entries):
-        ldif_fn = '/tmp/gluu_updater_{}.ldif'.format(os.urandom(4).hex())
+        ldif_fn = os.path.join(self.dist_tmp_folder, 'gluu_updater_{}.ldif'.format(os.urandom(4).hex()))
         with open(ldif_fn, 'wb') as w:
             ldif_writer = self.myLdifWriter(w, cols=1000)
             for dn, endtry in entries:
@@ -1623,6 +1622,7 @@ class GluuUpdater:
         new_scopes = []
 
         for dn, entry in ldif_parser.entries:
+            u = self.gluuInstaller.dbUtils.dn_exists(dn)
             if not self.gluuInstaller.dbUtils.dn_exists(dn):
                 new_scopes.append((dn, entry))
 
@@ -1640,10 +1640,12 @@ class GluuUpdater:
                 self.gluuInstaller.writeFile(default_fn, default_)
 
 updaterObj = GluuUpdater()
-updaterObj.download_gcs()
-updaterObj.download_ces()
-updaterObj.prepare_persist_changes()
 updaterObj.download_apps()
+updaterObj.prepare_gcs()
+updaterObj.unzip_ces()
+updaterObj.prepare_ces()
+updaterObj.copy_files()
+updaterObj.prepare_persist_changes()
 updaterObj.update_default_settings()
 updaterObj.stop_services()
 updaterObj.update_java()
@@ -1672,3 +1674,4 @@ for msg in updaterObj.postmessages:
 print()
 print("Please logout from container and restart Gluu Server")
 
+#./makeself.sh --target /opt/upd/4.3.1 /opt/upd/4.3.1 4-3-1.rc1-upg.run "Gluu Server 4.x to 4.3.1 Upgrader Script" /opt/upd/4.3.1/upg4xto431.py --offline
