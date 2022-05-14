@@ -460,6 +460,7 @@ class GluuUpdater:
             collectProperties.collect()
             Config.installed_instance = True
 
+        self.base = base
         self.Config = Config
         self.passportInstaller = PassportInstaller()
 
@@ -1572,6 +1573,14 @@ class GluuUpdater:
                                 self.gluuInstaller.dbUtils.set_configuration('personInum', oxAuthUserId, entry['dn'])
                                 break
 
+
+        toc_jwt_fn = os.path.join(self.Config.configFolder, 'fido2/mds/toc/toc.jwt')
+        self.base.download('https://mds.fidoalliance.org/', toc_jwt_fn)
+        self.gluuInstaller.chown(toc_jwt_fn, self.Config.root_user, self.Config.gluu_group)
+
+        root_r3_fn = os.path.join(self.Config.configFolder, 'fido2/mds/cert/root-r3.crt')
+        self.base.download('http://secure.globalsign.com/cacert/root-r3.crt', root_r3_fn)
+        self.gluuInstaller.chown(root_r3_fn, self.Config.root_user, self.Config.gluu_group)
 
     def update_attributes(self):
 
