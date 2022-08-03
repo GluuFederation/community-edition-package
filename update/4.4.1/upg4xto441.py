@@ -1366,11 +1366,11 @@ class GluuUpdater:
                             fp = os.path.join(self.dist_tmp_folder, f)
                             self.oxdInstaller.run(['rm', '-f', f])
 
-        self.oxdInstaller.copyFile(
-                os.path.join(self.ces_dir, 'static/oxd/oxd-server.default'),
-                os.path.join(self.Config.osDefault, 'oxd-server'),
-                backup=False
-                )
+        self.Config.templateRenderingDict['service_user'] = self.Config.jetty_user
+        oxd_default_tmp = os.path.join(self.ces_dir, 'static/oxd/oxd-server.default')
+        default_ = self.render_template(oxd_default_tmp)
+        default_fn = os.path.join(self.Config.osDefault, 'oxd-server')
+        self.gluuInstaller.writeFile(default_fn, default_, backup=False)
 
         print("Restarting oxd-server")
         self.oxdInstaller.stop()
