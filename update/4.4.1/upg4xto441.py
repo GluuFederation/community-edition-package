@@ -1088,9 +1088,6 @@ class GluuUpdater:
                             backup=False
                             )
 
-                print("Fixing", service +'.war', "for Jetty 10")
-                self.jettyInstaller.war_for_jetty10(os.path.join(service_webapps_dir, 'webapps', service +'.war'))
-
                 for copy_dir in ('conf', 'custom'):
                     src_dir = os.path.join(backup_dir, copy_dir)
                     if os.path.exists(src_dir):
@@ -1411,12 +1408,6 @@ class GluuUpdater:
 
         casa_plugins_dir = os.path.join(self.casaInstaller.casa_jetty_dir, 'plugins')
         self.casaInstaller.run_service_command('casa', 'stop')
-
-        self.casaInstaller.copyFile(
-                        os.path.join(self.dist_gluu_folder, 'casa.war'),
-                        os.path.join(self.casaInstaller.casa_jetty_dir, 'webapps'),
-                        backup=False
-                        )
 
         account_linking = None
 
