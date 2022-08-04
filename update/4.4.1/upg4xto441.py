@@ -527,7 +527,7 @@ class GluuUpdater:
 
     def prepare_persist_changes(self):
         self.persist_changes = { 
-                    ('oxAuthConfDynamic', 'ou=oxauth,ou=configuration,o=gluu'): [
+                    ('oxAuthConfDynamic', 'ou=oxauth,ou=configuration,o=gluu', 'oxAuthConfiguration'): [
                         ('tokenEndpointAuthMethodsSupported', 'add', 'element', "tls_client_auth"),
                         ('tokenEndpointAuthMethodsSupported', 'add', 'element', "self_signed_tls_client_auth"),
                         ('spontaneousScopeLifetime', 'add', 'entry', 86400),
@@ -568,23 +568,23 @@ class GluuUpdater:
                         ('deviceAuthzResponseTypeToProcessAuthz', 'add', 'entry', 'code'),
                     ],
     
-                    ('oxAuthConfStatic', 'ou=oxauth,ou=configuration,o=gluu'): [
+                    ('oxAuthConfStatic', 'ou=oxauth,ou=configuration,o=gluu', 'oxAuthConfiguration'): [
                         ('baseDn', 'change', 'subentry', ('sessions', 'ou=sessions,o=gluu')),
                         ('baseDn', 'change', 'subentry', ('ciba', 'ou=ciba,o=gluu')),
                     ],
     
-                    ('oxTrustConfApplication', 'ou=oxtrust,ou=configuration,o=gluu'): [
+                    ('oxTrustConfApplication', 'ou=oxtrust,ou=configuration,o=gluu', 'oxTrustConfiguration'): [
                         ('useLocalCache', 'add', 'entry', True),
                         ('loggingLayout', 'add', 'entry', 'text'),
                         ('caCertsLocation', 'change', 'entry', self.Config.default_trust_store_fn),
                         ('caCertsPassphrase', 'change', 'entry', self.Config.defaultTrustStorePW),
                     ],
                     
-                    ('oxConfApplication', 'ou=oxidp,ou=configuration,o=gluu'): [
+                    ('oxConfApplication', 'ou=oxidp,ou=configuration,o=gluu', 'oxApplicationConfiguration'): [
                         ('scriptDn', 'add', 'entry', 'ou=scripts,o=gluu'),
                     ],
 
-                    ('oxTrustConfCacheRefresh', 'ou=oxtrust,ou=configuration,o=gluu'): [
+                    ('oxTrustConfCacheRefresh', 'ou=oxtrust,ou=configuration,o=gluu', 'oxTrustConfiguration'): [
                         ('inumConfig', 'change', 'subentry', ('bindDN', self.Config.ldap_binddn)),
                     ],
 
@@ -599,7 +599,7 @@ class GluuUpdater:
 
         self.gluuInstaller.service_name = 'gluu'
         self.gluuInstaller.generate_configuration()
-        self.persist_changes[('oxSmtpConfiguration', 'ou=configuration,o=gluu')] = [
+        self.persist_changes[('oxSmtpConfiguration', 'ou=configuration,o=gluu', 'gluuConfiguration')] = [
                                         ('key-store', 'add', 'entry', self.Config.smtp_jks_fn),
                                         ('key-store-password', 'add', 'entry', self.Config.smtp_jks_pass_enc),
                                         ('key-store-alias', 'add', 'entry', self.Config.smtp_alias),
@@ -659,12 +659,14 @@ class GluuUpdater:
         elif self.gluuInstaller.dbUtils.moddb == self.BackendTypes.COUCHBASE:
            self.update_couchbase()
 
-        for config_element, config_dn in self.persist_changes:
+        for config_element, config_dn, object_class in self.persist_changes:
             print("Updating", config_element)
-            ldap_filter = '({0}=*)'.format(config_element)
+            ldap_filter = '(&({0}=*)(objectClass={1}))'.format(config_element, object_class)
             result = self.gluuInstaller.dbUtils.search(config_dn, search_filter=ldap_filter, search_scope=ldap3.BASE)
 
             if not result:
+                if config_element != 'oxSmtpConfiguration':
+                    continue
                 result = {config_element: {}}
 
             cur_data = result[config_element]
@@ -680,7 +682,7 @@ class GluuUpdater:
                 if 'connect-protection' not in js_conf:
                     js_conf['connect-protection'] = 'SslTls'
 
-            self.apply_persist_changes(js_conf, self.persist_changes[(config_element, config_dn)])
+            self.apply_persist_changes(js_conf, self.persist_changes[(config_element, config_dn, object_class)])
             new_conf = json.dumps(js_conf,indent=2)
             self.gluuInstaller.dbUtils.set_configuration(config_element, new_conf, dn=config_dn)
 
@@ -1132,6 +1134,11 @@ class GluuUpdater:
 
         self.gluuInstaller.determine_key_gen_path()
         self.Config.enable_scim_access_policy = 'true' if self.passportInstaller.installed() else 'false'
+
+        #we need dummy password for oxtrust_admin_password if not exists
+        if not self.Config.oxtrust_admin_password:
+            self.Config.oxtrust_admin_password = self.gluuInstaller.getPW()
+
         self.oxtrustInstaller.generate_configuration()
 
         self.gluuInstaller.prepare_base64_extension_scripts()
