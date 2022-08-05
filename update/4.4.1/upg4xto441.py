@@ -420,7 +420,7 @@ class GluuUpdater:
         from setup_app.utils.progress import gluuProgress
         from setup_app.utils.ldif_utils import myLdifParser
         from setup_app.pylib.ldif4.ldif import LDIFWriter
-
+        from setup_app.utils import ldif_utils
         from setup_app.setup_options import get_setup_options
         from setup_app.utils import printVersion
 
@@ -512,6 +512,7 @@ class GluuUpdater:
         self.BackendTypes = BackendTypes
         self.paths = paths
         self.base = base
+        self.ldif_utils = ldif_utils
 
     def copy_files(self):
         self.gluuInstaller.copyFile(
@@ -593,6 +594,7 @@ class GluuUpdater:
         if os.path.exists(self.Config.smtp_jks_fn):
             return
 
+        print("Generating smtp keystore")
         if not self.Config.get('smtp_jks_pass'):
             self.Config.smtp_jks_pass = self.gluuInstaller.getPW()
             self.Config.smtp_jks_pass_enc = self.gluuInstaller.obscure(self.Config.smtp_jks_pass)
@@ -661,8 +663,16 @@ class GluuUpdater:
 
         for config_element, config_dn, object_class in self.persist_changes:
             print("Updating", config_element)
-            ldap_filter = '(&({0}=*)(objectClass={1}))'.format(config_element, object_class)
-            result = self.gluuInstaller.dbUtils.search(config_dn, search_filter=ldap_filter, search_scope=ldap3.BASE)
+
+            if self.gluuInstaller.dbUtils.get_backend_location_for_dn(config_dn) == self.BackendTypes.COUCHBASE:
+                key = self.ldif_utils.get_key_from(config_dn)
+                bucket = self.gluuInstaller.dbUtils.get_bucket_for_key(key)
+                n1ql = 'SELECT {} from `{}` WHERE `objectClass`="{}" AND `dn`="{}"'.format(config_element, bucket, object_class, config_dn)
+                n1ql_result = self.gluuInstaller.dbUtils.cbm.exec_query(n1ql)
+                result = n1ql_result.json().get('results', [{}])[0]
+            else:
+                ldap_filter = '(&({0}=*)(objectClass={1}))'.format(config_element, object_class)
+                result = self.gluuInstaller.dbUtils.search(config_dn, search_filter=ldap_filter, search_scope=ldap3.BASE)
 
             if not result:
                 if config_element != 'oxSmtpConfiguration':
@@ -670,6 +680,7 @@ class GluuUpdater:
                 result = {config_element: {}}
 
             cur_data = result[config_element]
+
             if isinstance(cur_data, list):
                 cur_data = cur_data[0]
 
@@ -683,7 +694,12 @@ class GluuUpdater:
                     js_conf['connect-protection'] = 'SslTls'
 
             self.apply_persist_changes(js_conf, self.persist_changes[(config_element, config_dn, object_class)])
-            new_conf = json.dumps(js_conf,indent=2)
+
+            if self.gluuInstaller.dbUtils.get_backend_location_for_dn(config_dn) != self.BackendTypes.COUCHBASE:
+                new_conf = json.dumps(js_conf, indent=2)
+            else:
+                new_conf = js_conf
+
             self.gluuInstaller.dbUtils.set_configuration(config_element, new_conf, dn=config_dn)
 
 
@@ -1088,7 +1104,7 @@ class GluuUpdater:
                             backup=False
                             )
 
-                for copy_dir in ('conf', 'custom'):
+                for copy_dir in ('conf', 'custom', 'plugins'):
                     src_dir = os.path.join(backup_dir, copy_dir)
                     if os.path.exists(src_dir):
                         self.gluuInstaller.run(['cp', '-r', src_dir, service_webapps_dir])
