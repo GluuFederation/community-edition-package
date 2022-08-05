@@ -663,7 +663,7 @@ class GluuUpdater:
 
         for config_element, config_dn, object_class in self.persist_changes:
             print("Updating", config_element)
-
+            result = {}
             if self.gluuInstaller.dbUtils.get_backend_location_for_dn(config_dn) == self.BackendTypes.COUCHBASE:
                 key = self.ldif_utils.get_key_from(config_dn)
                 bucket = self.gluuInstaller.dbUtils.get_bucket_for_key(key)
@@ -677,9 +677,8 @@ class GluuUpdater:
             if not result:
                 if config_element != 'oxSmtpConfiguration':
                     continue
-                result = {config_element: {}}
 
-            cur_data = result[config_element]
+            cur_data = result.get(config_element, {})
 
             if isinstance(cur_data, list):
                 cur_data = cur_data[0]
@@ -809,7 +808,7 @@ class GluuUpdater:
 
         if r.ok:
             b_ = r.json()
-            existing_buckets = [ bucket['name'] for bucket in b_ ]        
+            existing_buckets = [ bucket['name'] for bucket in b_ ]
 
         return existing_buckets
 
