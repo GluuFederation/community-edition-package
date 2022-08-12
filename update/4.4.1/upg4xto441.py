@@ -1443,6 +1443,10 @@ class GluuUpdater:
                     if pid == 'account-linking':
                         account_linking = True
 
+        if os.path.exists(casa_plugins_dir):
+             self.gluuInstaller.chown(casa_plugins_dir, self.Config.gluu_user, self.Config.gluu_user, recursive=True)
+             self.gluuInstaller.run([self.paths.cmd_chmod, '644', casa_plugins_dir])
+
         if account_linking:
             self.casaInstaller.copyFile(
                     os.path.join(self.dist_gluu_folder, 'login.xhtml'),
