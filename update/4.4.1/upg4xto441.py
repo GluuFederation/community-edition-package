@@ -28,9 +28,9 @@ import argparse
 
 os.umask(0o022)
 
-if os.environ.get('gldev') != 'true':
-    print("This scirpt is under development. Not for use.")
-    sys.exit()
+#if os.environ.get('gldev') != 'true':
+#    print("This scirpt is under development. Not for use.")
+#    sys.exit()
 
 ssl._create_default_https_context = ssl._create_unverified_context
 up_version = "4.4.1"
@@ -289,7 +289,7 @@ class GluuUpdater:
                     (self.maven_root + '/npm/passport/passport-version_{}-node_modules.tar.gz'.format(up_version), os.path.join(self.dist_gluu_folder, 'passport-version_{}-node_modules.tar.gz'.format(up_version))),
                     (self.maven_base + '/org/gluu/super-gluu-radius-server/{0}{1}/super-gluu-radius-server-{0}{1}-distribution.zip'.format(up_version, self.build_tag), os.path.join(self.dist_gluu_folder, 'gluu-radius-libs.zip')),
                     (self.maven_base + '/org/gluu/super-gluu-radius-server/{0}{1}/super-gluu-radius-server-{0}{1}.jar'.format(up_version, self.build_tag), os.path.join(self.dist_gluu_folder, 'super-gluu-radius-server.jar')),
-                    (self.maven_base + '/org/gluu/oxd-server/{0}{1}/oxd-server-{0}{1}.jar'.format(up_version, self.build_tag), os.path.join(self.dist_gluu_folder, 'oxd-server.jar')),
+                    (self.maven_base + '/org/gluu/oxd-server/{0}{1}/oxd-server-{0}{1}-distribution.zip'.format(up_version, self.build_tag), os.path.join(self.dist_gluu_folder, 'oxd-server-distribution.zip')),
                     (self.maven_base + '/org/gluu/casa/{0}{1}/casa-{0}{1}.war'.format(up_version, self.build_tag), os.path.join(self.dist_gluu_folder, 'casa.war')),
                     ('https://raw.githubusercontent.com/GluuFederation/community-edition-setup/version_{0}/static/casa/scripts/casa-external_smpp.py'.format(up_version), os.path.join(self.dist_gluu_folder, 'casa-external_smpp.py')),
                     ]
@@ -506,6 +506,7 @@ class GluuUpdater:
             Config.application_max_ram = argsd['application_max_ram']
         self.jettyInstaller.calculate_selected_aplications_memory()
         self.gluuInstaller = GluuInstaller()
+        self.Config.templateRenderingDict['service_user'] = self.Config.jetty_user
 
         self.myLdifParser = myLdifParser
         self.myLdifWriter = LDIFWriter
@@ -1305,11 +1306,17 @@ class GluuUpdater:
             return
 
         print("Updating oxd Server")
-        self.oxdInstaller.copyFile(
-                    os.path.join(self.dist_gluu_folder, 'oxd-server.jar'),
-                    os.path.join(self.oxdInstaller.oxd_root, 'lib'),
-                    backup=False
-                    )
+        for f in glob.glob(os.path.join(self.oxdInstaller.oxd_root, 'lib/*')):
+            if os.path.isfile(f):
+                self.oxdInstaller.logIt("Removing " + f)
+                os.remove(f)
+
+        oxd_zip_fn = os.path.join(self.dist_gluu_folder, 'oxd-server-distribution.zip')
+        oxd_zip = zipfile.ZipFile(oxd_zip_fn)
+        for member in  oxd_zip.filelist:
+            if member.filename.startswith('lib/') and not member.is_dir():
+                self.oxdInstaller.logIt("Extracting {} from {} to {}".format(member.filename, oxd_zip_fn, self.oxdInstaller.oxd_root))
+                oxd_zip.extract(member, self.oxdInstaller.oxd_root)
 
         oxd_server_yml_fn = os.path.join(self.oxdInstaller.oxd_root, 'conf/oxd-server.yml')
         yml_str = self.oxdInstaller.readFile(oxd_server_yml_fn)
@@ -1386,11 +1393,13 @@ class GluuUpdater:
                             fp = os.path.join(self.dist_tmp_folder, f)
                             self.oxdInstaller.run(['rm', '-f', f])
 
-        self.Config.templateRenderingDict['service_user'] = self.Config.jetty_user
-        oxd_default_tmp = os.path.join(self.ces_dir, 'static/oxd/oxd-server.default')
-        default_ = self.render_template(oxd_default_tmp)
-        default_fn = os.path.join(self.Config.osDefault, 'oxd-server')
-        self.gluuInstaller.writeFile(default_fn, default_, backup=False)
+
+        print("Updating /etc/default/oxd-server")
+        default_fn = os.path.join('/etc/default/oxd-server')
+        default_tmp = os.path.join(self.ces_dir, 'static/oxd/oxd-server.default')
+        default_ = self.render_template(default_tmp)
+        self.gluuInstaller.writeFile(default_fn, default_)
+
 
         print("Restarting oxd-server")
         self.oxdInstaller.stop()
@@ -1716,7 +1725,6 @@ class GluuUpdater:
 
     def update_default_settings(self):
         print("Updating /etc/default files")
-        self.Config.templateRenderingDict['service_user'] = self.Config.jetty_user
         for service in ('casa', 'fido2', 'identity', 'idp', 'oxauth', 'scim'):
             default_fn = os.path.join('/etc/default', service)
             print("Updating default file", service)
