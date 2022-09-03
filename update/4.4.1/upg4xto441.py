@@ -1,7 +1,6 @@
 #!/usr/bin/python3
 
 
-
 import warnings
 warnings.filterwarnings("ignore")
 import sys
@@ -25,6 +24,7 @@ from urllib import request
 import ssl
 import random
 import argparse
+import tempfile
 
 os.umask(0o022)
 
@@ -280,6 +280,7 @@ class GluuUpdater:
                     (self.maven_base + '/org/gluu/oxauth-client-jar-with-dependencies/{0}{1}/oxauth-client-jar-with-dependencies-{0}{1}.jar'.format(up_version, self.build_tag), os.path.join(self.dist_gluu_folder, 'oxauth-client-jar-with-dependencies.jar')),
                     ('https://github.com/GluuFederation/community-edition-setup/archive/version_{}.zip'.format(up_version), os.path.join(self.dist_gluu_folder, 'community-edition-setup.zip')),
                     ('https://ox.gluu.org/icrby8xcvbcv/spanner/gcs.tgz', os.path.join(self.dist_app_folder, 'gcs.tgz')),
+                    ('https://ox.gluu.org/icrby8xcvbcv/misc/python_packages.zip', os.path.join(self.dist_app_folder, 'python_packages.zip')),
                     ('https://github.com/sqlalchemy/sqlalchemy/archive/rel_1_3_23.zip', os.path.join(self.dist_app_folder, 'sqlalchemy.zip')),
                     (self.maven_base + '/org/gluu/oxshibbolethIdp/{0}{1}/oxshibbolethIdp-{0}{1}.war'.format(up_version, self.build_tag), os.path.join(self.dist_gluu_folder, 'idp.war')),
                     (self.maven_base + '/org/gluu/oxShibbolethStatic/{0}{1}/oxShibbolethStatic-{0}{1}.jar'.format(up_version, self.build_tag), os.path.join(self.dist_gluu_folder, 'shibboleth-idp.jar')),
@@ -1305,6 +1306,18 @@ class GluuUpdater:
         if not self.oxdInstaller.installed():
             return
 
+        sys.path.append(os.path.join(self.dist_app_folder, 'python_packages.zip'))
+        import sqlparse
+
+        tmp_dir = tempfile.mkdtemp()
+        db_backup_fn = os.path.join(tmp_dir, 'backup.sql')
+        db_modidifed_script = os.path.join(tmp_dir, 'import.sql')
+
+        self.oxdInstaller.stop()
+
+        cmd = '{0} -cp {1}/lib/oxd-server.jar org.h2.tools.Script -url jdbc:h2:file:{1}/data/oxd_db -user oxd -password oxd -script {2}'.format(self.Config.cmd_java, self.oxdInstaller.oxd_root, db_backup_fn)
+        self.oxdInstaller.run(cmd, shell=True)
+
         print("Updating oxd Server")
         for f in glob.glob(os.path.join(self.oxdInstaller.oxd_root, 'lib/*')):
             if os.path.isfile(f):
@@ -1400,9 +1413,35 @@ class GluuUpdater:
         default_ = self.render_template(default_tmp)
         self.gluuInstaller.writeFile(default_fn, default_)
 
+        backup_text = self.oxdInstaller.readFile(db_backup_fn)
+
+        cleaned_text = []
+
+        for l in backup_text.splitlines():
+            if not l.startswith((';','--')):
+                cleaned_text.append(l)
+
+        statements = sqlparse.split('\n'.join(cleaned_text))
+
+        with open(db_modidifed_script, 'w') as w:
+            for statement in statements:
+                if statement.upper().strip().startswith('INSERT INTO PUBLIC.RP'):
+                    w.write(statement + '\n')
+
+
+        for db_fn in glob.glob('{}/data/oxd_db*.db'.format(self.oxdInstaller.oxd_root)):
+            os.remove(db_fn)
+
+        self.oxdInstaller.start()
+        time.sleep(5)
+        self.oxdInstaller.stop()
+        cmd = '{0} -cp {1}/lib/oxd*.jar org.h2.tools.RunScript -url jdbc:h2:file:{1}/data/oxd_db -user oxd -password oxd -script {2}'.format(self.Config.cmd_java, self.oxdInstaller.oxd_root, db_modidifed_script)
+        self.oxdInstaller.run(cmd, shell=True)
+
+        shutil.rmtree(tmp_dir)
 
         print("Restarting oxd-server")
-        self.oxdInstaller.stop()
+        
         self.oxdInstaller.start()
         time.sleep(5)
 
@@ -1410,6 +1449,7 @@ class GluuUpdater:
         if self.Config.get('oxd_server_https'):
             print("Importing oxd certificate to cacerts")
             self.oxdInstaller.import_oxd_certificate()
+
 
     def update_casa(self):
 
@@ -1766,6 +1806,7 @@ updaterObj.update_passport()
 updaterObj.update_radius()
 updaterObj.update_casa()
 updaterObj.update_oxd()
+sys.exit()
 updaterObj.add_oxAuthUserId_pairwiseIdentifier()
 updaterObj.fix_fido2()
 updaterObj.update_shib()
