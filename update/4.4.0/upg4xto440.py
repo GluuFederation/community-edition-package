@@ -1259,9 +1259,7 @@ class GluuUpdater:
                 self.oxdInstaller.logIt("Extracting {} from {} to {}".format(member.filename, oxd_zip_fn, self.oxdInstaller.oxd_root))
                 oxd_zip.extract(member, self.oxdInstaller.oxd_root)
 
-        oxd_server_yml_fn = os.path.join(self.oxdInstaller.oxd_root, 'conf/oxd-server.yml')
-        yml_str = self.oxdInstaller.readFile(oxd_server_yml_fn)
-        oxd_yaml = ruamel.yaml.load(yml_str, ruamel.yaml.RoundTripLoader)
+        oxd_yaml = self.oxdInstaller.get_yaml_config()
 
         if self.casaInstaller.installed() and hasattr(self, 'casa_oxd_host') and getattr(self, 'casa_oxd_host') in (self.Config.hostname, self.Config.ip):
 
@@ -1281,7 +1279,7 @@ class GluuUpdater:
 
             if write_oxd_yaml:
                 yml_str = ruamel.yaml.dump(oxd_yaml, Dumper=ruamel.yaml.RoundTripDumper)
-                self.oxdInstaller.writeFile(oxd_server_yml_fn, yml_str)
+                self.oxdInstaller.writeFile(self.oxdInstaller.oxd_server_yml_fn, yml_str)
 
 
             #create oxd certificate if not CN=hostname
@@ -1368,11 +1366,9 @@ class GluuUpdater:
 
         shutil.rmtree(tmp_dir)
 
-
         print("Restarting oxd-server")
         self.oxdInstaller.start()
         time.sleep(5)
-
 
         if self.Config.get('oxd_server_https'):
             print("Importing oxd certificate to cacerts")
