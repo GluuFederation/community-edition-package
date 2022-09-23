@@ -1645,7 +1645,7 @@ class GluuUpdater:
                             backup=False
                             )
 
-        self.passportInstaller.run([self.paths.cmd_chown, '-R', 'node:node', self.passportInstaller.gluu_passport_base])
+        self.passportInstaller.run([self.paths.cmd_chown, '-R', 'node:gluu', self.passportInstaller.gluu_passport_base])
 
 
     def add_oxAuthUserId_pairwiseIdentifier(self):
