@@ -23,6 +23,7 @@ from urllib import request
 import ssl
 import random
 import argparse
+import tempfile
 
 os.umask(0o022)
 
@@ -287,7 +288,7 @@ class GluuUpdater:
                     (self.maven_root + '/npm/passport/passport-version_{}-node_modules.tar.gz'.format(up_version), os.path.join(self.dist_gluu_folder, 'passport-version_{}-node_modules.tar.gz'.format(up_version))),
                     (self.maven_base + '/org/gluu/super-gluu-radius-server/{0}{1}/super-gluu-radius-server-{0}{1}-distribution.zip'.format(up_version, self.build_tag), os.path.join(self.dist_gluu_folder, 'gluu-radius-libs.zip')),
                     (self.maven_base + '/org/gluu/super-gluu-radius-server/{0}{1}/super-gluu-radius-server-{0}{1}.jar'.format(up_version, self.build_tag), os.path.join(self.dist_gluu_folder, 'super-gluu-radius-server.jar')),
-                    (self.maven_base + '/org/gluu/oxd-server/{0}{1}/oxd-server-{0}{1}.jar'.format(up_version, self.build_tag), os.path.join(self.dist_gluu_folder, 'oxd-server.jar')),
+                    (self.maven_base + '/org/gluu/oxd-server/{0}{1}/oxd-server-{0}{1}-distribution.zip'.format(up_version, self.build_tag), os.path.join(self.dist_gluu_folder, 'oxd-server-distribution.zip')),
                     (self.maven_base + '/org/gluu/casa/{0}{1}/casa-{0}{1}.war'.format(up_version, self.build_tag), os.path.join(self.dist_gluu_folder, 'casa.war')),
                     ('https://raw.githubusercontent.com/GluuFederation/community-edition-setup/version_{0}/static/casa/scripts/casa-external_smpp.py'.format(up_version), os.path.join(self.dist_gluu_folder, 'casa-external_smpp.py')),
                     ]
@@ -307,7 +308,9 @@ class GluuUpdater:
         data_s = req.read()
         data = json.loads(data_s)
 
-        for package in data['releases']['1.37.0']:
+        data_packages = data['releases']['1.37.0'] if 'releases' in data and '1.37.0' in data['releases'] else data['urls']
+
+        for package in data_packages:
             ppyversion = package['python_version']
             if len(ppyversion) < 5:
                 ppyversion += '0'
@@ -502,6 +505,7 @@ class GluuUpdater:
             Config.application_max_ram = argsd['application_max_ram']
         self.jettyInstaller.calculate_selected_aplications_memory()
         self.gluuInstaller = GluuInstaller()
+        self.Config.templateRenderingDict['service_user'] = self.Config.jetty_user
 
         self.myLdifParser = myLdifParser
         self.myLdifWriter = LDIFWriter
@@ -1228,16 +1232,34 @@ class GluuUpdater:
         if not self.oxdInstaller.installed():
             return
 
-        print("Updating oxd Server")
-        self.oxdInstaller.copyFile(
-                    os.path.join(self.dist_gluu_folder, 'oxd-server.jar'),
-                    os.path.join(self.oxdInstaller.oxd_root, 'lib'),
-                    backup=False
-                    )
 
-        oxd_server_yml_fn = os.path.join(self.oxdInstaller.oxd_root, 'conf/oxd-server.yml')
-        yml_str = self.oxdInstaller.readFile(oxd_server_yml_fn)
-        oxd_yaml = ruamel.yaml.load(yml_str, ruamel.yaml.RoundTripLoader)
+        sys.path.append(os.path.join(self.dist_app_folder, 'python_packages.zip'))
+        import sqlparse
+
+        tmp_dir = tempfile.mkdtemp()
+        db_backup_fn = os.path.join(tmp_dir, 'backup.sql')
+        db_modidifed_script = os.path.join(tmp_dir, 'import.sql')
+
+        self.oxdInstaller.stop()
+
+        cmd = '{0} -cp {1}/lib/oxd-server.jar org.h2.tools.Script -url jdbc:h2:file:{1}/data/oxd_db -user oxd -password oxd -script {2}'.format(self.Config.cmd_java, self.oxdInstaller.oxd_root, db_backup_fn)
+        self.oxdInstaller.run(cmd, shell=True)
+
+
+        print("Updating oxd Server")
+        for f in glob.glob(os.path.join(self.oxdInstaller.oxd_root, 'lib/*')):
+            if os.path.isfile(f):
+                self.oxdInstaller.logIt("Removing " + f)
+                os.remove(f)
+
+        oxd_zip_fn = os.path.join(self.dist_gluu_folder, 'oxd-server-distribution.zip')
+        oxd_zip = zipfile.ZipFile(oxd_zip_fn)
+        for member in  oxd_zip.filelist:
+            if member.filename.startswith('lib/') and not member.is_dir():
+                self.oxdInstaller.logIt("Extracting {} from {} to {}".format(member.filename, oxd_zip_fn, self.oxdInstaller.oxd_root))
+                oxd_zip.extract(member, self.oxdInstaller.oxd_root)
+
+        oxd_yaml = self.oxdInstaller.get_yaml_config()
 
         if self.casaInstaller.installed() and hasattr(self, 'casa_oxd_host') and getattr(self, 'casa_oxd_host') in (self.Config.hostname, self.Config.ip):
 
@@ -1257,7 +1279,7 @@ class GluuUpdater:
 
             if write_oxd_yaml:
                 yml_str = ruamel.yaml.dump(oxd_yaml, Dumper=ruamel.yaml.RoundTripDumper)
-                self.oxdInstaller.writeFile(oxd_server_yml_fn, yml_str)
+                self.oxdInstaller.writeFile(self.oxdInstaller.oxd_server_yml_fn, yml_str)
 
 
             #create oxd certificate if not CN=hostname
@@ -1310,17 +1332,43 @@ class GluuUpdater:
                             fp = os.path.join(self.dist_tmp_folder, f)
                             self.oxdInstaller.run(['rm', '-f', f])
 
-        self.oxdInstaller.copyFile(
-                os.path.join(self.ces_dir, 'static/oxd/oxd-server.default'),
-                os.path.join(self.Config.osDefault, 'oxd-server'),
-                backup=False
-                )
 
-        print("Restarting oxd-server")
-        self.oxdInstaller.stop()
+        print("Updating /etc/default/oxd-server")
+        default_fn = os.path.join('/etc/default/oxd-server')
+        default_tmp = os.path.join(self.ces_dir, 'static/oxd/oxd-server.default')
+        default_ = self.render_template(default_tmp)
+        self.gluuInstaller.writeFile(default_fn, default_)
+
+        backup_text = self.oxdInstaller.readFile(db_backup_fn)
+
+        cleaned_text = []
+
+        for l in backup_text.splitlines():
+            if not l.startswith((';','--')):
+                cleaned_text.append(l)
+
+        statements = sqlparse.split('\n'.join(cleaned_text))
+
+        with open(db_modidifed_script, 'w') as w:
+            for statement in statements:
+                if statement.upper().strip().startswith('INSERT INTO PUBLIC.RP'):
+                    w.write(statement + '\n')
+
+
+        for db_fn in glob.glob('{}/data/oxd_db*.db'.format(self.oxdInstaller.oxd_root)):
+            os.remove(db_fn)
+
         self.oxdInstaller.start()
         time.sleep(5)
+        self.oxdInstaller.stop()
+        cmd = '{0} -cp {1}/lib/oxd*.jar org.h2.tools.RunScript -url jdbc:h2:file:{1}/data/oxd_db -user oxd -password oxd -script {2}'.format(self.Config.cmd_java, self.oxdInstaller.oxd_root, db_modidifed_script)
+        self.oxdInstaller.run(cmd, shell=True)
 
+        shutil.rmtree(tmp_dir)
+
+        print("Restarting oxd-server")
+        self.oxdInstaller.start()
+        time.sleep(5)
 
         if self.Config.get('oxd_server_https'):
             print("Importing oxd certificate to cacerts")
@@ -1642,7 +1690,6 @@ class GluuUpdater:
 
     def update_default_settings(self):
         print("Updating /etc/default files")
-        self.Config.templateRenderingDict['service_user'] = self.Config.jetty_user
         for service in ('casa', 'fido2', 'identity', 'idp', 'oxauth', 'scim'):
             default_fn = os.path.join('/etc/default', service)
             print("Updating default file", service)
