@@ -722,8 +722,10 @@ class GluuUpdater:
             if 'oxClientAuthorizations' in new_entry['objectClass']:
                 new_entry['objectClass'].remove('oxClientAuthorizations')
                 new_entry['objectClass'].append('oxClientAuthorization')
-                
+
                 if dn.startswith('oxId'):
+                    if not 'oxAuthScope' in new_entry:
+                        new_entry['oxAuthScope'] = []
                     new_entry['oxAuthScope'].append('oxd')
 
                 #if 'oxAuthClientId' in new_entry:
