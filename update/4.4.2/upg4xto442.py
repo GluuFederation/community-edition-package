@@ -1000,6 +1000,14 @@ class GluuUpdater:
         print("Executing OpenDJ upgrade script")
         self.gluuInstaller.run([os.path.join(self.Config.ldapBaseFolder, 'upgrade'), '-n'])
         self.gluuInstaller.run(['chown', '-R', 'ldap:ldap', self.Config.ldapBaseFolder])
+
+        print('\033[93m')
+        print("If you have custom attributes in OpenDj schema, ")
+        print("please update schema files, and press Enter to continue.")
+        print("You can continue by pressing Enter if you don't have custom attributes")
+        print('\033[0m')
+        input("OpenDJ Schema ready?: [y]")
+
         print("Starting OpenDJ")
         self.gluuInstaller.start('opendj')
 
