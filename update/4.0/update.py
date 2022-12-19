@@ -379,10 +379,10 @@ class GluuUpdater:
     def download_apps(self):
 
         for download_link, out_file in (
-                        ('https://ox.gluu.org/maven/org/gluu/oxshibbolethIdp/{0}/oxshibbolethIdp-{0}.war'.format(self.current_version), os.path.join(self.war_dir, 'idp.war')),
+                        ('https://ox.gluu.org/maven/org/gluu/oxshibbolethIdp/{0}/oxshibbolethIdp-{0}.war'.format('4.0.1.Final'), os.path.join(self.war_dir, 'idp.war')),
                         ('https://ox.gluu.org/maven/org/gluu/oxtrust-server/{0}/oxtrust-server-{0}.war'.format(self.current_version), os.path.join(self.war_dir, 'identity.war')),
                         ('https://ox.gluu.org/maven/org/gluu/oxauth-server/{0}/oxauth-server-{0}.war'.format(self.current_version), os.path.join(self.war_dir, 'oxauth.war')),
-                        ('https://ox.gluu.org/maven/org/gluu/oxShibbolethStatic/{0}/oxShibbolethStatic-{0}.jar'.format(self.current_version), os.path.join(self.war_dir, 'shibboleth-idp.jar')),
+                        ('https://ox.gluu.org/maven/org/gluu/oxShibbolethStatic/{0}/oxShibbolethStatic-{0}.jar'.format('4.0.1.Final'), os.path.join(self.war_dir, 'shibboleth-idp.jar')),
                         ('https://ox.gluu.org/maven/org/gluu/oxShibbolethKeyGenerator/{0}/oxShibbolethKeyGenerator-{0}.jar'.format(self.current_version), os.path.join(self.war_dir, 'idp3_cml_keygenerator.jar')),
                         ('https://ox.gluu.org/npm/passport/passport-4.0.0.tgz', os.path.join(self.app_dir, 'passport.tgz')),
                         ('https://ox.gluu.org/npm/passport/passport-version_4.0-node_modules.tar.gz', os.path.join(self.app_dir, 'passport-node_modules.tar.gz')),

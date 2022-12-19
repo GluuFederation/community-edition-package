@@ -28,9 +28,9 @@ import tempfile
 
 os.umask(0o022)
 
-#if os.environ.get('gldev') != 'true':
-#    print("This scirpt is under development. Not for use.")
-#    sys.exit()
+if os.environ.get('gldev') != 'true':
+    print("This scirpt is under development. Not for use.")
+    sys.exit()
 
 gluu_prop_file = '/etc/gluu/conf/gluu.properties'
 if not os.path.exists(gluu_prop_file):
@@ -593,6 +593,7 @@ class GluuUpdater:
                     ('oxTrustConfApplication', 'ou=oxtrust,ou=configuration,o=gluu', 'oxTrustConfiguration'): [
                         ('useLocalCache', 'add', 'entry', True),
                         ('loggingLayout', 'add', 'entry', 'text'),
+                        ('oxTrustProtectionMode', 'add', 'entry', 'OAUTH'),
                         ('caCertsLocation', 'change', 'entry', self.Config.default_trust_store_fn),
                         ('caCertsPassphrase', 'change', 'entry', self.Config.defaultTrustStorePW),
                     ],
