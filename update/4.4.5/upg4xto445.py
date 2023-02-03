@@ -1119,6 +1119,7 @@ class GluuUpdater:
 
                 self.Config.distFolder = '/opt/dist'
                 self.jettyInstaller.source_files=[[src_war_fn, None]]
+                self.jettyInstaller.service_name = service
                 self.jettyInstaller.installJettyService(self.jettyInstaller.jetty_app_configuration[service], True)
                 self.Config.distFolder = cur_dist_dir
 
