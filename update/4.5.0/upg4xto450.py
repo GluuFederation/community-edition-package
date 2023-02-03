@@ -28,9 +28,9 @@ import tempfile
 
 os.umask(0o022)
 
-#if os.environ.get('gldev') != 'true':
-#    print("This scirpt is under development. Not for use.")
-#    sys.exit()
+if os.environ.get('gldev') != 'true':
+    print("This scirpt is under development. Not for use.")
+    sys.exit()
 
 gluu_prop_file = '/etc/gluu/conf/gluu.properties'
 if not os.path.exists(gluu_prop_file):
@@ -47,7 +47,7 @@ else:
 
 
 ssl._create_default_https_context = ssl._create_unverified_context
-up_version = "4.4.2"
+up_version = "4.5.0"
 maven_base = 'https://maven.gluu.org/maven'
 parser = argparse.ArgumentParser("This script upgrades gluu server 4.x to {}".format(up_version))
 parser.add_argument('-d', help="Download applications and exit", action='store_true')
@@ -583,6 +583,9 @@ class GluuUpdater:
                         ('deviceAuthzRequestExpiresIn', 'add', 'entry', 1800),
                         ('deviceAuthzTokenPollInterval', 'add', 'entry', 5),
                         ('deviceAuthzResponseTypeToProcessAuthz', 'add', 'entry', 'code'),
+                        ('requestUriBlockList', 'add', 'entry', ['localhost', '127.0.0.1']),
+                        ('opPolicyUri', 'change', 'entry', ''),
+                        ('opTosUri', 'change', 'entry', ''),
                     ],
     
                     ('oxAuthConfStatic', 'ou=oxauth,ou=configuration,o=gluu', 'oxAuthConfiguration'): [
@@ -596,6 +599,9 @@ class GluuUpdater:
                         ('oxTrustProtectionMode', 'add', 'entry', 'OAUTH'),
                         ('caCertsLocation', 'change', 'entry', self.Config.default_trust_store_fn),
                         ('caCertsPassphrase', 'change', 'entry', self.Config.defaultTrustStorePW),
+                        ('adminUiLocaleSupported', 'add', 'entry', [{'locale': 'en', 'displayName': 'English'}, {'locale': 'fr', 'displayName': 'French'}, {'locale': 'rs', 'displayName': 'Russian'}]),
+                        ('ScimProperties', 'change', 'subentry', ('bulkMaxOperations', 30)),
+                        ('ScimProperties', 'change', 'subentry', ('bulkMaxPayloadSize', 3072000)),
                     ],
                     
                     ('oxConfApplication', 'ou=oxidp,ou=configuration,o=gluu', 'oxApplicationConfiguration'): [
@@ -1119,6 +1125,7 @@ class GluuUpdater:
 
                 self.Config.distFolder = '/opt/dist'
                 self.jettyInstaller.source_files=[[src_war_fn, None]]
+                self.jettyInstaller.service_name = service
                 self.jettyInstaller.installJettyService(self.jettyInstaller.jetty_app_configuration[service], True)
                 self.Config.distFolder = cur_dist_dir
 
@@ -1793,6 +1800,17 @@ class GluuUpdater:
                 default_ = self.render_template(os.path.join(self.ces_dir, 'templates/jetty', service))
                 self.gluuInstaller.writeFile(default_fn, default_)
 
+    def create_dns(self):
+        document_entry = {'objectClass': ['top', 'organizationalUnit'], 'ou': ['document']}
+        self.unparse_import([('ou=document,o=gluu', document_entry)])
+
+
+    def set_configuration(self):
+        # make attributes active
+        for inum in ('6DA6', '0C18', 'D0C9'):
+            dn = 'inum={},ou=attributes,o=gluu'.format(inum)
+            self.gluuInstaller.dbUtils.set_configuration('gluuStatus', 'active', dn)
+
 updaterObj = GluuUpdater()
 
 
@@ -1830,6 +1848,8 @@ updaterObj.update_oxd()
 updaterObj.add_oxAuthUserId_pairwiseIdentifier()
 updaterObj.fix_fido2()
 updaterObj.update_shib()
+updaterObj.create_dns()
+updaterObj.set_configuration()
 
 os.system('systemctl daemon-reload')
 
