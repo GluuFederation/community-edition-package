@@ -39,10 +39,10 @@ if not os.path.exists(gluu_prop_file):
 
 for l in open(gluu_prop_file):
     ls = l.strip()
-    if ls.startswith('persistence.type') and ls.endswith('ldap'):
+    if ls.startswith('persistence.type') and (ls.endswith('ldap') or ls.endswith('couchbase')):
         break
 else:
-    print("This script works only for ldap backend.")
+    print("This script works only for ldap and Couchbase backends.")
     sys.exit()
 
 
@@ -177,26 +177,6 @@ if not result.strip() or (result.strip() and result.strip().lower()[0] != 'y'):
     print("You can re-run this script to upgrade. Bye now ...")
     sys.exit()
 
-
-def get_properties(prop_fn):
-
-    pp = Properties()
-
-    with open(prop_fn, 'rb') as file_object:
-        pp.load(file_object, 'utf-8')
-
-    p = {}
-    for k in pp:
-        v = pp[k].data
-        if v.lower() == 'true':
-            v == True
-        elif v.lower() == 'false':
-            v == False
-
-        p[k] = v
-
-    return p
-
 if not argsp.d:
     with open("/etc/gluu/conf/salt") as f:
         salt_property = f.read().strip()
@@ -219,7 +199,7 @@ def make_key(l):
 class GluuUpdater:
     def __init__(self):
 
-        self.build_tag = '-SNAPSHOT'
+        self.build_tag = '.Final'
         self.backup_time = time.strftime('%Y-%m-%d.%H:%M:%S')
         self.dist_folder = '/opt/upd/{}/dist'.format(up_version)
 
@@ -307,6 +287,7 @@ class GluuUpdater:
                     (self.maven_base + '/org/gluu/oxd-server/{0}{1}/oxd-server-{0}{1}-distribution.zip'.format(up_version, self.build_tag), os.path.join(self.dist_gluu_folder, 'oxd-server-distribution.zip')),
                     (self.maven_base + '/org/gluu/casa/{0}{1}/casa-{0}{1}.war'.format(up_version, self.build_tag), os.path.join(self.dist_gluu_folder, 'casa.war')),
                     ('https://raw.githubusercontent.com/GluuFederation/community-edition-setup/version_{0}/static/casa/scripts/casa-external_smpp.py'.format(up_version), os.path.join(self.dist_gluu_folder, 'casa-external_smpp.py')),
+                    (self.maven_base + '/org/gluu/gluu-orm-couchbase-libs/{0}{1}/gluu-orm-couchbase-libs-{0}{1}-distribution.zip'.format(up_version, self.build_tag), os.path.join(self.dist_gluu_folder, 'gluu-orm-couchbase-libs-distribution.zip')),
                     ]
         for p in self.casa_plugins:
             downloads.append((self.casa_plugins[p].format(up_version, self.build_tag), os.path.join(self.dist_gluu_folder, p + '.jar')))
@@ -479,6 +460,9 @@ class GluuUpdater:
             collectProperties.collect()
             Config.installed_instance = True
 
+        if Config.persistence_type == 'couchbase':
+            Config.cb_install = True
+
         self.base = base
         self.Config = Config
         self.passportInstaller = PassportInstaller()
@@ -529,6 +513,8 @@ class GluuUpdater:
         self.paths = paths
         self.base = base
         self.ldif_utils = ldif_utils
+
+
 
     def copy_files(self):
         self.gluuInstaller.copyFile(
@@ -874,10 +860,30 @@ class GluuUpdater:
                     #remove session entry:
                     self.gluuInstaller.dbUtils.cbm.exec_query('DELETE FROM `{}_token` USE KEYS "{}"'.format(self.Config.couchbase_bucket_prefix, docid))
 
-        self.couchbaseInstaller.couchbaseProperties()
+        self.couchbaseInstaller.extract_libs()
+        self.update_couchbase_properties()
 
         self.cb_indexes()
 
+
+    def update_couchbase_properties(self):
+        current_couchbase_prop = self.base.read_properties_file(self.Config.gluuCouchebaseProperties)
+        prop_dict = self.couchbaseInstaller.couchbaseDict()
+        prop_file = os.path.basename(self.Config.gluuCouchebaseProperties)
+        prop_dict['default_bucket'] = current_couchbase_prop['bucket.default']
+        prop_dict['couchbase_buckets'] = current_couchbase_prop['buckets']
+        couchbase_mappings = []
+        for p in current_couchbase_prop:
+            if p.startswith('bucket.gluu'):
+                couchbase_mappings.append(p + ': ' + current_couchbase_prop[p])
+        prop_dict['couchbase_mappings'] = '\n'.join(couchbase_mappings)
+        prop = self.couchbaseInstaller.readFile(os.path.join(self.Config.templateFolder, prop_file))
+        prop = prop % prop_dict
+        out_file = os.path.join(self.Config.outputFolder, prop_file)
+        self.couchbaseInstaller.writeFile(out_file, prop)
+        self.couchbaseInstaller.writeFile(self.Config.gluuCouchebaseProperties, prop)
+
+        self.couchbaseInstaller.chown(out_file, 'root', self.Config.gluu_group) 
 
 
     def apply_persist_changes(self, js_conf, data):
@@ -1140,6 +1146,7 @@ class GluuUpdater:
                     src_dir = os.path.join(backup_dir, copy_dir)
                     if os.path.exists(src_dir):
                         self.gluuInstaller.run(['cp', '-r', src_dir, service_webapps_dir])
+
 
     def update_jetty(self):
         # delete old Jetty distribution
@@ -1813,12 +1820,13 @@ class GluuUpdater:
 
 updaterObj = GluuUpdater()
 
-
 updaterObj.download_apps()
 updaterObj.prepare_gcs()
 updaterObj.unzip_ces()
-
 updaterObj.prepare_ces()
+
+updaterObj.update_couchbase()
+
 updaterObj.copy_files()
 updaterObj.prepare_persist_changes()
 updaterObj.generate_smtp_keystore()
