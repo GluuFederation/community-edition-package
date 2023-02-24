@@ -698,9 +698,10 @@ class GluuUpdater:
             if config_element == 'oxSmtpConfiguration':
                 if 'requires-ssl' in js_conf:
                     js_conf.pop('requires-ssl')
-                js_conf['connectProtectionList'] = ["None", "StartTls", "SslTls"]
-                if 'connect-protection' not in js_conf:
-                    js_conf['connect-protection'] = 'SslTls'
+                if 'connectProtectionList' in js_conf:
+                    js_conf.pop('connectProtectionList')
+                if 'connect-protection' in js_conf:
+                    js_conf.pop('connect-protection')
 
             self.apply_persist_changes(js_conf, self.persist_changes[(config_element, config_dn, object_class)])
 
@@ -1824,8 +1825,6 @@ updaterObj.download_apps()
 updaterObj.prepare_gcs()
 updaterObj.unzip_ces()
 updaterObj.prepare_ces()
-
-updaterObj.update_couchbase()
 
 updaterObj.copy_files()
 updaterObj.prepare_persist_changes()
