@@ -28,9 +28,9 @@ import tempfile
 
 os.umask(0o022)
 
-if os.environ.get('gldev') != 'true':
-    print("This scirpt is under development. Not for use.")
-    sys.exit()
+#if os.environ.get('gldev') != 'true':
+#    print("This scirpt is under development. Not for use.")
+#    sys.exit()
 
 gluu_prop_file = '/etc/gluu/conf/gluu.properties'
 if not os.path.exists(gluu_prop_file):
