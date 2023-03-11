@@ -1839,4 +1839,4 @@ for msg in updaterObj.postmessages:
 print()
 print("Please logout from container and restart Gluu Server")
 
-#./makeself.sh --target /opt/upd/4.4.1 /opt/upd/4.4.1 4-4-0.rc1-upg.run "Gluu Server 4.x to 4.4.1 Upgrader Script" /opt/upd/4.4.1/upg4xto440.py --offline
+# ./makeself.sh --target /opt/upd/4.4.2 /opt/upd/4.4.2 4-4-2.upg.run "Gluu Server 4.x to 4.4.2 Upgrader Script" /opt/upd/4.4.2/upg4xto442.py --offline
