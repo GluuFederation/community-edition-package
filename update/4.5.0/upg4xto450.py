@@ -611,7 +611,7 @@ class GluuUpdater:
         self.gluuInstaller.service_name = 'gluu'
         self.gluuInstaller.generate_configuration()
         self.persist_changes[('oxSmtpConfiguration', 'ou=configuration,o=gluu', 'gluuConfiguration')] = [
-                                        ('connectProtectionList', 'add', 'entry', ["NONE","START_TLS","SSL_TLS"]),
+                                        ('connectProtectionList', 'add', 'entry', ['None','StartTls','SslTls']),
                                         ('key-store', 'add', 'entry', self.Config.smtp_jks_fn),
                                         ('key-store-password', 'add', 'entry', self.Config.smtp_jks_pass_enc),
                                         ('key-store-alias', 'add', 'entry', self.Config.smtp_alias),
@@ -701,7 +701,7 @@ class GluuUpdater:
             if config_element == 'oxSmtpConfiguration':
                 ssl = js_conf.pop('requires-ssl', None)
                 if ssl:
-                    js_conf['connect-protection'] = 'SSL_TLS'
+                    js_conf['connect-protection'] = 'StartTls'
                 js_conf.pop('connectProtectionList', None)
 
             self.apply_persist_changes(js_conf, self.persist_changes[(config_element, config_dn, object_class)])
