@@ -589,7 +589,7 @@ class GluuUpdater:
                         ('ScimProperties', 'change', 'subentry', ('bulkMaxOperations', 30)),
                         ('ScimProperties', 'change', 'subentry', ('bulkMaxPayloadSize', 3072000)),
                     ],
-                    
+
                     ('oxConfApplication', 'ou=oxidp,ou=configuration,o=gluu', 'oxApplicationConfiguration'): [
                         ('scriptDn', 'add', 'entry', 'ou=scripts,o=gluu'),
                     ],
@@ -611,6 +611,7 @@ class GluuUpdater:
         self.gluuInstaller.service_name = 'gluu'
         self.gluuInstaller.generate_configuration()
         self.persist_changes[('oxSmtpConfiguration', 'ou=configuration,o=gluu', 'gluuConfiguration')] = [
+                                        ('connectProtectionList', 'add', 'entry', ["NONE","START_TLS","SSL_TLS"]),
                                         ('key-store', 'add', 'entry', self.Config.smtp_jks_fn),
                                         ('key-store-password', 'add', 'entry', self.Config.smtp_jks_pass_enc),
                                         ('key-store-alias', 'add', 'entry', self.Config.smtp_alias),
@@ -667,11 +668,13 @@ class GluuUpdater:
 
         if self.gluuInstaller.dbUtils.moddb == self.BackendTypes.LDAP:
            self.update_ldap()
+
         elif self.gluuInstaller.dbUtils.moddb == self.BackendTypes.COUCHBASE:
            self.update_couchbase()
 
+
         for config_element, config_dn, object_class in self.persist_changes:
-            print("Updating", config_element)
+            print("Updating Database for", config_element)
             
             if self.gluuInstaller.dbUtils.get_backend_location_for_dn(config_dn) == self.BackendTypes.COUCHBASE:
                 key = self.ldif_utils.get_key_from(config_dn)
@@ -696,12 +699,10 @@ class GluuUpdater:
             js_conf = json.loads(cur_data) if isinstance(cur_data, str) else cur_data
 
             if config_element == 'oxSmtpConfiguration':
-                if 'requires-ssl' in js_conf:
-                    js_conf.pop('requires-ssl')
-                if 'connectProtectionList' in js_conf:
-                    js_conf.pop('connectProtectionList')
-                if 'connect-protection' in js_conf:
-                    js_conf.pop('connect-protection')
+                ssl = js_conf.pop('requires-ssl', None)
+                if ssl:
+                    js_conf['connect-protection'] = 'SSL_TLS'
+                js_conf.pop('connectProtectionList', None)
 
             self.apply_persist_changes(js_conf, self.persist_changes[(config_element, config_dn, object_class)])
 
@@ -889,8 +890,10 @@ class GluuUpdater:
 
     def apply_persist_changes(self, js_conf, data):
         for key, change_type, how_change, value in data:
-            if change_type == 'add':
-                if how_change == 'entry':
+            if key not in js_conf and change_type != 'add':
+                    continue
+            if change_type == 'add':    
+                if how_change == 'entry' or key not in js_conf:
                     js_conf[key] = value
                 elif how_change == 'element':
                     if not value in js_conf[key]:
@@ -1029,7 +1032,7 @@ class GluuUpdater:
         self.gluuInstaller.dbUtils.ldap_conn.bind()
 
     def update_java(self):
-        
+
         if os.path.isdir('/opt/amazon-corretto-{}-linux-x64'.format(self.corretto_version)):
             print("Java is up to date")
             return
