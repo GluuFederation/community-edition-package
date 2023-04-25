@@ -702,6 +702,8 @@ class GluuUpdater:
                 ssl = js_conf.pop('requires-ssl', None)
                 if ssl:
                     js_conf['connect-protection'] = 'StartTls'
+                if 'connect-protection' in js_conf:
+                    js_conf['connect-protection'] = js_conf['connect-protection'].replace('SSL_TLS', 'SslTls').replace('START_TLS', 'StartTls')
                 js_conf.pop('connectProtectionList', None)
 
             self.apply_persist_changes(js_conf, self.persist_changes[(config_element, config_dn, object_class)])
