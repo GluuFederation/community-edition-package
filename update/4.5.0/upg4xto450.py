@@ -894,7 +894,7 @@ class GluuUpdater:
         for key, change_type, how_change, value in data:
             if key not in js_conf and change_type != 'add':
                     continue
-            if change_type == 'add':    
+            if change_type == 'add':
                 if how_change == 'entry' or key not in js_conf:
                     js_conf[key] = value
                 elif how_change == 'element':

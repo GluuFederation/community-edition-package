@@ -604,6 +604,7 @@ class GluuUpdater:
         self.gluuInstaller.service_name = 'gluu'
         self.gluuInstaller.generate_configuration()
         self.persist_changes[('oxSmtpConfiguration', 'ou=configuration,o=gluu', 'gluuConfiguration')] = [
+                                        ('connectProtectionList', 'add', 'entry', ['None','StartTls','SslTls']),
                                         ('key-store', 'add', 'entry', self.Config.smtp_jks_fn),
                                         ('key-store-password', 'add', 'entry', self.Config.smtp_jks_pass_enc),
                                         ('key-store-alias', 'add', 'entry', self.Config.smtp_alias),
@@ -689,11 +690,12 @@ class GluuUpdater:
             js_conf = json.loads(cur_data) if isinstance(cur_data, str) else cur_data
 
             if config_element == 'oxSmtpConfiguration':
-                if 'requires-ssl' in js_conf:
-                    js_conf.pop('requires-ssl')
-                js_conf['connectProtectionList'] = ["None", "StartTls", "SslTls"]
-                if 'connect-protection' not in js_conf:
-                    js_conf['connect-protection'] = 'SslTls'
+                ssl = js_conf.pop('requires-ssl', None)
+                if ssl:
+                    js_conf['connect-protection'] = 'StartTls'
+                if 'connect-protection' in js_conf:
+                    js_conf['connect-protection'] = js_conf['connect-protection'].replace('SSL_TLS', 'SslTls').replace('START_TLS', 'StartTls').replace('NONE','None')
+                js_conf.pop('connectProtectionList', None)
 
             self.apply_persist_changes(js_conf, self.persist_changes[(config_element, config_dn, object_class)])
 
@@ -861,8 +863,10 @@ class GluuUpdater:
 
     def apply_persist_changes(self, js_conf, data):
         for key, change_type, how_change, value in data:
+            if key not in js_conf and change_type != 'add':
+                    continue
             if change_type == 'add':
-                if how_change == 'entry':
+                if how_change == 'entry' or key not in js_conf:
                     js_conf[key] = value
                 elif how_change == 'element':
                     if not value in js_conf[key]:
@@ -1096,6 +1100,7 @@ class GluuUpdater:
 
                 self.Config.distFolder = '/opt/dist'
                 self.jettyInstaller.source_files=[[src_war_fn, None]]
+                self.jettyInstaller.service_name = service
                 self.jettyInstaller.installJettyService(self.jettyInstaller.jetty_app_configuration[service], True)
                 self.Config.distFolder = cur_dist_dir
 
