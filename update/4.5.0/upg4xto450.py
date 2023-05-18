@@ -32,17 +32,38 @@ os.umask(0o022)
 #    print("This scirpt is under development. Not for use.")
 #    sys.exit()
 
+
+def read_prop(prop_file):
+    prop = {}
+    with open(prop_file) as f:
+        for l in f:
+            sep_n = l.find('=') or l.find(':')
+            if sep_n > -1:
+                key = l[:sep_n].strip()
+                val = l[sep_n+1:].strip()
+                prop[key] = val
+    return prop
+
 gluu_prop_file = '/etc/gluu/conf/gluu.properties'
 if not os.path.exists(gluu_prop_file):
     print("No Gluu installation is detected.")
     sys.exit()
 
-for l in open(gluu_prop_file):
-    ls = l.strip()
-    if ls.startswith('persistence.type') and (ls.endswith('ldap') or ls.endswith('couchbase')):
-        break
-else:
-    print("This script works only for ldap and Couchbase backends.")
+gluu_prop = read_prop(gluu_prop_file)
+
+supported_backends = ('ldap', 'couchbase', 'sql')
+
+continue_upg = True
+if gluu_prop['persistence.type'] not in supported_backends:
+    continue_upg = False
+
+if gluu_prop['persistence.type'] == 'sql':
+    sql_prop = read_prop('/etc/gluu/conf/gluu-sql.properties')
+    if ':mysql:' not in sql_prop['connection.uri']:
+        continue_upg = False
+
+if not continue_upg:
+    print("This script works only for backends {}.".format(', '.join(supported_backends)))
     sys.exit()
 
 
@@ -513,7 +534,8 @@ class GluuUpdater:
         self.paths = paths
         self.base = base
         self.ldif_utils = ldif_utils
-
+        print("importing sqlalchemy")
+        globals()['sqlalchemy'] = __import__('sqlalchemy')
 
 
     def copy_files(self):
@@ -672,6 +694,8 @@ class GluuUpdater:
         elif self.gluuInstaller.dbUtils.moddb == self.BackendTypes.COUCHBASE:
            self.update_couchbase()
 
+        elif self.gluuInstaller.dbUtils.moddb == self.BackendTypes.MYSQL:
+           self.update_mysql()
 
         for config_element, config_dn, object_class in self.persist_changes:
             print("Updating Database for", config_element)
@@ -888,6 +912,70 @@ class GluuUpdater:
         self.couchbaseInstaller.writeFile(self.Config.gluuCouchebaseProperties, prop)
 
         self.couchbaseInstaller.chown(out_file, 'root', self.Config.gluu_group) 
+
+
+    def convert_to_json(self, table_name, column_name):
+        print("Converting column {} of table {} to JSON".format(column_name, table_name))
+
+        table_indexes = self.inspect.get_indexes(table_name)
+        for ind in table_indexes:
+            if column_name in ind['column_names']:
+                print("  Removing index {} from {}".format(ind['name'], table_name))
+                sql_cmd = 'ALTER TABLE `{}` DROP INDEX `{}`'.format(table_name, ind['name'])
+                print("  Executing SQL Query", sql_cmd)
+                self.rdbmInstaller.dbUtils.exec_rdbm_query(sql_cmd)
+                # TODO: create index for this column
+
+        # first convert to type TEXT, size may be too small to store json data
+        sql_cmd = 'ALTER TABLE `{}` MODIFY COLUMN `{}` TEXT'.format(table_name, column_name)
+        print("  Executing SQL Query", sql_cmd)
+        self.rdbmInstaller.dbUtils.exec_rdbm_query(sql_cmd)
+        sqlalchemy_query = self.rdbmInstaller.dbUtils.session.query(self.rdbmInstaller.dbUtils.Base.classes[table_name])
+        print("  Converting data. This may take several minutes depending on your data size.")
+        for row in sqlalchemy_query:
+            raw_data = getattr(row, column_name)
+            setattr(row, column_name, json.dumps({'v': [raw_data]}))
+            self.rdbmInstaller.dbUtils.session.commit()
+
+        sql_cmd = 'ALTER TABLE `{}` MODIFY COLUMN `{}` JSON'.format(table_name, column_name)
+        print("  Executing SQL Query", sql_cmd)
+        self.rdbmInstaller.dbUtils.exec_rdbm_query(sql_cmd)
+
+    def update_mysql(self):
+        print("Updating MySQL Schema")
+        self.inspect = sqlalchemy.inspect(self.gluuInstaller.dbUtils.engine)
+        self.rdbmInstaller.prepare()
+        tables_dict = self.rdbmInstaller.get_sql_tables(self.rdbmInstaller.schema_files)
+
+        col_len_re = re.compile(r'VARCHAR\((\d+)\)')
+
+        for tbl_name in tables_dict:
+            if tbl_name.startswith('__') and tbl_name.endswith('__'):
+                continue
+            if tbl_name in self.rdbmInstaller.dbUtils.Base.classes:
+                tbl_cls = self.rdbmInstaller.dbUtils.Base.classes[tbl_name]
+                for col_name, data_type in tables_dict[tbl_name]:
+                    if col_name in tbl_cls.__table__.columns:
+                        col_cls = tbl_cls.__table__.columns[col_name]
+                        visit_name = col_cls.type.__visit_name__
+                        if visit_name == 'INTEGER':
+                            visit_name = 'INT'
+                        if not data_type.startswith(visit_name):
+                            if data_type == 'JSON':
+                                self.convert_to_json(tbl_name, col_name)
+                            else:
+                                print(tbl_name, col_name, "target:",data_type, "current:", col_cls.type.__visit_name__)
+                                sql_cmd = 'ALTER TABLE `{}` MODIFY COLUMN `{}` {}'.format(tbl_name, col_name, data_type)
+                                print("Executing SQL Query", sql_cmd)
+                                self.rdbmInstaller.dbUtils.exec_rdbm_query(sql_cmd)
+                    else:
+                        print("ADD ATTRIBUTE", col_name, data_type, )
+                        self.rdbmInstaller.add_attribute_to_table(tbl_name, tables_dict['__allattribs__'][col_name])
+            else:
+                print("CREATING TABLE", tbl_name)
+                self.rdbmInstaller.create_table(tbl_name, tables_dict[tbl_name])
+
+        self.rdbmInstaller.add_missing_attributes(tables_dict['__allattribs__'])
 
 
     def apply_persist_changes(self, js_conf, data):
