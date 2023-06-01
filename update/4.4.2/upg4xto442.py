@@ -19,7 +19,6 @@ import glob
 import zipfile
 import csv
 import uuid
-import urllib.request
 from urllib import request
 import ssl
 import random
@@ -54,7 +53,17 @@ parser.add_argument('-d', help="Download applications and exit", action='store_t
 parser.add_argument('--offline', help="Offline upgrade", action='store_true')
 parser.add_argument('-n', help="No interactive prompt before upgrade starts, 'Y' to all prompts.", action='store_true') 
 parser.add_argument('-application-max-ram', help="Application max ram in MB", type=int)
+parser.add_argument('-maven-user', help="Gluu Maven username", required=True)
+parser.add_argument('-maven-password', help="Gluu Maven password", required=True)
 argsp = parser.parse_args()
+
+maven_base = maven_base.rstrip('/')
+maven_root = '/'.join(maven_base.split('/')[:-1]).rstrip('/')
+passman = request.HTTPPasswordMgrWithDefaultRealm()
+passman.add_password(None, maven_root, argsp.maven_user, argsp.maven_password)
+authhandler = request.HTTPBasicAuthHandler(passman)
+opener = request.build_opener(authhandler)
+request.install_opener(opener)
 
 argsd = {}
 argsd['n'] = argsp.n
@@ -219,7 +228,7 @@ def make_key(l):
 class GluuUpdater:
     def __init__(self):
 
-        self.build_tag = '-SNAPSHOT'
+        self.build_tag = '.Final'
         self.backup_time = time.strftime('%Y-%m-%d.%H:%M:%S')
         self.dist_folder = '/opt/upd/{}/dist'.format(up_version)
 
@@ -229,9 +238,6 @@ class GluuUpdater:
         self.dist_gluu_folder = os.path.join(self.dist_folder, 'gluu')
         self.dist_tmp_folder = os.path.join(self.dist_folder, 'tmp')
         self.grpcio_folder = os.path.join(self.dist_app_folder, 'grpcio')
-
-        self.maven_base = maven_base.rstrip('/')
-        self.maven_root = '/'.join(maven_base.split('/')[:-1]).rstrip('/')
 
         self.postmessages = []
 
@@ -245,10 +251,10 @@ class GluuUpdater:
         self.delete_from_configuration = ['gluuFreeDiskSpace', 'gluuFreeMemory', 'gluuFreeSwap', 'gluuGroupCount', 'gluuIpAddress', 'gluuPersonCount', 'gluuSystemUptime']
 
         self.casa_plugins = {
-            'strong-authn-settings': self.maven_base + '/org/gluu/casa/plugins/strong-authn-settings/{0}{1}/strong-authn-settings-{0}{1}-jar-with-dependencies.jar',
-            'account-linking': self.maven_base + '/org/gluu/casa/plugins/account-linking/{0}{1}/account-linking-{0}{1}-jar-with-dependencies.jar',
-            'authorized-clients': self.maven_base + '/org/gluu/casa/plugins/authorized-clients/{0}{1}/authorized-clients-{0}{1}-jar-with-dependencies.jar',
-            'custom-branding': self.maven_base + '/org/gluu/casa/plugins/custom-branding/{0}{1}/custom-branding-{0}{1}-jar-with-dependencies.jar',
+            'strong-authn-settings': maven_base + '/org/gluu/casa/plugins/strong-authn-settings/{0}{1}/strong-authn-settings-{0}{1}-jar-with-dependencies.jar',
+            'account-linking': maven_base + '/org/gluu/casa/plugins/account-linking/{0}{1}/account-linking-{0}{1}-jar-with-dependencies.jar',
+            'authorized-clients': maven_base + '/org/gluu/casa/plugins/authorized-clients/{0}{1}/authorized-clients-{0}{1}-jar-with-dependencies.jar',
+            'custom-branding': maven_base + '/org/gluu/casa/plugins/custom-branding/{0}{1}/custom-branding-{0}{1}-jar-with-dependencies.jar',
             }
 
         self.gapp_dir = '/opt/dist/app'
@@ -281,31 +287,31 @@ class GluuUpdater:
                 os.makedirs(dist_foler)
 
         downloads = [
-                    (self.maven_base + '/org/gluu/oxtrust-server/{0}{1}/oxtrust-server-{0}{1}.war'.format(up_version, self.build_tag), os.path.join(self.dist_gluu_folder, 'identity.war')),
-                    (self.maven_base + '/org/gluu/oxauth-server/{0}{1}/oxauth-server-{0}{1}.war'.format(up_version, self.build_tag), os.path.join(self.dist_gluu_folder, 'oxauth.war')),
-                    (self.maven_base + '/org/gluu/fido2-server/{0}{1}/fido2-server-{0}{1}.war'.format(up_version, self.build_tag), os.path.join(self.dist_gluu_folder, 'fido2.war')),
-                    (self.maven_base + '/org/gluu/scim-server/{0}{1}/scim-server-{0}{1}.war'.format(up_version, self.build_tag), os.path.join(self.dist_gluu_folder, 'scim.war')),
+                    (maven_base + '/org/gluu/oxtrust-server/{0}{1}/oxtrust-server-{0}{1}.war'.format(up_version, self.build_tag), os.path.join(self.dist_gluu_folder, 'identity.war')),
+                    (maven_base + '/org/gluu/oxauth-server/{0}{1}/oxauth-server-{0}{1}.war'.format(up_version, self.build_tag), os.path.join(self.dist_gluu_folder, 'oxauth.war')),
+                    (maven_base + '/org/gluu/fido2-server/{0}{1}/fido2-server-{0}{1}.war'.format(up_version, self.build_tag), os.path.join(self.dist_gluu_folder, 'fido2.war')),
+                    (maven_base + '/org/gluu/scim-server/{0}{1}/scim-server-{0}{1}.war'.format(up_version, self.build_tag), os.path.join(self.dist_gluu_folder, 'scim.war')),
                     ('https://repo1.maven.org/maven2/org/eclipse/jetty/jetty-home/{0}/jetty-home-{0}.tar.gz'.format(self.jetty_version), os.path.join(self.dist_app_folder, 'jetty-home-{0}.tar.gz'.format(self.jetty_version))),
                     ('https://corretto.aws/downloads/resources/{0}/amazon-corretto-{0}-linux-x64.tar.gz'.format(self.corretto_version), os.path.join(self.dist_app_folder, 'amazon-corretto-{0}-linux-x64.tar.gz'.format(self.corretto_version))),
-                    (self.maven_base + '/org/gluufederation/jython-installer/{0}/jython-installer-{0}.jar'.format(self.jython_version), os.path.join(self.dist_app_folder, 'jython-installer-{}.jar'.format(self.jython_version))),
+                    (maven_base + '/org/gluufederation/jython-installer/{0}/jython-installer-{0}.jar'.format(self.jython_version), os.path.join(self.dist_app_folder, 'jython-installer-{}.jar'.format(self.jython_version))),
                     ('https://nodejs.org/dist/{0}/node-{0}-linux-x64.tar.xz'.format(self.node_version), os.path.join(self.dist_app_folder, 'node-{0}-linux-x64.tar.xz'.format(self.node_version))),
                     ('https://raw.githubusercontent.com/GluuFederation/gluu-snap/master/facter/facter', os.path.join(self.dist_gluu_folder, os.path.join(self.dist_gluu_folder, 'facter'))),
-                    (self.maven_base + '/org/gluufederation/opendj/opendj-server-legacy/{0}/opendj-server-legacy-{0}.zip'.format(self.opendj_version), os.path.join(self.dist_app_folder, 'opendj-server-{}.zip'.format(self.opendj_version))),
-                    (self.maven_base + '/org/gluu/oxauth-client-jar-with-dependencies/{0}{1}/oxauth-client-jar-with-dependencies-{0}{1}.jar'.format(up_version, self.build_tag), os.path.join(self.dist_gluu_folder, 'oxauth-client-jar-with-dependencies.jar')),
+                    (maven_base + '/org/gluufederation/opendj/opendj-server-legacy/{0}/opendj-server-legacy-{0}.zip'.format(self.opendj_version), os.path.join(self.dist_app_folder, 'opendj-server-{}.zip'.format(self.opendj_version))),
+                    (maven_base + '/org/gluu/oxauth-client-jar-with-dependencies/{0}{1}/oxauth-client-jar-with-dependencies-{0}{1}.jar'.format(up_version, self.build_tag), os.path.join(self.dist_gluu_folder, 'oxauth-client-jar-with-dependencies.jar')),
                     ('https://github.com/GluuFederation/community-edition-setup/archive/version_{}.zip'.format(up_version), os.path.join(self.dist_gluu_folder, 'community-edition-setup.zip')),
                     ('https://ox.gluu.org/icrby8xcvbcv/spanner/gcs.tgz', os.path.join(self.dist_app_folder, 'gcs.tgz')),
                     ('https://ox.gluu.org/icrby8xcvbcv/misc/python_packages.zip', os.path.join(self.dist_app_folder, 'python_packages.zip')),
                     ('https://github.com/sqlalchemy/sqlalchemy/archive/rel_1_3_23.zip', os.path.join(self.dist_app_folder, 'sqlalchemy.zip')),
-                    (self.maven_base + '/org/gluu/oxshibbolethIdp/{0}{1}/oxshibbolethIdp-{0}{1}.war'.format(up_version, self.build_tag), os.path.join(self.dist_gluu_folder, 'idp.war')),
-                    (self.maven_base + '/org/gluu/oxShibbolethStatic/{0}{1}/oxShibbolethStatic-{0}{1}.jar'.format(up_version, self.build_tag), os.path.join(self.dist_gluu_folder, 'shibboleth-idp.jar')),
-                    (self.maven_base + '/org/gluu/oxShibbolethKeyGenerator/{0}{1}/oxShibbolethKeyGenerator-{0}{1}.jar'.format(up_version, self.build_tag), os.path.join(self.dist_gluu_folder, 'idp3_cml_keygenerator.jar')),
+                    (maven_base + '/org/gluu/oxshibbolethIdp/{0}{1}/oxshibbolethIdp-{0}{1}.war'.format(up_version, self.build_tag), os.path.join(self.dist_gluu_folder, 'idp.war')),
+                    (maven_base + '/org/gluu/oxShibbolethStatic/{0}{1}/oxShibbolethStatic-{0}{1}.jar'.format(up_version, self.build_tag), os.path.join(self.dist_gluu_folder, 'shibboleth-idp.jar')),
+                    (maven_base + '/org/gluu/oxShibbolethKeyGenerator/{0}{1}/oxShibbolethKeyGenerator-{0}{1}.jar'.format(up_version, self.build_tag), os.path.join(self.dist_gluu_folder, 'idp3_cml_keygenerator.jar')),
                     ('https://raw.githubusercontent.com/GluuFederation/oxTrust/master/configuration/src/main/resources/META-INF/shibboleth3/idp/saml-nameid.properties.vm', os.path.join(self.dist_gluu_folder, 'saml-nameid.properties.vm')),
-                    (self.maven_root + '/npm/passport/passport-{}.tgz'.format(up_version), os.path.join(self.dist_gluu_folder, 'passport.tgz')),
-                    (self.maven_root + '/npm/passport/passport-version_{}-node_modules.tar.gz'.format(up_version), os.path.join(self.dist_gluu_folder, 'passport-version_{}-node_modules.tar.gz'.format(up_version))),
-                    (self.maven_base + '/org/gluu/super-gluu-radius-server/{0}{1}/super-gluu-radius-server-{0}{1}-distribution.zip'.format(up_version, self.build_tag), os.path.join(self.dist_gluu_folder, 'gluu-radius-libs.zip')),
-                    (self.maven_base + '/org/gluu/super-gluu-radius-server/{0}{1}/super-gluu-radius-server-{0}{1}.jar'.format(up_version, self.build_tag), os.path.join(self.dist_gluu_folder, 'super-gluu-radius-server.jar')),
-                    (self.maven_base + '/org/gluu/oxd-server/{0}{1}/oxd-server-{0}{1}-distribution.zip'.format(up_version, self.build_tag), os.path.join(self.dist_gluu_folder, 'oxd-server-distribution.zip')),
-                    (self.maven_base + '/org/gluu/casa/{0}{1}/casa-{0}{1}.war'.format(up_version, self.build_tag), os.path.join(self.dist_gluu_folder, 'casa.war')),
+                    (maven_root + '/npm/passport/passport-{}.tgz'.format(up_version), os.path.join(self.dist_gluu_folder, 'passport.tgz')),
+                    (maven_root + '/npm/passport/passport-version_{}-node_modules.tar.gz'.format(up_version), os.path.join(self.dist_gluu_folder, 'passport-version_{}-node_modules.tar.gz'.format(up_version))),
+                    (maven_base + '/org/gluu/super-gluu-radius-server/{0}{1}/super-gluu-radius-server-{0}{1}-distribution.zip'.format(up_version, self.build_tag), os.path.join(self.dist_gluu_folder, 'gluu-radius-libs.zip')),
+                    (maven_base + '/org/gluu/super-gluu-radius-server/{0}{1}/super-gluu-radius-server-{0}{1}.jar'.format(up_version, self.build_tag), os.path.join(self.dist_gluu_folder, 'super-gluu-radius-server.jar')),
+                    (maven_base + '/org/gluu/oxd-server/{0}{1}/oxd-server-{0}{1}-distribution.zip'.format(up_version, self.build_tag), os.path.join(self.dist_gluu_folder, 'oxd-server-distribution.zip')),
+                    (maven_base + '/org/gluu/casa/{0}{1}/casa-{0}{1}.war'.format(up_version, self.build_tag), os.path.join(self.dist_gluu_folder, 'casa.war')),
                     ('https://raw.githubusercontent.com/GluuFederation/community-edition-setup/version_{0}/static/casa/scripts/casa-external_smpp.py'.format(up_version), os.path.join(self.dist_gluu_folder, 'casa-external_smpp.py')),
                     ]
         for p in self.casa_plugins:
@@ -1566,7 +1572,7 @@ class GluuUpdater:
         for casa_lib in glob.glob(os.path.join(pylib_dir, 'casa-external*.py')):
             casa_lib_fn = os.path.basename(casa_lib)
             try:
-                response = urllib.request.urlopen(os.path.join('https://raw.githubusercontent.com/GluuFederation/community-edition-setup/version_{}/static/casa/scripts'.format(up_version), casa_lib_fn))
+                response = request.urlopen(os.path.join('https://raw.githubusercontent.com/GluuFederation/community-edition-setup/version_{}/static/casa/scripts'.format(up_version), casa_lib_fn))
                 if response.code == 200:
                     self.casaInstaller.backupFile(casa_lib)
                     print ("Updating", casa_lib)
