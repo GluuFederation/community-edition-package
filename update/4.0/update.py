@@ -396,7 +396,7 @@ class GluuUpdater:
                     ):
 
             print "Downloading", download_link
-            setupObject.run(['wget', '--no-check-certificate', '-nv', download_link, '-O', out_file])
+            setupObject.run(['wget', '--no-check-certificate', '--user', argsp.maven_user, '--password', argsp.maven_password, '-nv', download_link, '-O', out_file])
 
         setupObject.run(['chmod', '+x', self.update_casa_script])
 
@@ -1971,6 +1971,8 @@ if __name__ == '__main__':
     parser.add_argument('-o', '--online', help="online installation", action='store_true')
     parser.add_argument('--cluster-node', help="Use this if you are upgrading non-primary cluster node", action='store_true')
     parser.add_argument('--remote-couchbase', help="Enables using remote couchbase server", action='store_true')
+    parser.add_argument('-maven-user', help="Gluu Maven username", required=True)
+    parser.add_argument('-maven-password', help="Gluu Maven password", required=True)
     argsp = parser.parse_args()
 
     start_upgrade = raw_input('Ready to upgrade Gluu Server. Start now (y|N) ')
