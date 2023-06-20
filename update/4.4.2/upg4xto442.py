@@ -1271,24 +1271,23 @@ class GluuUpdater:
         shib_backup_dir = self.samlInstaller.idp3Folder + '.back-' + self.backup_time
 
         print("Backing up to", shib_backup_dir)
-        
-        self.samlInstaller.copyTree(self.samlInstaller.idp3Folder, shib_backup_dir)
+
+        self.samlInstaller.run(['mv', self.samlInstaller.idp3Folder, shib_backup_dir])
         print("Unpacking shibboleth-idp.jar")
 
         self.samlInstaller.unpack_idp3()
-        
+
         print("Updating idp-metadata.xml")
         self.Config.templateRenderingDict['idp3SigningCertificateText'] = self.samlInstaller.readFile('/etc/certs/idp-signing.crt').replace('-----BEGIN CERTIFICATE-----','').replace('-----END CERTIFICATE-----','')
         self.Config.templateRenderingDict['idp3EncryptionCertificateText'] = self.samlInstaller.readFile('/etc/certs/idp-encryption.crt').replace('-----BEGIN CERTIFICATE-----','').replace('-----END CERTIFICATE-----','')
-
-        self.samlInstaller.backupFile(saml_meta_data_fn)
 
         #Recreate idp-metadata.xml with new format
         temp_fn = os.path.join(self.ces_dir, 'static/idp3/metadata/idp-metadata.xml')
         new_saml_meta_data = self.render_template(temp_fn)
         self.samlInstaller.writeFile(saml_meta_data_fn, new_saml_meta_data)
 
-        for prop_fn in ('idp.properties', 'ldap.properties', 'services.properties','saml-nameid.properties'):
+
+        for prop_fn in ('idp.properties', 'ldap.properties', 'services.properties','saml-nameid.properties', 'authn/password-authn-config.xml'):
             print("Updating", prop_fn)
             properties = self.render_template(os.path.join(self.ces_dir, 'static/idp3/conf', prop_fn))
             self.samlInstaller.writeFile(os.path.join('/opt/shibboleth-idp/conf', prop_fn), properties)
@@ -1298,7 +1297,21 @@ class GluuUpdater:
                     '/opt/gluu/jetty/identity/conf/shibboleth3/idp/',
                     backup=False
                     )
-        self.samlInstaller.run(['chown', '-R', 'jetty:jetty', '/opt/shibboleth-idp'])
+
+        for libfn in glob.glob(os.path.join(self.samlInstaller.idp3WebappFolder, 'WEB-INF/lib/*')):
+            if os.path.isfile(libfn):
+                os.remove(libfn)
+
+        self.samlInstaller.run(['rm', '-f', '-v', os.path.join(self.samlInstaller.idp3WebappFolder, 'WEB-INF/lib/*')])
+
+        print("Extracting SAML Libraries")
+        self.samlInstaller.install_saml_libraries()
+
+        for credfn in glob.glob(os.path.join(shib_backup_dir, 'credentials/sealer.*')):
+            self.samlInstaller.copyFile(credfn, os.path.join(self.samlInstaller.idp3Folder, 'credentials'))
+
+        self.samlInstaller.run(['chown', '-R', 'jetty:gluu', '/opt/shibboleth-idp'])
+
 
     def update_radius(self):
 
@@ -1839,6 +1852,7 @@ updaterObj.update_casa()
 updaterObj.update_oxd()
 updaterObj.add_oxAuthUserId_pairwiseIdentifier()
 updaterObj.fix_fido2()
+
 updaterObj.update_shib()
 
 os.system('systemctl daemon-reload')
