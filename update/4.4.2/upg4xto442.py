@@ -24,6 +24,7 @@ import ssl
 import random
 import argparse
 import tempfile
+import stat
 
 os.umask(0o022)
 
@@ -31,18 +32,20 @@ os.umask(0o022)
 #    print("This scirpt is under development. Not for use.")
 #    sys.exit()
 
-gluu_prop_file = '/etc/gluu/conf/gluu.properties'
-if not os.path.exists(gluu_prop_file):
-    print("No Gluu installation is detected.")
-    sys.exit()
+if '-d' not in sys.argv:
 
-for l in open(gluu_prop_file):
-    ls = l.strip()
-    if ls.startswith('persistence.type') and ls.endswith('ldap'):
-        break
-else:
-    print("This script works only for ldap backend.")
-    sys.exit()
+    gluu_prop_file = '/etc/gluu/conf/gluu.properties'
+    if not os.path.exists(gluu_prop_file):
+        print("No Gluu installation is detected.")
+        sys.exit()
+
+    for l in open(gluu_prop_file):
+        ls = l.strip()
+        if ls.startswith('persistence.type') and ls.endswith('ldap'):
+            break
+    else:
+        print("This script works only for ldap backend.")
+        sys.exit()
 
 
 ssl._create_default_https_context = ssl._create_unverified_context
@@ -53,17 +56,22 @@ parser.add_argument('-d', help="Download applications and exit", action='store_t
 parser.add_argument('--offline', help="Offline upgrade", action='store_true')
 parser.add_argument('-n', help="No interactive prompt before upgrade starts, 'Y' to all prompts.", action='store_true') 
 parser.add_argument('-application-max-ram', help="Application max ram in MB", type=int)
-parser.add_argument('-maven-user', help="Gluu Maven username", required=True)
-parser.add_argument('-maven-password', help="Gluu Maven password", required=True)
+
+if '--offline' not in sys.argv:
+    parser.add_argument('-maven-user', help="Gluu Maven username", required=True)
+    parser.add_argument('-maven-password', help="Gluu Maven password", required=True)
+
 argsp = parser.parse_args()
 
 maven_base = maven_base.rstrip('/')
 maven_root = '/'.join(maven_base.split('/')[:-1]).rstrip('/')
-passman = request.HTTPPasswordMgrWithDefaultRealm()
-passman.add_password(None, maven_root, argsp.maven_user, argsp.maven_password)
-authhandler = request.HTTPBasicAuthHandler(passman)
-opener = request.build_opener(authhandler)
-request.install_opener(opener)
+
+if '--offline' not in sys.argv:
+    passman = request.HTTPPasswordMgrWithDefaultRealm()
+    passman.add_password(None, maven_root, argsp.maven_user, argsp.maven_password)
+    authhandler = request.HTTPBasicAuthHandler(passman)
+    opener = request.build_opener(authhandler)
+    request.install_opener(opener)
 
 argsd = {}
 argsd['n'] = argsp.n
@@ -149,7 +157,7 @@ if argsd.get('offline') and missing_packages:
     print(packages)
     sys.exit()
 
-if packages:
+if packages and not argsp.d:
     print("This script requires", packages)
     cmd = installer +' install -y ' + packages
     prompt = 'y' if argsp.n else input("Install with command {}? [Y/n] ".format(cmd))
@@ -230,7 +238,8 @@ class GluuUpdater:
 
         self.build_tag = '.Final'
         self.backup_time = time.strftime('%Y-%m-%d.%H:%M:%S')
-        self.dist_folder = '/opt/upd/{}/dist'.format(up_version)
+        self.upd_root = '/opt/upd/{}'.format(up_version)
+        self.dist_folder = os.path.join(self.upd_root, 'dist')
 
         self.ces_dir = '/install/community_edition_setup_{}'.format(up_version)
 
@@ -341,6 +350,11 @@ class GluuUpdater:
                 self.download(package['url'], target_whl_fn)
 
         if argsp.d:
+            targtet_fn = os.path.join(self.upd_root, 'upg4xto{}.py'.format(up_version.replace('.','')))
+            self.download('https://raw.githubusercontent.com/GluuFederation/community-edition-package/master/update/4.4.2/upg4xto{}.py'.format(up_version.replace('.','')), targtet_fn)
+            st = os.stat(targtet_fn)
+            os.chmod(targtet_fn, st.st_mode | stat.S_IEXEC)
+
             print("Download requested. Exiting ...")
             sys.exit()
 
@@ -713,7 +727,7 @@ class GluuUpdater:
                 ssl = js_conf.pop('requires-ssl', None)
                 if ssl:
                     js_conf['connect-protection'] = 'StartTls'
-                if 'connect-protection' in js_conf:
+                if js_conf.get('connect-protection'):
                     js_conf['connect-protection'] = js_conf['connect-protection'].replace('SSL_TLS', 'SslTls').replace('START_TLS', 'StartTls').replace('NONE','None')
                 js_conf.pop('connectProtectionList', None)
 
@@ -1863,4 +1877,4 @@ for msg in updaterObj.postmessages:
 print()
 print("Please logout from container and restart Gluu Server")
 
-# ./makeself.sh --target /opt/upd/4.4.2 /opt/upd/4.4.2 4-4-2.upg.run "Gluu Server 4.x to 4.4.2 Upgrader Script" /opt/upd/4.4.2/upg4xto442.py --offline
+# ./makeself.sh --target /opt/upd/4.4.2 /opt/upd/4.4.2 ~/files/4-4-2.upg.run "Gluu Server 4.x to 4.4.2 Upgrader Script" python3 /opt/upd/4.4.2/upg4xto442.py --offline
