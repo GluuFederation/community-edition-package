@@ -32,6 +32,8 @@ os.umask(0o022)
 #    sys.exit()
 
 
+cur_dir = os.path.dirname(os.path.realpath(__file__))
+
 def read_prop(prop_file):
     prop = {}
     with open(prop_file) as f:
@@ -43,27 +45,29 @@ def read_prop(prop_file):
                 prop[key] = val
     return prop
 
-gluu_prop_file = '/etc/gluu/conf/gluu.properties'
-if not os.path.exists(gluu_prop_file):
-    print("No Gluu installation is detected.")
-    sys.exit()
+if '-d' not in sys.argv:
 
-gluu_prop = read_prop(gluu_prop_file)
+    gluu_prop_file = '/etc/gluu/conf/gluu.properties'
+    if not os.path.exists(gluu_prop_file):
+        print("No Gluu installation is detected.")
+        sys.exit()
 
-supported_backends = ('ldap', 'couchbase', 'sql')
+    gluu_prop = read_prop(gluu_prop_file)
 
-continue_upg = True
-if gluu_prop['persistence.type'] not in supported_backends:
-    continue_upg = False
+    supported_backends = ('ldap', 'couchbase', 'sql')
 
-if gluu_prop['persistence.type'] == 'sql':
-    sql_prop = read_prop('/etc/gluu/conf/gluu-sql.properties')
-    if ':mysql:' not in sql_prop['connection.uri']:
+    continue_upg = True
+    if gluu_prop['persistence.type'] not in supported_backends:
         continue_upg = False
 
-if not continue_upg:
-    print("This script works only for backends {}.".format(', '.join(supported_backends)))
-    sys.exit()
+    if gluu_prop['persistence.type'] == 'sql':
+        sql_prop = read_prop('/etc/gluu/conf/gluu-sql.properties')
+        if ':mysql:' not in sql_prop['connection.uri']:
+            continue_upg = False
+
+    if not continue_upg:
+        print("This script works only for backends {}.".format(', '.join(supported_backends)))
+        sys.exit()
 
 
 ssl._create_default_https_context = ssl._create_unverified_context
@@ -74,8 +78,11 @@ parser.add_argument('-d', help="Download applications and exit", action='store_t
 parser.add_argument('--offline', help="Offline upgrade", action='store_true')
 parser.add_argument('-n', help="No interactive prompt before upgrade starts, 'Y' to all prompts.", action='store_true') 
 parser.add_argument('-application-max-ram', help="Application max ram in MB", type=int)
-parser.add_argument('-maven-user', help="Gluu Maven username", required=True)
-parser.add_argument('-maven-password', help="Gluu Maven password", required=True)
+
+if '--offline' not in sys.argv:
+    parser.add_argument('-maven-user', help="Gluu Maven username", required=True)
+    parser.add_argument('-maven-password', help="Gluu Maven password", required=True)
+
 argsp = parser.parse_args()
 
 
@@ -112,7 +119,6 @@ with open("/etc/os-release") as f:
                 os_version = row[1].split('.')[0]
 
 missing_packages = []
-
 try:
     import ldap3
 except:
@@ -166,7 +172,7 @@ if argsd.get('offline') and missing_packages:
     print(packages)
     sys.exit()
 
-if packages:
+if packages and not argsp.d:
     print("This script requires", packages)
     cmd = installer +' install -y ' + packages
     prompt = 'y' if argsp.n else input("Install with command {}? [Y/n] ".format(cmd))
@@ -180,30 +186,28 @@ if packages:
         print("Can't continue without installing packages. Exiting ...")
         sys.exit()
 
-import ldap3
-import ruamel.yaml
-from ldap3.utils import dn as dnutils
+    import ldap3
+    import ruamel.yaml
+    from ldap3.utils import dn as dnutils
 
-cur_dir = os.path.dirname(os.path.realpath(__file__))
-properties_password = None
+    properties_password = None
 
-result = 'y' if argsp.n else input("Starting upgrade. CONTINUE? (y|N): ")
+    result = 'y' if argsp.n else input("Starting upgrade. CONTINUE? (y|N): ")
 
-if not result.strip() or (result.strip() and result.strip().lower()[0] != 'y'):
-    print("You can re-run this script to upgrade. Bye now ...")
-    sys.exit()
+    if not result.strip() or (result.strip() and result.strip().lower()[0] != 'y'):
+        print("You can re-run this script to upgrade. Bye now ...")
+        sys.exit()
 
 
-script_replacement_prompt = ('This upgrade replaces all the default Gluu Server scripts WITH SCRIPTS FROM {}'.format(up_version),
-            'and removes other custom scripts. (This will replace any customization you may',
-            'have made to these default script entries) Do you want to continue? (y|N): ')
-result = 'y' if argsp.n else input('\n'.join(script_replacement_prompt))
+    script_replacement_prompt = ('This upgrade replaces all the default Gluu Server scripts WITH SCRIPTS FROM {}'.format(up_version),
+                'and removes other custom scripts. (This will replace any customization you may',
+                'have made to these default script entries) Do you want to continue? (y|N): ')
+    result = 'y' if argsp.n else input('\n'.join(script_replacement_prompt))
 
-if not result.strip() or (result.strip() and result.strip().lower()[0] != 'y'):
-    print("You can re-run this script to upgrade. Bye now ...")
-    sys.exit()
+    if not result.strip() or (result.strip() and result.strip().lower()[0] != 'y'):
+        print("You can re-run this script to upgrade. Bye now ...")
+        sys.exit()
 
-if not argsp.d:
     with open("/etc/gluu/conf/salt") as f:
         salt_property = f.read().strip()
         key = salt_property.split("=")[1].strip()
@@ -220,11 +224,12 @@ def flatten(k):
 def make_key(l):
     return [ flatten('{}'.format(k)) for k in l ]
 
-passman = request.HTTPPasswordMgrWithDefaultRealm()
-passman.add_password(None, maven_root, argsp.maven_user, argsp.maven_password)
-authhandler = request.HTTPBasicAuthHandler(passman)
-opener = request.build_opener(authhandler)
-request.install_opener(opener)
+if '--offline' not in sys.argv:
+    passman = request.HTTPPasswordMgrWithDefaultRealm()
+    passman.add_password(None, maven_root, argsp.maven_user, argsp.maven_password)
+    authhandler = request.HTTPBasicAuthHandler(passman)
+    opener = request.build_opener(authhandler)
+    request.install_opener(opener)
 
 class GluuUpdater:
     def __init__(self):
