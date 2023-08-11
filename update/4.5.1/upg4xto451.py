@@ -709,11 +709,6 @@ class GluuUpdater:
                 js_conf.pop('connectProtectionList', None)
 
             print("Applying persist changes")
-            print("js_conf:", js_conf)
-            print("config_element:", config_element)
-            print("config_dn:", config_dn)
-            print("object_class:", object_class)
-            print("self.persist_changes:", self.persist_changes[(config_element, config_dn, object_class)])
 
             self.apply_persist_changes(js_conf, self.persist_changes[(config_element, config_dn, object_class)])
 
