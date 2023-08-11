@@ -708,6 +708,13 @@ class GluuUpdater:
                     js_conf['connect-protection'] = js_conf['connect-protection'].replace('SSL_TLS', 'SslTls').replace('START_TLS', 'StartTls').replace('NONE','None')
                 js_conf.pop('connectProtectionList', None)
 
+            print("Applying persist changes")
+            print("js_conf:", js_conf)
+            print("config_element:", config_element)
+            print("config_dn:", config_dn)
+            print("object_class:", object_class)
+            print("self.persist_changes:", self.persist_changes[(config_element, config_dn, object_class)])
+
             self.apply_persist_changes(js_conf, self.persist_changes[(config_element, config_dn, object_class)])
 
             if self.gluuInstaller.dbUtils.get_backend_location_for_dn(config_dn) != self.BackendTypes.COUCHBASE:
@@ -970,7 +977,7 @@ class GluuUpdater:
             elif change_type == 'change':
                 if how_change == 'entry':
                     js_conf[key] = value
-                if how_change == 'subentry':
+                if how_change == 'subentry' and js_conf.get(key):
                     js_conf[key][value[0]] = value[1]
             elif change_type == 'remove':
                 if how_change == 'entry':
