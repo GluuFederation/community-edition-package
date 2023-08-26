@@ -1843,7 +1843,7 @@ class GluuUpdater:
             if 'oxAuthCustomScope' in entry['objectClass'] and not self.oxtrustInstaller.dbUtils.dn_exists(dn):
                 new_scopes.append((dn, entry))
             elif 'oxUmaResource' in entry['objectClass']:
-                api_scopes = entry['oxAuthUmaScope']
+                api_scopes = entry['oxAuthUmaScope'][0]
 
         if new_scopes:
             self.unparse_import(new_scopes)
