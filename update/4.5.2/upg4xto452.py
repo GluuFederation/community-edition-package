@@ -118,6 +118,11 @@ with open("/etc/os-release") as f:
             elif row[0] == 'VERSION_ID':
                 os_version = row[1].split('.')[0]
 
+print(f"Detected OS is {os_type} {os_version}")
+
+if os_type not in ('red', 'debian', 'ubuntu', 'centos'):
+    print(f"This OS is not supported by this upgrade script")
+
 missing_packages = []
 try:
     import ldap3
