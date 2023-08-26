@@ -122,6 +122,7 @@ print(f"Detected OS is {os_type} {os_version}")
 
 if os_type not in ('red', 'debian', 'ubuntu', 'centos'):
     print(f"This OS is not supported by this upgrade script")
+    sys.exit()
 
 missing_packages = []
 try:
