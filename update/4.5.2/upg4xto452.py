@@ -120,7 +120,7 @@ with open("/etc/os-release") as f:
 
 print(f"Detected OS is {os_type} {os_version}")
 
-if os_type not in ('red', 'debian', 'ubuntu', 'centos'):
+if os_type not in ('red', 'redhat', 'debian', 'ubuntu', 'centos'):
     print(f"This OS is not supported by this upgrade script")
     sys.exit()
 
