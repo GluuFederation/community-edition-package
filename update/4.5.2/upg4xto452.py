@@ -324,6 +324,7 @@ class GluuUpdater:
                     (maven_base + '/org/gluu/casa/{0}{1}/casa-{0}{1}.war'.format(up_version, self.build_tag), os.path.join(self.dist_gluu_folder, 'casa.war')),
                     ('https://raw.githubusercontent.com/GluuFederation/community-edition-setup/version_{0}/static/casa/scripts/casa-external_smpp.py'.format(up_version), os.path.join(self.dist_gluu_folder, 'casa-external_smpp.py')),
                     (maven_base + '/org/gluu/gluu-orm-couchbase-libs/{0}{1}/gluu-orm-couchbase-libs-{0}{1}-distribution.zip'.format(up_version, self.build_tag), os.path.join(self.dist_gluu_folder, 'gluu-orm-couchbase-libs-distribution.zip')),
+                    ('https://ox.gluu.org/icrby8xcvbcv/spanner/gcs-cygrpc.tgz', os.path.join(self.dist_app_folder, 'gcs-cygrpc.tgz')),
                     ]
         for p in self.casa_plugins:
             downloads.append((self.casa_plugins[p].format(up_version, self.build_tag), os.path.join(self.dist_gluu_folder, p + '.jar')))
@@ -414,6 +415,11 @@ class GluuUpdater:
 
         from setup_app.messages import msg
         from setup_app.config import Config
+
+        if not os.path.exists(os.path.join(Config.distFolder, 'app/gcs')):
+            print("Extracting gcs")
+            shutil.unpack_archive(os.path.join(self.dist_app_folder, 'gcs-cygrpc.tgz'), os.path.join(Config.distFolder, 'app'))
+
         from setup_app.static import BackendTypes
         from setup_app.utils.progress import gluuProgress
         from setup_app.utils.ldif_utils import myLdifParser
@@ -1120,15 +1126,15 @@ class GluuUpdater:
 
         print("Extracting current cacerts")
         #get host specific certs in current cacerts
-        cmd =[self.Config.cmd_keytool, '-list', '-keystore', '/opt/jre/jre/lib/security/cacerts', '-storepass', 'changeit']
+        cmd =[self.Config.cmd_keytool, '-list', '-keystore', self.Config.default_trust_store_fn, '-storepass', 'changeit']
         result = self.gluuInstaller.run(cmd)
-        for l in result.split('\n'):
-            if self.Config.hostname in l:
-                ls = l.split(', ')
-                if ls and (self.Config.hostname in ls[0]) and (not 'opendj' in l):
+        for l in result.splitlines():
+            if self.Config.hostname.lower() in l.lower():
+                ls = l.lower().split(', ')
+                if ls and (self.Config.hostname.lower() in ls[0]) and (not 'opendj' in l):
                     alias = ls[0]
                     crt_file = os.path.join(cur_dir, ls[0]+'.crt')
-                    self.gluuInstaller.run(['/opt/jre/bin/keytool', '-export', '-alias', alias, '-file', crt_file, '-keystore', '/opt/jre/jre/lib/security/cacerts', '-storepass', 'changeit'])
+                    self.gluuInstaller.run([self.Config.cmd_keytool, '-export', '-alias', alias, '-file', crt_file, '-keystore', self.Config.default_trust_store_fn, '-storepass', 'changeit'])
                     cacerts.append((alias, crt_file))
  
         for cur_version in glob.glob('/opt/amazon-corretto*'):
@@ -1146,11 +1152,11 @@ class GluuUpdater:
         #import certs
         for alias, crt_file in cacerts:
             #ensure cert is not exists in keystore
-            result = self.gluuInstaller.run(['/opt/jre/bin/keytool', '-list', '-alias', alias, '-keystore', '/opt/jre/jre/lib/security/cacerts', '-storepass', 'changeit', '-noprompt'])
+            result = self.gluuInstaller.run([self.Config.cmd_keytool, '-list', '-alias', alias, '-keystore', self.Config.default_trust_store_fn, '-storepass', 'changeit', '-noprompt'])
             if 'trustedCertEntry' in result:
-                self.gluuInstaller.run(['/opt/jre/bin/keytool', '-delete ', '-alias', alias, '-keystore', '/opt/jre/jre/lib/security/cacerts', '-storepass', 'changeit', '-noprompt'])
+                self.gluuInstaller.run([self.Config.cmd_keytool, '-delete ', '-alias', alias, '-keystore', self.Config.default_trust_store_fn, '-storepass', 'changeit', '-noprompt'])
 
-            self.gluuInstaller.run(['/opt/jre/bin/keytool', '-import', '-alias', alias, '-file', crt_file, '-keystore', '/opt/jre/jre/lib/security/cacerts', '-storepass', 'changeit', '-noprompt', '-trustcacerts'])
+            self.gluuInstaller.run([self.Config.cmd_keytool, '-import', '-alias', alias, '-file', crt_file, '-keystore', self.Config.default_trust_store_fn, '-storepass', 'changeit', '-noprompt', '-trustcacerts'])
 
     def update_jython(self):
 
@@ -1473,7 +1479,7 @@ class GluuUpdater:
 
 
             #create oxd certificate if not CN=hostname
-            r = os.popen('/opt/jre/bin/keytool -list -v -keystore {}  -storepass {} | grep Owner'.format(oxd_yaml['server']['applicationConnectors'][0]['keyStorePath'], oxd_yaml['server']['applicationConnectors'][0]['keyStorePassword'])).read()
+            r = os.popen('{} -list -v -keystore {}  -storepass {} | grep Owner'.format(self.Config.cmd_keytool, oxd_yaml['server']['applicationConnectors'][0]['keyStorePath'], oxd_yaml['server']['applicationConnectors'][0]['keyStorePassword'])).read()
             for l in r.splitlines():
                 res = re.search('CN=(.*?.),', l)
                 if res:
@@ -1941,7 +1947,6 @@ updaterObj.unzip_ces()
 updaterObj.prepare_ces()
 updaterObj.fix_identity_config()
 
-
 updaterObj.copy_files()
 updaterObj.prepare_persist_changes()
 updaterObj.generate_smtp_keystore()
@@ -1984,5 +1989,4 @@ for msg in updaterObj.postmessages:
 print()
 print("Please logout from container and restart Gluu Server")
 
-#./makeself.sh --target /opt/upd/4.5.1 /opt/upd/4.5.1 4-5-1.upg.run "Gluu Server 4.x to 4.5.1 Upgrader Script" /opt/upd/4.5.1/upg4xto451.py --offline
-
+#./makeself.sh --target /opt/upd/4.5.2 /opt/upd/4.5.2 4-5-2.upg.run "Gluu Server 4.x to 4.5.2 Upgrader Script" /opt/upd/4.5.2/upg4xto452.py --offline
