@@ -313,6 +313,7 @@ class GluuUpdater:
                     (maven_base + '/org/gluu/super-gluu-radius-server/{0}{1}/super-gluu-radius-server-{0}{1}.jar'.format(up_version, self.build_tag), os.path.join(self.dist_gluu_folder, 'super-gluu-radius-server.jar')),
                     (maven_base + '/org/gluu/oxd-server/{0}{1}/oxd-server-{0}{1}-distribution.zip'.format(up_version, self.build_tag), os.path.join(self.dist_gluu_folder, 'oxd-server-distribution.zip')),
                     (maven_base + '/org/gluu/casa/{0}{1}/casa-{0}{1}.war'.format(up_version, self.build_tag), os.path.join(self.dist_gluu_folder, 'casa.war')),
+                    (maven_base + f'/org/gluu/scim-server/{up_version}/scim-server-{up_version}.war', os.path.join(self.dist_gluu_folder,'scim.war')),
                     ('https://raw.githubusercontent.com/GluuFederation/community-edition-setup/version_{0}/static/casa/scripts/casa-external_smpp.py'.format(up_version), os.path.join(self.dist_gluu_folder, 'casa-external_smpp.py')),
                     (maven_base + '/org/gluu/gluu-orm-couchbase-libs/{0}{1}/gluu-orm-couchbase-libs-{0}{1}-distribution.zip'.format(up_version, self.build_tag), os.path.join(self.dist_gluu_folder, 'gluu-orm-couchbase-libs-distribution.zip')),
                     ]
@@ -542,6 +543,17 @@ class GluuUpdater:
         self.ldif_utils = ldif_utils
         print("importing sqlalchemy")
         globals()['sqlalchemy'] = __import__('sqlalchemy')
+
+        scripts_dir = os.path.join(self.dist_folder, 'scripts')
+        if not os.path.exists(scripts_dir):
+            os.symlink('/opt/dist/scripts', scripts_dir)
+
+        self.gluuInstaller.determine_key_gen_path()
+
+        self.install_scim = False
+        if not os.path.exists(os.path.join(Config.jetty_base, self.scimInstaller.service_name)):
+            if input("Install SCIM Server while upgrading (Y|n): ").lower().startswith('y'):
+                self.install_scim = True
 
 
     def copy_files(self):
@@ -1346,7 +1358,6 @@ class GluuUpdater:
     def update_scripts(self):
         print("Updating Scripts")
 
-        self.gluuInstaller.determine_key_gen_path()
         self.Config.enable_scim_access_policy = 'true' if self.passportInstaller.installed() else 'false'
 
         #we need dummy password for oxtrust_admin_password if not exists
@@ -1980,6 +1991,24 @@ class GluuUpdater:
             dn = 'inum={},ou=attributes,o=gluu'.format(inum)
             self.gluuInstaller.dbUtils.set_configuration('gluuStatus', 'active', dn)
 
+
+    def do_install_scim(self):
+        if not self.install_scim:
+            return
+
+        # we need new SCIM Resource Server Client rather than using existing one if client inum does not start with 1201
+        if self.Config.get('scim_rs_client_id') and not self.Config.scim_rs_client_id.startswith('1201.'):
+            self.Config.scim_rs_client_id = None
+
+
+        # we need new SCIM Resource Client rather than using existing one if client inum does not start with 1203.
+        if self.Config.get('scim_resource_oxid') and not self.Config.scim_resource_oxid.startswith('1203.'):
+            self.Config.scim_resource_oxid = None
+
+        print("Installing SCIM Server")
+        self.scimInstaller.start_installation()
+
+
 updaterObj = GluuUpdater()
 
 updaterObj.download_apps()
@@ -2017,6 +2046,7 @@ updaterObj.add_oxAuthUserId_pairwiseIdentifier()
 updaterObj.fix_fido2()
 updaterObj.update_shib()
 updaterObj.create_dns()
+updaterObj.do_install_scim()
 updaterObj.set_configuration()
 
 os.system('systemctl daemon-reload')
