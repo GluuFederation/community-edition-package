@@ -601,12 +601,12 @@ class GluuUpdater:
                         ('opPolicyUri', 'change', 'entry', ''),
                         ('opTosUri', 'change', 'entry', ''),
                     ],
-    
+
                     ('oxAuthConfStatic', 'ou=oxauth,ou=configuration,o=gluu', 'oxAuthConfiguration'): [
                         ('baseDn', 'change', 'subentry', ('sessions', 'ou=sessions,o=gluu')),
                         ('baseDn', 'change', 'subentry', ('ciba', 'ou=ciba,o=gluu')),
                     ],
-    
+
                     ('oxTrustConfApplication', 'ou=oxtrust,ou=configuration,o=gluu', 'oxTrustConfiguration'): [
                         ('useLocalCache', 'add', 'entry', True),
                         ('loggingLayout', 'add', 'entry', 'text'),
@@ -627,6 +627,7 @@ class GluuUpdater:
                     ],
 
                 }
+
     def generate_smtp_keystore(self):
         if os.path.exists(self.Config.smtp_jks_fn):
             return
@@ -1008,6 +1009,60 @@ class GluuUpdater:
                         js_conf[key].remove(value)
 
 
+    def custom_schema_sync(self):
+        print("Synchronize Opendj Custom Schema")
+        from setup_app.pylib.schema import AttributeType, ObjectClass
+
+        old_custom_schema_parser = self.myLdifParser(self.old_custom_schema_fn)
+        old_custom_schema_parser.parse()
+
+        new_custom_schema_parser = self.myLdifParser(self.new_custom_schema_fn)
+        new_custom_schema_parser.parse()
+
+        def check_attribute_exists(attrib_name):
+            for dn, entry in new_custom_schema_parser.entries:
+                if dn.lower() == 'cn=schema':
+                    for attrib_s in entry.get('attributeTypes', []):
+                        attrib_type = AttributeType(attrib_s)
+                        if attrib_name in attrib_type.tokens.get('NAME', []):
+                            return True
+                    break
+
+        write_schema = False
+        optional_objcls_list = []
+        for ndn, nentry in new_custom_schema_parser.entries:
+            if ndn.lower() == 'cn=schema':
+                gluu_attribute_types = nentry['attributeTypes']
+                for objcls_s in nentry['objectClasses']:
+                    objcls = ObjectClass(objcls_s)
+                    if 'gluuCustomPerson' in objcls.tokens['NAME']:
+                        gluu_custom_person_objcls = objcls
+                        gluu_custom_person_objcls.tokens['MAY'] = list(gluu_custom_person_objcls.tokens['MAY'])
+                    else:
+                        optional_objcls_list.append(objcls_s)
+
+        for odn, oentry in old_custom_schema_parser.entries:
+            if odn.lower() == 'cn=schema':
+                for attrib_s in oentry['attributeTypes']:
+                    attrib_type = AttributeType(attrib_s)
+                    if attrib_type.tokens.get('NAME', []):
+                        if not check_attribute_exists(attrib_type.tokens['NAME'][0]):
+                            write_schema = True
+                            gluu_custom_person_objcls.tokens['MAY'] += list(attrib_type.tokens['NAME'])
+                            gluu_attribute_types.append(attrib_s)
+                break
+
+        if write_schema:
+            gluu_custom_person_objcls.tokens['MAY'] = tuple(gluu_custom_person_objcls.tokens['MAY'])
+            with open(self.new_custom_schema_fn, 'w') as w:
+                w.write('dn: cn=schema\nobjectClass: top\nobjectClass: ldapSubentry\nobjectClass: subschema\ncn: schema\n')
+                for g_attrib_type in gluu_attribute_types:
+                    w.write(f'attributeTypes: {g_attrib_type}\n')
+                w.write(f'objectClasses: {gluu_custom_person_objcls.getstr()}\n')
+                for opt_objcls in optional_objcls_list:
+                    w.write(f'objectClasses: {opt_objcls}\n')
+
+
     def update_ldap(self):
         dn = 'ou=configuration,o=gluu'
 
@@ -1030,9 +1085,9 @@ class GluuUpdater:
         # we need to delete index oxAuthExpiration before restarting opendj
         oxAuthExpiration_index_dn = 'ds-cfg-attribute=oxAuthExpiration,cn=Index,ds-cfg-backend-id=userRoot,cn=Backends,cn=config'
         self.gluuInstaller.dbUtils.ldap_conn.search(
-            search_base=oxAuthExpiration_index_dn, 
+            search_base=oxAuthExpiration_index_dn,
             search_scope=ldap3.BASE, 
-            search_filter='(objectclass=*)', 
+            search_filter='(objectclass=*)',
             attributes=['ds-cfg-attribute']
             )
 
@@ -1043,8 +1098,15 @@ class GluuUpdater:
 
         print("Updating Gluu OpenDJ schema files")
 
+        # let's backup custom schema
+        self.new_custom_schema_fn = os.path.join(self.openDjInstaller.openDjSchemaFolder, '77-customAttributes.ldif')
+        self.old_custom_schema_fn = os.path.join(self.openDjInstaller.openDjSchemaFolder, '77-customAttributes.ldif.backup')
+        shutil.copyfile(self.new_custom_schema_fn, self.old_custom_schema_fn)
+
         self.openDjInstaller.prepare_opendj_schema()
         time.sleep(5)
+
+        self.custom_schema_sync()
 
         # rebind opendj
         self.gluuInstaller.dbUtils.ldap_conn.bind()
