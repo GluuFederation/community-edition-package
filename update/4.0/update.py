@@ -1188,12 +1188,13 @@ class GluuUpdater:
                     for i, oac in enumerate(new_entry[p][:]):
                         new_entry[p][i] = oac.replace(self.inumOrg_ou+',','')
 
-
             for e in new_entry:
+                if e == 'oxAssociatedClient':
+                     continue
+
                 for i, se in enumerate(new_entry[e][:]):
                     if 'inum=' in se:
                         new_entry[e][i] = self.inum2uuid(se)
-
 
             if 'inum' in new_entry:
 

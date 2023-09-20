@@ -745,7 +745,7 @@ class GluuUpdater:
                 ssl = js_conf.pop('requires-ssl', None)
                 if ssl:
                     js_conf['connect-protection'] = 'StartTls'
-                if 'connect-protection' in js_conf:
+                if js_conf.get('connect-protection'):
                     js_conf['connect-protection'] = js_conf['connect-protection'].replace('SSL_TLS', 'SslTls').replace('START_TLS', 'StartTls').replace('NONE','None')
                 js_conf.pop('connectProtectionList', None)
 
@@ -762,7 +762,7 @@ class GluuUpdater:
     def checkRemoteSchema(self):
 
         s_base = 'cn=Subschema' if self.ldap_type == 'openldap' else 'cn=schema'
-        
+
         self.conn.search(
                         search_base=s_base, 
                         search_scope=ldap3.BASE, 
@@ -1855,6 +1855,61 @@ class GluuUpdater:
                             backup=False
                             )
 
+
+        # backup old keys
+        for pkey_fn in (self.passportInstaller.passport_rs_client_jks_fn, self.passportInstaller.passport_rp_client_jks_fn, self.passportInstaller.passport_rp_client_cert_fn):
+            shutil.move(pkey_fn, pkey_fn + '.back-' + self.backup_time)
+
+        # generate new configuration
+        print("Generating passport configuration")
+        self.passportInstaller.generate_configuration()
+
+        output_folder = os.path.join(self.Config.outputFolder, self.passportInstaller.service_name)
+        self.passportInstaller.renderTemplateInOut(self.passportInstaller.ldif_passport_clients, self.passportInstaller.passport_templates_folder, output_folder)
+        clients_ldif_fn = os.path.join(output_folder, self.passportInstaller.ldif_passport_clients)
+        clients_ldif = self.myLdifParser(clients_ldif_fn)
+        clients_ldif.parse()
+
+        import_ldif_fn = os.path.join(output_folder, 'upgrade.ldif')
+        import_ldif_fobj = open(import_ldif_fn, 'wb')
+        ldif_writer = self.myLdifWriter(import_ldif_fobj, cols=1000)
+
+        import_upgrade_ldif = False
+        for dn, entry in clients_ldif.entries:
+            if not self.passportInstaller.dbUtils.dn_exists(dn):
+                ldif_writer.unparse(dn, entry)
+                import_upgrade_ldif = True
+
+        import_ldif_fobj.close()
+
+        if import_upgrade_ldif:
+            self.passportInstaller.dbUtils.import_ldif([import_ldif_fn])
+
+        passport_config_dn = 'ou=oxpassport,ou=configuration,o=gluu'
+        passport_db_data = self.passportInstaller.dbUtils.dn_exists(passport_config_dn)
+        if passport_db_data:
+            gluu_passport_configuration = json.loads(passport_db_data['gluuPassportConfiguration'][0])
+            passport_rp_ii_client_id = gluu_passport_configuration.get('idpInitiated', {}).get('openidclient', {}).get('clientId')
+            if passport_rp_ii_client_id != self.Config.passport_rp_ii_client_id:
+                gluu_passport_configuration['idpInitiated']['openidclient']['clientId'] = self.Config.passport_rp_ii_client_id
+                self.passportInstaller.dbUtils.set_configuration('gluuPassportConfiguration', json.dumps(gluu_passport_configuration, indent=2), passport_config_dn)
+
+        # update main passport configuration
+        passport_config = self.base.readJsonFile(self.passportInstaller.passport_config)
+        passport_config['keyId'] = self.Config.passport_rp_client_cert_alias
+        passport_config['keyAlg'] = self.Config.passport_rp_client_cert_alg
+        passport_config['clientId'] = self.Config.passport_rp_client_id
+        self.passportInstaller.writeFile(self.passportInstaller.passport_config, json.dumps(passport_config, indent=2))
+
+        # Update keys
+        passport_rs_client_jwks = base64.decodebytes(self.Config.templateRenderingDict['passport_rs_client_base64_jwks'].encode())
+        passport_rs_client_dn = f'inum={self.Config.passport_rs_client_id},ou=clients,o=gluu'
+        self.passportInstaller.dbUtils.set_configuration('oxAuthJwks', passport_rs_client_jwks, passport_rs_client_dn)
+
+        passport_rp_client_jwks = base64.decodebytes(self.Config.templateRenderingDict['passport_rp_client_base64_jwks'].encode())
+        passport_rp_client_dn = f'inum={self.Config.passport_rp_client_id},ou=clients,o=gluu'
+        self.passportInstaller.dbUtils.set_configuration('oxAuthJwks', passport_rp_client_jwks, passport_rp_client_dn)
+
         self.passportInstaller.run([self.paths.cmd_chown, '-R', 'node:gluu', self.passportInstaller.gluu_passport_base])
 
 
@@ -2000,7 +2055,6 @@ class GluuUpdater:
         if self.Config.get('scim_rs_client_id') and not self.Config.scim_rs_client_id.startswith('1201.'):
             self.Config.scim_rs_client_id = None
 
-
         # we need new SCIM Resource Client rather than using existing one if client inum does not start with 1203.
         if self.Config.get('scim_resource_oxid') and not self.Config.scim_resource_oxid.startswith('1203.'):
             self.Config.scim_resource_oxid = None
@@ -2018,6 +2072,7 @@ updaterObj.prepare_ces()
 
 updaterObj.copy_files()
 updaterObj.prepare_persist_changes()
+
 updaterObj.generate_smtp_keystore()
 
 updaterObj.update_default_settings()
@@ -2048,6 +2103,9 @@ updaterObj.update_shib()
 updaterObj.create_dns()
 updaterObj.do_install_scim()
 updaterObj.set_configuration()
+
+
+updaterObj.update_passport()
 
 os.system('systemctl daemon-reload')
 
