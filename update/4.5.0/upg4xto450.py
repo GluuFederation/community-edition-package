@@ -2104,9 +2104,6 @@ updaterObj.create_dns()
 updaterObj.do_install_scim()
 updaterObj.set_configuration()
 
-
-updaterObj.update_passport()
-
 os.system('systemctl daemon-reload')
 
 print()
