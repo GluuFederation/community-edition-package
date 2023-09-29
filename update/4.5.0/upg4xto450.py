@@ -1475,6 +1475,10 @@ class GluuUpdater:
                     '/opt/gluu/jetty/identity/conf/shibboleth3/idp/',
                     backup=False
                     )
+
+        self.samlInstaller.removeDirs(os.path.join(self.samlInstaller.idp3Folder, 'webapp/WEB-INF/lib'))
+        self.samlInstaller.install_saml_libraries()
+
         self.samlInstaller.run(['chown', '-R', 'jetty:jetty', '/opt/shibboleth-idp'])
 
     def update_radius(self):
