@@ -1477,6 +1477,11 @@ class GluuUpdater:
                     )
 
         self.samlInstaller.removeDirs(os.path.join(self.samlInstaller.idp3Folder, 'webapp/WEB-INF/lib'))
+
+        # remove ols shib configs
+        self.samlInstaller.removeDirs(os.path.join(self.Config.jetty_base, self.oxtrustInstaller.service_name, 'conf/shibboleth3/idp/'))
+        self.samlInstaller.removeDirs(os.path.join(self.Config.jetty_base, self.oxtrustInstaller.service_name, 'conf/shibboleth/idp/'))
+
         self.samlInstaller.install_saml_libraries()
 
         self.samlInstaller.run(['chown', '-R', 'jetty:jetty', '/opt/shibboleth-idp'])
