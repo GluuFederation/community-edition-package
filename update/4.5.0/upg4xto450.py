@@ -1480,7 +1480,7 @@ class GluuUpdater:
 
         # remove ols shib configs
         self.samlInstaller.removeDirs(os.path.join(self.Config.jetty_base, self.oxtrustInstaller.service_name, 'conf/shibboleth3/idp/'))
-        self.samlInstaller.removeDirs(os.path.join(self.Config.jetty_base, self.oxtrustInstaller.service_name, 'conf/shibboleth/idp/'))
+        self.samlInstaller.removeDirs(os.path.join(self.Config.jetty_base, self.oxtrustInstaller.service_name, 'conf/shibboleth/sp/'))
 
         self.samlInstaller.install_saml_libraries()
 
