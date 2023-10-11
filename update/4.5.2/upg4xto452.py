@@ -322,6 +322,7 @@ class GluuUpdater:
                     (maven_base + '/org/gluu/super-gluu-radius-server/{0}{1}/super-gluu-radius-server-{0}{1}.jar'.format(up_version, self.build_tag), os.path.join(self.dist_gluu_folder, 'super-gluu-radius-server.jar')),
                     (maven_base + '/org/gluu/oxd-server/{0}{1}/oxd-server-{0}{1}-distribution.zip'.format(up_version, self.build_tag), os.path.join(self.dist_gluu_folder, 'oxd-server-distribution.zip')),
                     (maven_base + '/org/gluu/casa/{0}{1}/casa-{0}{1}.war'.format(up_version, self.build_tag), os.path.join(self.dist_gluu_folder, 'casa.war')),
+                    (maven_base + f'/org/gluu/scim-server/{up_version}/scim-server-{up_version}.war', os.path.join(self.dist_gluu_folder,'scim.war')),
                     ('https://raw.githubusercontent.com/GluuFederation/community-edition-setup/version_{0}/static/casa/scripts/casa-external_smpp.py'.format(up_version), os.path.join(self.dist_gluu_folder, 'casa-external_smpp.py')),
                     (maven_base + '/org/gluu/gluu-orm-couchbase-libs/{0}{1}/gluu-orm-couchbase-libs-{0}{1}-distribution.zip'.format(up_version, self.build_tag), os.path.join(self.dist_gluu_folder, 'gluu-orm-couchbase-libs-distribution.zip')),
                     ('https://ox.gluu.org/icrby8xcvbcv/spanner/gcs-cygrpc.tgz', os.path.join(self.dist_app_folder, 'gcs-cygrpc.tgz')),
@@ -523,6 +524,17 @@ class GluuUpdater:
         self.ldif_utils = ldif_utils
         print("importing sqlalchemy")
         globals()['sqlalchemy'] = __import__('sqlalchemy')
+
+        scripts_dir = os.path.join(self.dist_folder, 'scripts')
+        if not os.path.exists(scripts_dir):
+            os.symlink('/opt/dist/scripts', scripts_dir)
+
+        self.gluuInstaller.determine_key_gen_path()
+
+        self.install_scim = False
+        if not os.path.exists(os.path.join(Config.jetty_base, self.scimInstaller.service_name)):
+            if input("Install SCIM Server while upgrading (Y|n): ").lower().startswith('y'):
+                self.install_scim = True
 
 
     def copy_files(self):
@@ -995,6 +1007,60 @@ class GluuUpdater:
                         js_conf[key].remove(value)
 
 
+    def custom_schema_sync(self):
+        print("Synchronize Opendj Custom Schema")
+        from setup_app.pylib.schema import AttributeType, ObjectClass
+
+        old_custom_schema_parser = self.myLdifParser(self.old_custom_schema_fn)
+        old_custom_schema_parser.parse()
+
+        new_custom_schema_parser = self.myLdifParser(self.new_custom_schema_fn)
+        new_custom_schema_parser.parse()
+
+        def check_attribute_exists(attrib_name):
+            for dn, entry in new_custom_schema_parser.entries:
+                if dn.lower() == 'cn=schema':
+                    for attrib_s in entry.get('attributeTypes', []):
+                        attrib_type = AttributeType(attrib_s)
+                        if attrib_name in attrib_type.tokens.get('NAME', []):
+                            return True
+                    break
+
+        write_schema = False
+        optional_objcls_list = []
+        for ndn, nentry in new_custom_schema_parser.entries:
+            if ndn.lower() == 'cn=schema':
+                gluu_attribute_types = nentry['attributeTypes']
+                for objcls_s in nentry['objectClasses']:
+                    objcls = ObjectClass(objcls_s)
+                    if 'gluuCustomPerson' in objcls.tokens['NAME']:
+                        gluu_custom_person_objcls = objcls
+                        gluu_custom_person_objcls.tokens['MAY'] = list(gluu_custom_person_objcls.tokens['MAY'])
+                    else:
+                        optional_objcls_list.append(objcls_s)
+
+        for odn, oentry in old_custom_schema_parser.entries:
+            if odn.lower() == 'cn=schema':
+                for attrib_s in oentry['attributeTypes']:
+                    attrib_type = AttributeType(attrib_s)
+                    if attrib_type.tokens.get('NAME', []):
+                        if not check_attribute_exists(attrib_type.tokens['NAME'][0]):
+                            write_schema = True
+                            gluu_custom_person_objcls.tokens['MAY'] += list(attrib_type.tokens['NAME'])
+                            gluu_attribute_types.append(attrib_s)
+                break
+
+        if write_schema:
+            gluu_custom_person_objcls.tokens['MAY'] = tuple(gluu_custom_person_objcls.tokens['MAY'])
+            with open(self.new_custom_schema_fn, 'w') as w:
+                w.write('dn: cn=schema\nobjectClass: top\nobjectClass: ldapSubentry\nobjectClass: subschema\ncn: schema\n')
+                for g_attrib_type in gluu_attribute_types:
+                    w.write(f'attributeTypes: {g_attrib_type}\n')
+                w.write(f'objectClasses: {gluu_custom_person_objcls.getstr()}\n')
+                for opt_objcls in optional_objcls_list:
+                    w.write(f'objectClasses: {opt_objcls}\n')
+
+
     def update_ldap(self):
         dn = 'ou=configuration,o=gluu'
 
@@ -1017,9 +1083,9 @@ class GluuUpdater:
         # we need to delete index oxAuthExpiration before restarting opendj
         oxAuthExpiration_index_dn = 'ds-cfg-attribute=oxAuthExpiration,cn=Index,ds-cfg-backend-id=userRoot,cn=Backends,cn=config'
         self.gluuInstaller.dbUtils.ldap_conn.search(
-            search_base=oxAuthExpiration_index_dn, 
+            search_base=oxAuthExpiration_index_dn,
             search_scope=ldap3.BASE, 
-            search_filter='(objectclass=*)', 
+            search_filter='(objectclass=*)',
             attributes=['ds-cfg-attribute']
             )
 
@@ -1030,8 +1096,15 @@ class GluuUpdater:
 
         print("Updating Gluu OpenDJ schema files")
 
+        # let's backup custom schema
+        self.new_custom_schema_fn = os.path.join(self.openDjInstaller.openDjSchemaFolder, '77-customAttributes.ldif')
+        self.old_custom_schema_fn = os.path.join(self.openDjInstaller.openDjSchemaFolder, '77-customAttributes.ldif.backup')
+        shutil.copyfile(self.new_custom_schema_fn, self.old_custom_schema_fn)
+
         self.openDjInstaller.prepare_opendj_schema()
         time.sleep(5)
+
+        self.custom_schema_sync()
 
         # rebind opendj
         self.gluuInstaller.dbUtils.ldap_conn.bind()
@@ -1389,6 +1462,15 @@ class GluuUpdater:
                     '/opt/gluu/jetty/identity/conf/shibboleth3/idp/',
                     backup=False
                     )
+
+        self.samlInstaller.removeDirs(os.path.join(self.samlInstaller.idp3Folder, 'webapp/WEB-INF/lib'))
+
+        # remove ols shib configs
+        self.samlInstaller.removeDirs(os.path.join(self.Config.jetty_base, self.oxtrustInstaller.service_name, 'conf/shibboleth3/idp/'))
+        self.samlInstaller.removeDirs(os.path.join(self.Config.jetty_base, self.oxtrustInstaller.service_name, 'conf/shibboleth3/sp/'))
+
+        self.samlInstaller.install_saml_libraries()
+
         self.samlInstaller.run(['chown', '-R', 'jetty:jetty', '/opt/shibboleth-idp'])
 
     def update_radius(self):
@@ -1769,6 +1851,61 @@ class GluuUpdater:
                             backup=False
                             )
 
+
+        # backup old keys
+        for pkey_fn in (self.passportInstaller.passport_rs_client_jks_fn, self.passportInstaller.passport_rp_client_jks_fn, self.passportInstaller.passport_rp_client_cert_fn):
+            shutil.move(pkey_fn, pkey_fn + '.back-' + self.backup_time)
+
+        # generate new configuration
+        print("Generating passport configuration")
+        self.passportInstaller.generate_configuration()
+
+        output_folder = os.path.join(self.Config.outputFolder, self.passportInstaller.service_name)
+        self.passportInstaller.renderTemplateInOut(self.passportInstaller.ldif_passport_clients, self.passportInstaller.passport_templates_folder, output_folder)
+        clients_ldif_fn = os.path.join(output_folder, self.passportInstaller.ldif_passport_clients)
+        clients_ldif = self.myLdifParser(clients_ldif_fn)
+        clients_ldif.parse()
+
+        import_ldif_fn = os.path.join(output_folder, 'upgrade.ldif')
+        import_ldif_fobj = open(import_ldif_fn, 'wb')
+        ldif_writer = self.myLdifWriter(import_ldif_fobj, cols=1000)
+
+        import_upgrade_ldif = False
+        for dn, entry in clients_ldif.entries:
+            if not self.passportInstaller.dbUtils.dn_exists(dn):
+                ldif_writer.unparse(dn, entry)
+                import_upgrade_ldif = True
+
+        import_ldif_fobj.close()
+
+        if import_upgrade_ldif:
+            self.passportInstaller.dbUtils.import_ldif([import_ldif_fn])
+
+        passport_config_dn = 'ou=oxpassport,ou=configuration,o=gluu'
+        passport_db_data = self.passportInstaller.dbUtils.dn_exists(passport_config_dn)
+        if passport_db_data:
+            gluu_passport_configuration = json.loads(passport_db_data['gluuPassportConfiguration'][0])
+            passport_rp_ii_client_id = gluu_passport_configuration.get('idpInitiated', {}).get('openidclient', {}).get('clientId')
+            if passport_rp_ii_client_id != self.Config.passport_rp_ii_client_id:
+                gluu_passport_configuration['idpInitiated']['openidclient']['clientId'] = self.Config.passport_rp_ii_client_id
+                self.passportInstaller.dbUtils.set_configuration('gluuPassportConfiguration', json.dumps(gluu_passport_configuration, indent=2), passport_config_dn)
+
+        # update main passport configuration
+        passport_config = self.base.readJsonFile(self.passportInstaller.passport_config)
+        passport_config['keyId'] = self.Config.passport_rp_client_cert_alias
+        passport_config['keyAlg'] = self.Config.passport_rp_client_cert_alg
+        passport_config['clientId'] = self.Config.passport_rp_client_id
+        self.passportInstaller.writeFile(self.passportInstaller.passport_config, json.dumps(passport_config, indent=2))
+
+        # Update keys
+        passport_rs_client_jwks = base64.decodebytes(self.Config.templateRenderingDict['passport_rs_client_base64_jwks'].encode())
+        passport_rs_client_dn = f'inum={self.Config.passport_rs_client_id},ou=clients,o=gluu'
+        self.passportInstaller.dbUtils.set_configuration('oxAuthJwks', passport_rs_client_jwks, passport_rs_client_dn)
+
+        passport_rp_client_jwks = base64.decodebytes(self.Config.templateRenderingDict['passport_rp_client_base64_jwks'].encode())
+        passport_rp_client_dn = f'inum={self.Config.passport_rp_client_id},ou=clients,o=gluu'
+        self.passportInstaller.dbUtils.set_configuration('oxAuthJwks', passport_rp_client_jwks, passport_rp_client_dn)
+
         self.passportInstaller.run([self.paths.cmd_chown, '-R', 'node:gluu', self.passportInstaller.gluu_passport_base])
 
 
@@ -1936,8 +2073,21 @@ class GluuUpdater:
             dn = 'inum={},ou=attributes,o=gluu'.format(inum)
             self.gluuInstaller.dbUtils.set_configuration('gluuStatus', 'active', dn)
 
-        # make scope inum=C4F7,ou=scopes,o=gluu default True
-        self.gluuInstaller.dbUtils.set_configuration('defaultScope', 'true', 'inum=C4F7,ou=scopes,o=gluu')
+
+    def do_install_scim(self):
+        if not self.install_scim:
+            return
+
+        # we need new SCIM Resource Server Client rather than using existing one if client inum does not start with 1201
+        if self.Config.get('scim_rs_client_id') and not self.Config.scim_rs_client_id.startswith('1201.'):
+            self.Config.scim_rs_client_id = None
+
+        # we need new SCIM Resource Client rather than using existing one if client inum does not start with 1203.
+        if self.Config.get('scim_resource_oxid') and not self.Config.scim_resource_oxid.startswith('1203.'):
+            self.Config.scim_resource_oxid = None
+
+        print("Installing SCIM Server")
+        self.scimInstaller.start_installation()
 
 
 updaterObj = GluuUpdater()
@@ -1979,6 +2129,7 @@ updaterObj.update_shib()
 updaterObj.create_dns()
 updaterObj.fix_super_gluu()
 updaterObj.fix_identity_config()
+updaterObj.do_install_scim()
 updaterObj.set_configuration()
 
 os.system('systemctl daemon-reload')

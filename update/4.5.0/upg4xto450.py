@@ -1055,7 +1055,7 @@ class GluuUpdater:
 
         for odn, oentry in old_custom_schema_parser.entries:
             if odn.lower() == 'cn=schema':
-                for attrib_s in oentry['attributeTypes']:
+                for attrib_s in oentry.get('attributeTypes', []):
                     attrib_type = AttributeType(attrib_s)
                     if attrib_type.tokens.get('NAME', []):
                         if not check_attribute_exists(attrib_type.tokens['NAME'][0]):
