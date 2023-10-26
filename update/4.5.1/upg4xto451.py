@@ -1465,6 +1465,14 @@ class GluuUpdater:
 
         self.samlInstaller.install_saml_libraries()
 
+        # copy sealer.jks and sealer.kver
+        for cred_fn in ('sealer.jks', 'sealer.kver'):
+            self.samlInstaller.copyFile(
+                    os.path.join(shib_backup_dir, 'credentials', cred_fn),
+                    os.path.join(self.samlInstaller.idp3Folder, 'credentials'),
+                    backup=False
+                    )
+
         self.samlInstaller.run(['chown', '-R', 'jetty:jetty', '/opt/shibboleth-idp'])
 
     def update_radius(self):
