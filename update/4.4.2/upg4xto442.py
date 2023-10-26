@@ -1312,19 +1312,23 @@ class GluuUpdater:
                     backup=False
                     )
 
-        for libfn in glob.glob(os.path.join(self.samlInstaller.idp3WebappFolder, 'WEB-INF/lib/*')):
-            if os.path.isfile(libfn):
-                os.remove(libfn)
+        self.samlInstaller.removeDirs(os.path.join(self.samlInstaller.idp3Folder, 'webapp/WEB-INF/lib'))
 
-        self.samlInstaller.run(['rm', '-f', '-v', os.path.join(self.samlInstaller.idp3WebappFolder, 'WEB-INF/lib/*')])
+        # remove old shib configs
+        self.samlInstaller.removeDirs(os.path.join(self.Config.jetty_base, self.oxtrustInstaller.service_name, 'conf/shibboleth3/idp/'))
+        self.samlInstaller.removeDirs(os.path.join(self.Config.jetty_base, self.oxtrustInstaller.service_name, 'conf/shibboleth3/sp/'))
 
-        print("Extracting SAML Libraries")
         self.samlInstaller.install_saml_libraries()
 
-        for credfn in glob.glob(os.path.join(shib_backup_dir, 'credentials/sealer.*')):
-            self.samlInstaller.copyFile(credfn, os.path.join(self.samlInstaller.idp3Folder, 'credentials'))
+        # copy sealer.jks and sealer.kver
+        for cred_fn in ('sealer.jks', 'sealer.kver'):
+            self.samlInstaller.copyFile(
+                    os.path.join(shib_backup_dir, 'credentials', cred_fn),
+                    os.path.join(self.samlInstaller.idp3Folder, 'credentials'),
+                    backup=False
+                    )
 
-        self.samlInstaller.run(['chown', '-R', 'jetty:gluu', '/opt/shibboleth-idp'])
+        self.samlInstaller.run(['chown', '-R', 'jetty:jetty', '/opt/shibboleth-idp'])
 
 
     def update_radius(self):
@@ -1831,7 +1835,6 @@ class GluuUpdater:
                 self.gluuInstaller.writeFile(default_fn, default_)
 
 updaterObj = GluuUpdater()
-
 
 updaterObj.download_apps()
 updaterObj.prepare_gcs()

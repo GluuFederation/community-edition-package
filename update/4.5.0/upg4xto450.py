@@ -1478,11 +1478,19 @@ class GluuUpdater:
 
         self.samlInstaller.removeDirs(os.path.join(self.samlInstaller.idp3Folder, 'webapp/WEB-INF/lib'))
 
-        # remove ols shib configs
+        # remove old shib configs
         self.samlInstaller.removeDirs(os.path.join(self.Config.jetty_base, self.oxtrustInstaller.service_name, 'conf/shibboleth3/idp/'))
         self.samlInstaller.removeDirs(os.path.join(self.Config.jetty_base, self.oxtrustInstaller.service_name, 'conf/shibboleth3/sp/'))
 
         self.samlInstaller.install_saml_libraries()
+
+        # copy sealer.jks and sealer.kver
+        for cred_fn in ('sealer.jks', 'sealer.kver'):
+            self.samlInstaller.copyFile(
+                    os.path.join(shib_backup_dir, 'credentials', cred_fn),
+                    os.path.join(self.samlInstaller.idp3Folder, 'credentials'),
+                    backup=False
+                    )
 
         self.samlInstaller.run(['chown', '-R', 'jetty:jetty', '/opt/shibboleth-idp'])
 
