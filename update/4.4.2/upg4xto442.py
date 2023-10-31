@@ -1337,6 +1337,18 @@ class GluuUpdater:
                     backup=False
                     )
 
+        # fix ldap.properties (for clustered environment, this matters)
+        ldap_prop_fn = os.path.join(self.samlInstaller.idp3Folder, 'conf/ldap.properties')
+        prop_content = []
+        for l in open(ldap_prop_fn):
+            if l.strip().startswith('idp.authn.LDAP.ldapURL'):
+                n = l.find('=')
+                prop_content.append(l[:n+1] + ' ldaps://localhost:1636\n')
+            else:
+                prop_content.append(l)
+        with open(ldap_prop_fn, 'w') as w:
+            w.write(''.join(prop_content))
+
         self.samlInstaller.run(['chown', '-R', 'jetty:jetty', '/opt/shibboleth-idp'])
 
 
