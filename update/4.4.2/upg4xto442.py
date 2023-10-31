@@ -1328,6 +1328,15 @@ class GluuUpdater:
                     backup=False
                     )
 
+        # copy metadata from backup
+        for meta_xml_fn in glob.glob(os.path.join(shib_backup_dir, 'metadata/*.xml')):
+            if os.path.basename(meta_xml_fn) != 'idp-metadata.xml':
+                self.samlInstaller.copyFile(
+                    meta_xml_fn,
+                    os.path.join(self.samlInstaller.idp3Folder, 'metadata'),
+                    backup=False
+                    )
+
         self.samlInstaller.run(['chown', '-R', 'jetty:jetty', '/opt/shibboleth-idp'])
 
 
