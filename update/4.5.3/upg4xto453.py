@@ -27,9 +27,9 @@ import tempfile
 
 os.umask(0o022)
 
-#if os.environ.get('gldev') != 'true':
-#    print("This scirpt is under development. Not for use.")
-#    sys.exit()
+if os.environ.get('gldev') != 'true':
+    print("This scirpt is under development. Not for use.")
+    sys.exit()
 
 
 cur_dir = os.path.dirname(os.path.realpath(__file__))
@@ -71,7 +71,7 @@ if '-d' not in sys.argv:
 
 
 ssl._create_default_https_context = ssl._create_unverified_context
-up_version = "4.5.2"
+up_version = "4.5.3"
 maven_base = 'https://maven.gluu.org/maven'
 parser = argparse.ArgumentParser("This script upgrades gluu server 4.x to {}".format(up_version))
 parser.add_argument('-d', help="Download applications and exit", action='store_true')
@@ -253,11 +253,11 @@ class GluuUpdater:
         self.postmessages = []
 
         # app versions
-        self.corretto_version = '11.0.19.7.1'
+        self.corretto_version = '11.0.21.9.1'
         self.jython_version = '2.7.3'
-        self.jetty_version = '10.0.15'
-        self.opendj_version = '4.5.0'
-        self.node_version = 'v14.19.1'
+        self.jetty_version = '10.0.18'
+        self.opendj_version = '4.5.2'
+        self.node_version = 'v16.16.0'
 
         self.delete_from_configuration = ['gluuFreeDiskSpace', 'gluuFreeMemory', 'gluuFreeSwap', 'gluuGroupCount', 'gluuIpAddress', 'gluuPersonCount', 'gluuSystemUptime']
 
@@ -1841,12 +1841,14 @@ class GluuUpdater:
                             if k in provider.get('options', {}):
                                 del provider['options'][k]
 
-
                         for ko,kn in (('clientID', 'client_id'), ('clientSecret', 'client_secret')):
                             if ko in provider.get('options', {}):
                                 provider['options'][kn] = provider['options'].pop(ko)
 
                         provider['options']['token_endpoint_auth_method'] = 'client_secret_post'
+
+                    elif provider.get('type') == 'saml' and provider.get('passportStrategyId') == 'passport-saml':
+                        provider['passportStrategyId'] = '@node-saml/passport-saml'
 
             self.passportInstaller.dbUtils.set_configuration('gluuPassportConfiguration', json.dumps(js_data), dn='ou=oxpassport,ou=configuration,o=gluu')
 
