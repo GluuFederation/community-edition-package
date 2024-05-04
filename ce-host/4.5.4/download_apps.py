@@ -19,19 +19,21 @@ elif '-el9' in sys.argv:
     target = 'el9'
 elif '-ub' in sys.argv:
     target = 'ub'
-
+    
 app_versions = {
-              "JETTY_VERSION": "9.4.35.v20201120", 
-              "AMAZON_CORRETTO_VERSION": "11-x64", 
-              "OX_GITVERISON": ".Final", 
-              "OX_VERSION": "4.4.0", 
-              "JYTHON_VERSION": "2.7.2",
-              "NODE_VERSION": "v12.19.0",
-              "SETUP_BRANCH": "version_4.3.0",
-              "PASSPORT_NODE_VERSION": "4.3.0",
-              "TWILIO_VERSION": "7.17.0",
-              "JSMPP_VERSION": "2.3.7"
-            }
+    "JETTY_VERSION": "10.0.18",
+    "AMAZON_CORRETTO_VERSION": "11.0.21.9.1",
+    "OX_GITVERISON": ".Final",
+    "NODE_VERSION": "v16.16.0",
+    "OX_VERSION": "4.5.4", 
+    "PASSPORT_VERSION": "4.5.4",
+    "JYTHON_VERSION": "2.7.3",
+    "OPENDJ_VERSION": "4.5.2",
+    "SETUP_BRANCH": "version_4.5.4",
+    "TWILIO_VERSION": "7.17.0",
+    "JSMPP_VERSION": "2.3.7",
+    "APPS_GIT_BRANCH": "version_4.5.4",
+    }
 
 def download(url, target_fn):
     if not target_fn.startswith('/'):
