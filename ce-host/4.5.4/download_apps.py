@@ -25,14 +25,14 @@ app_versions = {
     "AMAZON_CORRETTO_VERSION": "11.0.21.9.1",
     "OX_GITVERISON": ".Final",
     "NODE_VERSION": "v16.16.0",
-    "OX_VERSION": "4.5.5", 
-    "PASSPORT_VERSION": "4.5.5",
+    "OX_VERSION": "4.5.4", 
+    "PASSPORT_VERSION": "4.5.4",
     "JYTHON_VERSION": "2.7.3",
     "OPENDJ_VERSION": "4.5.2",
-    "SETUP_BRANCH": "version_4.5.5",
+    "SETUP_BRANCH": "version_4.5.4",
     "TWILIO_VERSION": "7.17.0",
     "JSMPP_VERSION": "2.3.7",
-    "APPS_GIT_BRANCH": "version_4.5.5",
+    "APPS_GIT_BRANCH": "version_4.5.4",
     }
 
 def download(url, target_fn):
