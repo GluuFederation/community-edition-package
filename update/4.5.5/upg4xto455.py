@@ -19,11 +19,13 @@ import glob
 import zipfile
 import csv
 import uuid
-from urllib import request
 import ssl
 import random
 import argparse
 import tempfile
+
+from urllib import request
+from pathlib import Path
 
 os.umask(0o022)
 
@@ -71,7 +73,7 @@ if '-d' not in sys.argv:
 
 
 ssl._create_default_https_context = ssl._create_unverified_context
-up_version = "4.5.3"
+up_version = "4.5.5"
 maven_base = 'https://maven.gluu.org/maven'
 parser = argparse.ArgumentParser("This script upgrades gluu server 4.x to {}".format(up_version))
 parser.add_argument('-d', help="Download applications and exit", action='store_true')
@@ -256,7 +258,7 @@ class GluuUpdater:
         self.corretto_version = '11.0.21.9.1'
         self.jython_version = '2.7.3'
         self.jetty_version = '10.0.18'
-        self.opendj_version = '4.5.2'
+        self.opendj_version = '4.5.3'
         self.node_version = 'v16.16.0'
 
         self.delete_from_configuration = ['gluuFreeDiskSpace', 'gluuFreeMemory', 'gluuFreeSwap', 'gluuGroupCount', 'gluuIpAddress', 'gluuPersonCount', 'gluuSystemUptime']
@@ -312,6 +314,7 @@ class GluuUpdater:
                     ('https://github.com/GluuFederation/community-edition-setup/archive/version_{}.zip'.format(up_version), os.path.join(self.dist_gluu_folder, 'community-edition-setup.zip')),
                     ('https://ox.gluu.org/icrby8xcvbcv/misc/python_packages.zip', os.path.join(self.dist_app_folder, 'python_packages.zip')),
                     ('https://github.com/sqlalchemy/sqlalchemy/archive/rel_1_3_23.zip', os.path.join(self.dist_app_folder, 'sqlalchemy.zip')),
+                    ('https://github.com/jpadilla/pyjwt/archive/refs/tags/2.4.0.zip', os.path.join(self.dist_app_folder, 'pyjwt.zip')),
                     (maven_base + '/org/gluu/oxshibbolethIdp/{0}{1}/oxshibbolethIdp-{0}{1}.war'.format(up_version, self.build_tag), os.path.join(self.dist_gluu_folder, 'idp.war')),
                     (maven_base + '/org/gluu/oxShibbolethStatic/{0}{1}/oxShibbolethStatic-{0}{1}.jar'.format(up_version, self.build_tag), os.path.join(self.dist_gluu_folder, 'shibboleth-idp.jar')),
                     (maven_base + '/org/gluu/oxShibbolethKeyGenerator/{0}{1}/oxShibbolethKeyGenerator-{0}{1}.jar'.format(up_version, self.build_tag), os.path.join(self.dist_gluu_folder, 'idp3_cml_keygenerator.jar')),
@@ -325,7 +328,6 @@ class GluuUpdater:
                     (maven_base + f'/org/gluu/scim-server/{up_version}/scim-server-{up_version}.war', os.path.join(self.dist_gluu_folder,'scim.war')),
                     ('https://raw.githubusercontent.com/GluuFederation/community-edition-setup/version_{0}/static/casa/scripts/casa-external_smpp.py'.format(up_version), os.path.join(self.dist_gluu_folder, 'casa-external_smpp.py')),
                     (maven_base + '/org/gluu/gluu-orm-couchbase-libs/{0}{1}/gluu-orm-couchbase-libs-{0}{1}-distribution.zip'.format(up_version, self.build_tag), os.path.join(self.dist_gluu_folder, 'gluu-orm-couchbase-libs-distribution.zip')),
-                    ('https://ox.gluu.org/icrby8xcvbcv/spanner/gcs-cygrpc.tgz', os.path.join(self.dist_app_folder, 'gcs-cygrpc.tgz')),
                     ]
         for p in self.casa_plugins:
             downloads.append((self.casa_plugins[p].format(up_version, self.build_tag), os.path.join(self.dist_gluu_folder, p + '.jar')))
@@ -369,18 +371,23 @@ class GluuUpdater:
         shutil.copytree(extracted_path, self.ces_dir)
         shutil.rmtree(ces_tmp_dir)
 
-        print("Extracting sqlalchemy")
-        target_dir = os.path.join(self.ces_dir, 'setup_app/pylib/sqlalchemy')
-        sqlalchemy_zfn = os.path.join(self.dist_app_folder, 'sqlalchemy.zip')
-        sqlalchemy_zip = zipfile.ZipFile(sqlalchemy_zfn, "r")
-        sqlalchemy_par_dir = sqlalchemy_zip.namelist()[0]
-        tmp_dir = os.path.join(self.dist_tmp_folder, 'sqla_{}'.format(os.urandom(4).hex()))
-        sqlalchemy_zip.extractall(tmp_dir)
-        shutil.copytree(
-                os.path.join(tmp_dir, sqlalchemy_par_dir, 'lib/sqlalchemy'), 
-                target_dir
-                )
-        shutil.rmtree(tmp_dir)
+        print("Extracting python libraries")
+        for py_package, target, source_dir in (
+                ('sqlalchemy.zip', 'setup_app/pylib/sqlalchemy', 'lib/sqlalchemy'),
+                ('pyjwt.zip','setup_app/pylib/jwt', 'jwt'),
+                ):
+            print("Extracting", py_package)
+            target_dir = os.path.join(self.ces_dir, target)
+            py_zfn = os.path.join(self.dist_app_folder, py_package)
+            py_zip = zipfile.ZipFile(py_zfn, "r")
+            py_par_dir = py_zip.namelist()[0]
+            tmp_dir = os.path.join(self.dist_tmp_folder, f'{py_package}_{os.urandom(4).hex()}')
+            py_zip.extractall(tmp_dir)
+            shutil.copytree(
+                    os.path.join(tmp_dir, py_par_dir, source_dir),
+                    target_dir
+                    )
+            shutil.rmtree(tmp_dir)
 
         open(os.path.join(self.ces_dir, '__init__.py'), 'w').close()
 
@@ -416,11 +423,6 @@ class GluuUpdater:
 
         from setup_app.messages import msg
         from setup_app.config import Config
-
-        if not os.path.exists(os.path.join(Config.distFolder, 'app/gcs')):
-            print("Extracting gcs")
-            shutil.unpack_archive(os.path.join(self.dist_app_folder, 'gcs-cygrpc.tgz'), os.path.join(Config.distFolder, 'app'))
-
         from setup_app.static import BackendTypes
         from setup_app.utils.progress import gluuProgress
         from setup_app.utils.ldif_utils import myLdifParser
@@ -595,13 +597,23 @@ class GluuUpdater:
                         ('opTosUri', 'change', 'entry', ''),
                         ('sessionIdUnauthenticatedUnusedLifetime', 'change', 'entry', 7200),
                         ('errorHandlingMethod', 'change', 'entry', 'remote'),
+                        ('return200OnClientRegistration', 'add', 'entry', True),
+                        ('dateFormatterPatterns', 'add', 'entry', {}),
                     ],
     
                     ('oxAuthConfStatic', 'ou=oxauth,ou=configuration,o=gluu', 'oxAuthConfiguration'): [
                         ('baseDn', 'change', 'subentry', ('sessions', 'ou=sessions,o=gluu')),
                         ('baseDn', 'change', 'subentry', ('ciba', 'ou=ciba,o=gluu')),
+                        ('baseDn', 'change', 'subentry', ('fido2Attestation', 'ou=fido2_register,ou=fido2,o=gluu')),
+                        ('baseDn', 'change', 'subentry', ('fido2Assertion', 'ou=fido2_auth,ou=fido2,o=gluu')),
                     ],
-    
+
+                    ## NOT WORKING
+                    ('oxAuthConfErrors', 'ou=oxauth,ou=configuration,o=gluu', 'oxAuthConfiguration'): [
+                        ('authorize', 'add', 'element', {'id':'request_not_supported', 'description':'The request parameter is not supported.','uri': None}),
+                        ('authorize', 'add', 'element', {'id':'request_uri_not_supported', 'description':'The request uri parameter is not supported.','uri': None}),
+                    ],
+                    ##
                     ('oxTrustConfApplication', 'ou=oxtrust,ou=configuration,o=gluu', 'oxTrustConfiguration'): [
                         ('useLocalCache', 'add', 'entry', True),
                         ('loggingLayout', 'add', 'entry', 'text'),
@@ -620,6 +632,12 @@ class GluuUpdater:
 
                     ('oxTrustConfCacheRefresh', 'ou=oxtrust,ou=configuration,o=gluu', 'oxTrustConfiguration'): [
                         ('inumConfig', 'change', 'subentry', ('bindDN', self.Config.ldap_binddn)),
+                    ],
+
+                    ('gluuConfStatic', 'ou=fido2,ou=configuration,o=gluu', 'gluuApplicationConfiguration'): [
+                        ('baseDn', 'change', 'subentry', ('fido2Attestation', 'ou=fido2_register,ou=fido2,o=gluu')),
+                        ('baseDn', 'change', 'subentry', ('fido2Assertion', 'ou=fido2_auth,ou=fido2,o=gluu')),
+                        ('baseDn', 'change', 'subentry', ('attributes', 'ou=attributes,o=gluu')),
                     ],
 
                 }
@@ -688,18 +706,25 @@ class GluuUpdater:
             self.gluuInstaller.writeFile(passport_default_fn, passport_default)
 
 
-    def update_persistence_data(self):
+    def update_basic_ldif(self):
+        self.upgrade_ldif(os.path.join(self.Config.templateFolder, os.path.basename(self.Config.ldif_base)))
 
-        if self.gluuInstaller.dbUtils.moddb == self.BackendTypes.LDAP:
-           self.update_ldap()
+    def update_persistence_data(self, persist_changes=None, update_db=True):
 
-        elif self.gluuInstaller.dbUtils.moddb == self.BackendTypes.COUCHBASE:
-           self.update_couchbase()
+        if update_db:
+            if self.gluuInstaller.dbUtils.moddb == self.BackendTypes.LDAP:
+               self.update_ldap()
 
-        elif self.gluuInstaller.dbUtils.moddb == self.BackendTypes.MYSQL:
-           self.update_mysql()
+            elif self.gluuInstaller.dbUtils.moddb == self.BackendTypes.COUCHBASE:
+               self.update_couchbase()
 
-        for config_element, config_dn, object_class in self.persist_changes:
+            elif self.gluuInstaller.dbUtils.moddb == self.BackendTypes.MYSQL:
+               self.update_mysql()
+
+        if not persist_changes:
+            persist_changes = self.persist_changes
+
+        for config_element, config_dn, object_class in persist_changes:
             print("Updating Database for", config_element)
             
             if self.gluuInstaller.dbUtils.get_backend_location_for_dn(config_dn) == self.BackendTypes.COUCHBASE:
@@ -734,7 +759,7 @@ class GluuUpdater:
 
             print("Applying persist changes")
 
-            self.apply_persist_changes(js_conf, self.persist_changes[(config_element, config_dn, object_class)])
+            self.apply_persist_changes(js_conf, persist_changes[(config_element, config_dn, object_class)])
 
             if self.gluuInstaller.dbUtils.get_backend_location_for_dn(config_dn) != self.BackendTypes.COUCHBASE:
                 new_conf = json.dumps(js_conf, indent=2)
@@ -1650,9 +1675,9 @@ class GluuUpdater:
 
         with open(db_modidifed_script, 'w') as w:
             for statement in statements:
-                if statement.upper().strip().startswith('INSERT INTO PUBLIC.RP'):
+                s_ = statement.upper().strip().replace('"','').replace("'", '').replace(' ', '')
+                if s_.startswith('INSERTINTOPUBLIC.RP'):
                     w.write(statement + '\n')
-
 
         for db_fn in glob.glob('{}/data/oxd_db*.db'.format(self.oxdInstaller.oxd_root)):
             os.remove(db_fn)
@@ -1662,7 +1687,7 @@ class GluuUpdater:
         self.oxdInstaller.stop()
         cmd = '{0} -cp {1}/lib/oxd*.jar org.h2.tools.RunScript -url jdbc:h2:file:{1}/data/oxd_db -user oxd -password oxd -script {2}'.format(self.Config.cmd_java, self.oxdInstaller.oxd_root, db_modidifed_script)
         self.oxdInstaller.run(cmd, shell=True)
-
+        self.oxdInstaller.run(['chown', '-R', 'jetty:gluu', os.path.join(self.oxdInstaller.oxd_root, 'data')])
         shutil.rmtree(tmp_dir)
 
         print("Restarting oxd-server")
@@ -1883,26 +1908,12 @@ class GluuUpdater:
         print("Generating passport configuration")
         self.passportInstaller.generate_configuration()
 
+         # update passport clients
         output_folder = os.path.join(self.Config.outputFolder, self.passportInstaller.service_name)
         self.passportInstaller.renderTemplateInOut(self.passportInstaller.ldif_passport_clients, self.passportInstaller.passport_templates_folder, output_folder)
         clients_ldif_fn = os.path.join(output_folder, self.passportInstaller.ldif_passport_clients)
-        clients_ldif = self.myLdifParser(clients_ldif_fn)
-        clients_ldif.parse()
 
-        import_ldif_fn = os.path.join(output_folder, 'upgrade.ldif')
-        import_ldif_fobj = open(import_ldif_fn, 'wb')
-        ldif_writer = self.myLdifWriter(import_ldif_fobj, cols=1000)
-
-        import_upgrade_ldif = False
-        for dn, entry in clients_ldif.entries:
-            if not self.passportInstaller.dbUtils.dn_exists(dn):
-                ldif_writer.unparse(dn, entry)
-                import_upgrade_ldif = True
-
-        import_ldif_fobj.close()
-
-        if import_upgrade_ldif:
-            self.passportInstaller.dbUtils.import_ldif([import_ldif_fn])
+        self.upgrade_ldif(clients_ldif_fn)
 
         passport_config_dn = 'ou=oxpassport,ou=configuration,o=gluu'
         passport_db_data = self.passportInstaller.dbUtils.dn_exists(passport_config_dn)
@@ -1930,6 +1941,26 @@ class GluuUpdater:
         self.passportInstaller.dbUtils.set_configuration('oxAuthJwks', passport_rp_client_jwks, passport_rp_client_dn)
 
         self.passportInstaller.run([self.paths.cmd_chown, '-R', 'node:gluu', self.passportInstaller.gluu_passport_base])
+
+
+    def upgrade_ldif(self, ldif_fn):
+
+        ldif_parser = self.myLdifParser(ldif_fn)
+        ldif_parser.parse()
+        upgrade_ldif_fn = os.path.join(self.Config.outputFolder, f'upgrade_{Path(ldif_fn).stem}.ldif')
+        upgrade_ldif_fobj = open(upgrade_ldif_fn, 'wb')
+        ldif_writer = self.myLdifWriter(upgrade_ldif_fobj, cols=1000)
+
+        import_upgrade_ldif = False
+        for dn, entry in ldif_parser.entries:
+            if not self.gluuInstaller.dbUtils.dn_exists(dn, check_only=True):
+                ldif_writer.unparse(dn, entry)
+                import_upgrade_ldif = True
+
+        upgrade_ldif_fobj.close()
+
+        if import_upgrade_ldif:
+            self.gluuInstaller.dbUtils.import_ldif([upgrade_ldif_fn])
 
 
     def add_oxAuthUserId_pairwiseIdentifier(self):
@@ -1960,6 +1991,8 @@ class GluuUpdater:
         if self.fidoInstaller.dbUtils.dn_exists(fido2_config_dn):
             gluuConfDynamic = self.fidoInstaller.readFile(self.fidoInstaller.fido2_dynamic_conf_json)
             self.fidoInstaller.dbUtils.set_configuration('gluuConfDynamic', gluuConfDynamic, dn=fido2_config_dn)
+            gluuConfErrors = self.fidoInstaller.readFile(self.fidoInstaller.fido2_error_json)
+            self.fidoInstaller.dbUtils.set_configuration('gluuConfErrors', gluuConfErrors, dn=fido2_config_dn)
         else:
             self.fidoInstaller.dbUtils.import_ldif([self.fidoInstaller.ldif_fido2])
 
@@ -1986,6 +2019,7 @@ class GluuUpdater:
         root_r3_fn = os.path.join(self.Config.configFolder, 'fido2/mds/cert/root-r3.crt')
         self.base.download('https://secure.globalsign.com/cacert/root-r3.crt', root_r3_fn)
         self.gluuInstaller.chown(root_r3_fn, self.Config.root_user, self.Config.gluu_group)
+
 
     def fix_super_gluu(self):
         self.gluuInstaller.copyFile(
@@ -2118,6 +2152,8 @@ updaterObj = GluuUpdater()
 updaterObj.download_apps()
 updaterObj.unzip_ces()
 updaterObj.prepare_ces()
+
+updaterObj.update_basic_ldif()
 updaterObj.fix_identity_config()
 
 updaterObj.copy_files()
@@ -2164,3 +2200,4 @@ print()
 print("Please logout from container and restart Gluu Server")
 
 #./makeself.sh --target /opt/upd/4.5.2 /opt/upd/4.5.2 4-5-2.upg.run "Gluu Server 4.x to 4.5.2 Upgrader Script" /opt/upd/4.5.2/upg4xto452.py --offline
+
