@@ -1,6 +1,7 @@
 [Unit]
 Description=oxd-server daemon
-After=network.target,identity.service
+After=oxauth.service
+Requires=oxauth.service
 
 [Service]
 Type=forking
@@ -9,7 +10,8 @@ ExecStop=/opt/oxd-server/bin/oxd-server stop
 RemainAfterExit=yes
 User=jetty
 Group=jetty
-TimeoutSec=300
+TimeoutSec=420
+ExecStartPre=/usr/bin/sleep 150
 
 [Install]
 WantedBy=multi-user.target
