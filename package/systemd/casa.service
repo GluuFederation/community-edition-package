@@ -1,6 +1,7 @@
 [Unit]
 Description=Casa service
-After=oxauth.service,oxd-server.service
+After=oxd-server.service
+Requires=oxd-server.service
 
 [Service]
 Type=forking
@@ -8,7 +9,8 @@ ExecStart=/opt/dist/scripts/casa start
 ExecStop=/opt/dist/scripts/casa stop
 User=jetty
 Group=jetty
-TimeoutSec=300
+TimeoutSec=450
+ExecStartPre=/usr/bin/sleep 210
 
 [Install]
 WantedBy=multi-user.target
